@@ -1,0 +1,145 @@
+name: Release & Dev Pipeline
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - '1.0.0-dev.*'
+      - '1.0.0-beta.*'
+      - '1.0.0-release.*'
+      - 'v1.0.0-*'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Release-Kanal'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - 'dev'
+          - 'beta'
+          - 'release'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Determine Tag, Channel & Release Info
+        id: meta
+        run: |
+          set -e
+          REF_NAME="${GITHUB_REF_NAME}"
+          EVENT="${GITHUB_EVENT_NAME}"
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            CHANNEL="${{ inputs.channel }}"
+            TAG=$(node scripts/release.ts next "$CHANNEL")
+          elif [ "$EVENT" = "push" ] && [[ "$GITHUB_REF" =~ ^refs/tags/ ]]; then
+            TAG="$REF_NAME"
+            if [[ "$TAG" =~ -dev\. ]]; then
+              CHANNEL="dev"
+            elif [[ "$TAG" =~ -beta\. ]]; then
+              CHANNEL="beta"
+            elif [[ "$TAG" =~ -release\. ]]; then
+              CHANNEL="release"
+            else
+              CHANNEL="release"
+            fi
+          else
+            # Push auf master/main -> Dev-Channel (jeder erfolgreiche Commit: 1.0.0-dev.<8-commit-chars>)
+            CHANNEL="dev"
+            TAG=$(node scripts/release.ts next dev)
+          fi
+
+          IS_PRERELEASE="false"
+          if [ "$CHANNEL" = "dev" ] || [ "$CHANNEL" = "beta" ]; then
+            IS_PRERELEASE="true"
+          fi
+
+          if [ "$CHANNEL" = "dev" ]; then
+            TITLE="Quorum Dev (${TAG#1.0.0-dev.})"
+          elif [ "$CHANNEL" = "beta" ]; then
+            TITLE="Quorum Beta ${TAG#1.0.0-beta.}"
+          else
+            TITLE="Quorum Release ${TAG#1.0.0-release.}"
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+
+          echo "==> Target Tag: $TAG"
+          echo "==> Channel: $CHANNEL"
+          echo "==> Prerelease: $IS_PRERELEASE"
+          echo "==> Title: $TITLE"
+
+      - name: Update package.json version
+        run: |
+          npm version "${{ steps.meta.outputs.tag }}" --no-git-tag-version
+
+      - name: Install Dependencies
+        run: |
+          npm ci || npm install
+
+      - name: Build Icons & Assets
+        run: |
+          npm run icons
+
+      - name: Build Web & Electron
+        run: |
+          npm run build
+
+      - name: Build Linux Packages (AppImage & deb)
+        run: |
+          npx electron-builder --linux AppImage deb --x64 --publish never
+
+      - name: Generate Checksums
+        run: |
+          cd release
+          sha256sum *.AppImage *.deb > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          cd ..
+
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_ARG=""
+          if [ "${{ steps.meta.outputs.is_prerelease }}" = "true" ]; then
+            PR_ARG="--prerelease"
+          fi
+
+          TAG="${{ steps.meta.outputs.tag }}"
+          TITLE="${{ steps.meta.outputs.title }}"
+
+          # Release erstellen oder Assets hochladen falls Release existiert
+          gh release create "$TAG" \
+            release/*.AppImage \
+            release/*.deb \
+            release/SHA256SUMS.txt \
+            --title "$TITLE" \
+            --generate-notes \
+            $PR_ARG || \
+          gh release upload "$TAG" \
+            release/*.AppImage \
+            release/*.deb \
+            release/SHA256SUMS.txt \
+            --clobber

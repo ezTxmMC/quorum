@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray, type WebContents } from 'electron';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +20,8 @@ import { isModelingIntent, runChatModeling } from './3d/chat-model';
 import { scheduler } from './runtimes/scheduler';
 import { dataDir, load, save } from './store';
 import { createTerminal, killTerminal, killTerminalsOf, resizeTerminal, writeTerminal } from './terminal';
+import { checkUpdate, downloadUpdate, getUpdateState, installUpdate, setUpdaterEmitter } from './updater';
+import type { UpdateChannel } from '../shared/types';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 let data: Persisted;
@@ -147,41 +149,54 @@ function registerHotkey() {
 
 const SKIP = new Set(['node_modules', '.git', 'dist', 'dist-electron', 'build', 'target', '.next', '__pycache__', '.venv', 'release']);
 
-function listFiles(root: string, query: string, limit = 40): string[] {
+async function listFiles(root: string, query: string, limit = 40): Promise<string[]> {
   const out: string[] = [];
   const q = query.toLowerCase();
-  const walk = (dir: string, depth: number) => {
+  const walk = async (dir: string, depth: number): Promise<void> => {
     if (out.length >= limit || depth > 6) return;
-    let entries: string[] = [];
-    try { entries = readdirSync(dir); } catch { return; }
-    for (const name of entries) {
+    let entries: import('node:fs').Dirent[] = [];
+    try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
       if (out.length >= limit) return;
+      const name = ent.name;
       if (name.startsWith('.') && name !== '.github') continue;
       if (SKIP.has(name)) continue;
       const full = join(dir, name);
-      let st; try { st = statSync(full); } catch { continue; }
       const rel = relative(root, full);
-      if (st.isDirectory()) walk(full, depth + 1);
-      else if (!q || rel.toLowerCase().includes(q)) out.push(rel);
+      if (ent.isDirectory()) {
+        await walk(full, depth + 1);
+      } else if (!q || rel.toLowerCase().includes(q)) {
+        out.push(rel);
+      }
     }
   };
-  walk(root, 0);
+  await walk(root, 0);
   return out;
 }
 
-function slashCommands(cwd: string): { name: string; source: string }[] {
+async function slashCommands(cwd: string): Promise<{ name: string; source: string }[]> {
   const res: { name: string; source: string }[] = [];
-  const scan = (dir: string, source: string, skills: boolean) => {
-    if (!existsSync(dir)) return;
-    for (const n of readdirSync(dir)) {
-      if (skills) { if (existsSync(join(dir, n, 'SKILL.md'))) res.push({ name: n, source }); }
-      else if (n.endsWith('.md')) res.push({ name: n.slice(0, -3), source });
-    }
+  const scan = async (dir: string, source: string, skills: boolean) => {
+    try {
+      const entries = await fsp.readdir(dir, { withFileTypes: true });
+      for (const ent of entries) {
+        if (skills && ent.isDirectory()) {
+          try {
+            await fsp.access(join(dir, ent.name, 'SKILL.md'));
+            res.push({ name: ent.name, source });
+          } catch { /* kein SKILL.md */ }
+        } else if (!skills && ent.isFile() && ent.name.endsWith('.md')) {
+          res.push({ name: ent.name.slice(0, -3), source });
+        }
+      }
+    } catch { /* Ordner existiert nicht */ }
   };
-  scan(join(homedir(), '.claude', 'commands'), 'Benutzer-Befehl', false);
-  scan(join(homedir(), '.claude', 'skills'), 'Benutzer-Skill', true);
-  scan(join(cwd, '.claude', 'commands'), 'Projekt-Befehl', false);
-  scan(join(cwd, '.claude', 'skills'), 'Projekt-Skill', true);
+  await Promise.all([
+    scan(join(homedir(), '.claude', 'commands'), 'Benutzer-Befehl', false),
+    scan(join(homedir(), '.claude', 'skills'), 'Benutzer-Skill', true),
+    scan(join(cwd, '.claude', 'commands'), 'Projekt-Befehl', false),
+    scan(join(cwd, '.claude', 'skills'), 'Projekt-Skill', true),
+  ]);
   return res;
 }
 
@@ -289,7 +304,7 @@ function registerIpc() {
     const win = BrowserWindow.fromWebContents(e.sender) ?? undefined;
     const r = await (win ? dialog.showSaveDialog(win, { defaultPath: join(app.getPath('pictures'), basename(p)) }) : dialog.showSaveDialog({ defaultPath: basename(p) }));
     if (r.canceled || !r.filePath) return false;
-    copyFileSync(p, r.filePath);
+    await fsp.copyFile(p, r.filePath);
     return true;
   });
   ipcMain.handle('shell:external', (_e, url: string) => { if (/^https?:\/\//.test(url)) return shell.openExternal(url); });
@@ -321,23 +336,40 @@ function registerIpc() {
   ipcMain.handle('term:write', (_e, id: string, d: string) => writeTerminal(id, d));
   ipcMain.handle('term:resize', (_e, id: string, c: number, r: number) => resizeTerminal(id, c, r));
   ipcMain.handle('term:kill', (_e, id: string) => killTerminal(id));
-  ipcMain.handle('fs:list', (_e, dir: string): FsEntry[] => {
+  ipcMain.handle('fs:list', async (_e, dir: string): Promise<FsEntry[]> => {
     try {
-      return readdirSync(dir, { withFileTypes: true })
+      const entries = await fsp.readdir(dir, { withFileTypes: true });
+      return entries
         .filter((d) => d.name !== '.git')
         .map((d) => ({ name: d.name, isDir: d.isDirectory() }))
         .sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name));
     } catch { return []; }
   });
-  ipcMain.handle('fs:read', (_e, file: string) => {
+  ipcMain.handle('fs:read', async (_e, file: string) => {
     try {
-      const st = statSync(file);
+      const st = await fsp.stat(file);
       if (!st.isFile()) return { text: '', binary: false, truncated: false };
-      const buf = readFileSync(file).subarray(0, 200_000);
-      const binary = buf.includes(0);
-      return { text: binary ? '' : buf.toString('utf8'), binary, truncated: st.size > 200_000 };
+      const toRead = Math.min(st.size, 200_000);
+      const fh = await fsp.open(file, 'r');
+      try {
+        const buf = Buffer.alloc(toRead);
+        await fh.read(buf, 0, toRead, 0);
+        const binary = buf.includes(0);
+        return { text: binary ? '' : buf.toString('utf8'), binary, truncated: st.size > 200_000 };
+      } finally {
+        await fh.close();
+      }
     } catch { return { text: '', binary: false, truncated: false }; }
   });
+
+  // GitHub Updater IPC
+  setUpdaterEmitter((channel, payload) => {
+    for (const w of allWindows()) sendTo(w.webContents, channel, payload);
+  });
+  ipcMain.handle('updater:check', (_e, channel?: UpdateChannel) => checkUpdate(channel ?? data?.settings.updateChannel));
+  ipcMain.handle('updater:download', () => downloadUpdate());
+  ipcMain.handle('updater:install', () => installUpdate());
+  ipcMain.handle('updater:state', () => getUpdateState());
 }
 
 // AppImage kann das SUID-chrome-sandbox nicht setzen; ohne Schalter startet Electron dort oft nicht.
@@ -361,6 +393,10 @@ app.whenReady().then(() => {
   createQuickWindow();
   setupTray();
   registerHotkey();
+  // Nach dem Start im Hintergrund prüfen (wenn aktiviert)
+  setTimeout(() => {
+    if (data?.settings.autoCheckUpdate !== false) void checkUpdate(data?.settings.updateChannel).catch(() => {});
+  }, 4000);
   app.on('activate', () => { if (allWindows().length === 0) createWindow(); });
 });
 app.on('before-quit', () => { quitting = true; cancelAll(); void scheduler.shutdown(); });

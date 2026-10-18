@@ -108,30 +108,88 @@ export default function App() {
 
 function Shell() {
   const pinned = useHub((s) => s.data.settings.sidebarPinned);
+  const setSettings = useHub.getState().setSettings;
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const location = useLocation();
   const enter = () => { clearTimeout(timer.current); setOpen(true); };
-  const leave = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), 500); }; // halbe Sekunde Verzögerung, bevor sie sich wieder schließt
+  const leave = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), 240); };
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => { if (pinned) setOpen(false); }, [pinned]);
 
   return (
     <div className="flex h-full flex-col">
       <TopBar hover={{ open, enter, leave }} />
-      <div className="relative flex min-h-0 flex-1">
-        {pinned && <Sidebar />}
-        {/* Inline-transform statt Tailwind translate-x (TW4 nutzt die CSS-Eigenschaft `translate`, die transition-[transform] nicht animiert). */}
-        {!pinned && (
-          <div className={cx('absolute bottom-0 left-0 top-0 z-40 flex will-change-transform', open ? 'shadow-2xl' : 'pointer-events-none')}
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        {/* Angeheftete Seitenleiste mit flüssiger Breiten- und Einblendanimation */}
+        <div
+          className="relative shrink-0 overflow-hidden will-change-[width]"
+          style={{
+            width: pinned ? 340 : 0,
+            transition: 'width 280ms cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
+        >
+          <div
+            className="h-full w-[340px] will-change-transform"
             style={{
-              transform: open ? 'translateX(0)' : 'translateX(-104%)',
-              boxShadow: open ? undefined : 'none',
-              transition: 'transform 520ms cubic-bezier(0.65, 0, 0.35, 1), box-shadow 520ms cubic-bezier(0.65, 0, 0.35, 1)',
-            }} onMouseEnter={enter} onMouseLeave={leave}>
-            <Sidebar />
+              transform: pinned ? 'translateX(0)' : 'translateX(-100%)',
+              opacity: pinned ? 1 : 0.4,
+              transition: 'transform 280ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease',
+            }}
+          >
+            <Sidebar pinned={pinned} onTogglePin={() => setSettings({ sidebarPinned: !pinned })} />
+          </div>
+        </div>
+
+        {/* Nicht angeheftet: Feiner linker Hover-Rand zum bequemen Öffnen */}
+        {!pinned && (
+          <div
+            className="absolute bottom-0 left-0 top-0 z-20 w-3 cursor-pointer"
+            onMouseEnter={enter}
+            onMouseLeave={leave}
+          />
+        )}
+
+        {/* Nicht angeheftet: Sanfter Backdrop-Scrim */}
+        {!pinned && (
+          <div
+            className={cx(
+              'absolute inset-0 z-30 bg-black/35 backdrop-blur-[2px] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+              open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+            )}
+            onClick={() => setOpen(false)}
+          />
+        )}
+
+        {/* Nicht angeheftet: Schwebende Seitenleiste (Drawer) mit physikalischer Feder-Kurve & Glow */}
+        {!pinned && (
+          <div
+            className={cx(
+              'absolute bottom-0 left-0 top-0 z-40 flex will-change-transform',
+              open ? 'pointer-events-auto' : 'pointer-events-none'
+            )}
+            style={{
+              transform: open ? 'translateX(0)' : 'translateX(-102%)',
+              opacity: open ? 1 : 0.85,
+              boxShadow: open
+                ? '12px 0 36px -4px rgba(0, 0, 0, 0.5), 4px 0 12px -2px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--c-border)'
+                : 'none',
+              transition: 'transform 300ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease, box-shadow 300ms ease',
+            }}
+            onMouseEnter={enter}
+            onMouseLeave={leave}
+          >
+            <Sidebar
+              pinned={pinned}
+              onTogglePin={() => {
+                setSettings({ sidebarPinned: true });
+                setOpen(false);
+              }}
+              onClose={() => setOpen(false)}
+            />
           </div>
         )}
+
         <SettingsModal />
         <Dock><main className="page-root absolute inset-0 flex min-w-0 flex-col overflow-hidden"><Outlet /></main></Dock>
       </div>

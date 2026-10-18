@@ -1,6 +1,5 @@
 // Modell-Manager: Downloads (Fortschritt, Pause, Abbruch, Wiederaufnahme), Import lokaler Modelle und Registrierung.
-// Schreibt nur unter `<datenordner>/models/`. Entfernt werden nur Dateien dort – vom Nutzer importierte Ordner bleiben unangetastet.
-import { existsSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import type { ModelRecord } from '../../shared/models';
 import { describeModel, inspectLocal } from './inspect';
@@ -157,9 +156,8 @@ function toRecord(info: HfModelInfo, paths: string[], base: string, sizeBytes: n
 }
 
 /** Lokale Datei oder lokalen Ordner registrieren (keine Kopie). */
-export function importLocal(path: string): ModelRecord {
-  if (!existsSync(path)) throw new Error(`Pfad nicht gefunden: ${path}`);
-  const ins = inspectLocal(path);
+export async function importLocal(path: string): Promise<ModelRecord> {
+  const ins = await inspectLocal(path);
   const desc = describeModel({ source: 'local', name: path.split(/[\\/]/).pop() ?? path, files: ins.files, configJson: ins.configJson });
   const name = path.split(/[\\/]/).pop() ?? path;
   // Geteilte GGUF: immer den ersten Teil registrieren, llama.cpp findet die übrigen im selben Ordner.

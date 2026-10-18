@@ -31,7 +31,7 @@ export async function runChatModeling(req: RunRequest, emit: (e: HubEvent) => vo
     return {};
   }
   const goal = req.prompt.trim();
-  const project = createProject(goal.slice(0, 40));
+  const project = await createProject(goal.slice(0, 40));
   say(`Ich modelliere das – Projekt „${project.name}“. Ich melde mich mit jedem Schritt.`);
   let cubes = 0;
   await runProject({

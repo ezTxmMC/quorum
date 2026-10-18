@@ -52,8 +52,8 @@ export function registerModelIpc(send: Send): void {
   ipcMain.handle('models:pause', (_e, id: string) => pauseDownload(id));
   ipcMain.handle('models:cancel', (_e, id: string) => cancelDownload(id));
 
-  ipcMain.handle('models:import', (_e, path: string) => {
-    const record = importLocal(path);
+  ipcMain.handle('models:import', async (_e, path: string) => {
+    const record = await importLocal(path);
     putModel(record);
     return record;
   });

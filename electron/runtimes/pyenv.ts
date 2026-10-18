@@ -4,7 +4,7 @@
 // Es werden nur die gepinnten Pakete aus requirements.txt installiert – keine Installationsskripte.
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface PyStatus {
@@ -19,6 +19,8 @@ export interface PyStatus {
 const PY_BIN = process.platform === 'win32' ? join('Scripts', 'python.exe') : join('bin', 'python');
 const MARKER = 'installed.json';
 
+import { promises as fsp } from 'node:fs';
+
 export function envDir(dataRoot: string): string {
   return join(dataRoot, 'python', 'venv');
 }
@@ -27,8 +29,13 @@ export function venvPython(dataRoot: string): string {
   return join(envDir(dataRoot), PY_BIN);
 }
 
-function requirementsHash(requirements: string): string {
-  return createHash('sha256').update(readFileSync(requirements)).digest('hex');
+async function requirementsHash(requirements: string): Promise<string> {
+  try {
+    const buf = await fsp.readFile(requirements);
+    return createHash('sha256').update(buf).digest('hex');
+  } catch {
+    return '';
+  }
 }
 
 function run(cmd: string, args: string[], env: NodeJS.ProcessEnv, timeout: number): Promise<{ ok: boolean; out: string }> {
@@ -69,18 +76,25 @@ async function torchInfo(py: string): Promise<PyStatus['torch'] | undefined> {
 export async function pyStatus(dataRoot: string, requirements: string): Promise<PyStatus> {
   const py = venvPython(dataRoot);
   const marker = join(envDir(dataRoot), MARKER);
-  if (!existsSync(py)) return { ready: false, error: 'Umgebung nicht eingerichtet' };
+  try {
+    await fsp.access(py);
+  } catch {
+    return { ready: false, error: 'Umgebung nicht eingerichtet' };
+  }
   let installed: { hash?: string; python?: string } = {};
-  try { installed = JSON.parse(readFileSync(marker, 'utf8')) as typeof installed; } catch { /* fehlt */ }
-  const ver = await run(py, ['-I', '-c', 'import sys;print(sys.version.split()[0])'], { ...process.env, PYTHONNOUSERSITE: '1' }, 15000);
-  const torch = await torchInfo(py);
-  const ready = installed.hash === requirementsHash(requirements) && !!torch;
+  try { installed = JSON.parse(await fsp.readFile(marker, 'utf8')) as typeof installed; } catch { /* fehlt */ }
+  const [reqHash, ver, torch] = await Promise.all([
+    requirementsHash(requirements),
+    run(py, ['-I', '-c', 'import sys;print(sys.version.split()[0])'], { ...process.env, PYTHONNOUSERSITE: '1' }, 15000),
+    torchInfo(py),
+  ]);
+  const ready = installed.hash === reqHash && !!torch;
   return {
     ready,
     python: py,
     pythonVersion: ver.ok ? ver.out.split('\n')[0].trim() : undefined,
     torch,
-    error: ready ? undefined : installed.hash !== requirementsHash(requirements) ? 'Pakete sind nicht aktuell (Einrichtung wiederholen)' : 'Torch ist nicht verfügbar',
+    error: ready ? undefined : installed.hash !== reqHash ? 'Pakete sind nicht aktuell (Einrichtung wiederholen)' : 'Torch ist nicht verfügbar',
   };
 }
 
@@ -114,6 +128,7 @@ export async function setupPyEnv(dataRoot: string, requirements: string, onLog: 
     child.on('error', reject);
     child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`pip fehlgeschlagen (Code ${code}): ${tail.slice(-400)}`))));
   });
-  writeFileSync(join(dir, MARKER), JSON.stringify({ hash: requirementsHash(requirements), python: base.version, at: Date.now() }));
+  const hash = await requirementsHash(requirements);
+  await fsp.writeFile(join(dir, MARKER), JSON.stringify({ hash, python: base.version, at: Date.now() }));
   return pyStatus(dataRoot, requirements);
 }

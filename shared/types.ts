@@ -289,6 +289,8 @@ export interface Settings {
   defaultCwd: string;
   binaries: Partial<Record<ProviderId, string>>;
   providerDefaults: Record<ProviderId, ProviderOptions>;
+  updateChannel: UpdateChannel;
+  autoCheckUpdate: boolean;
 }
 
 export interface Persisted {
@@ -337,4 +339,43 @@ export interface CliUsage { provider: 'claude' | 'antigravity'; ok: boolean; met
 export interface UsageReport {
   days: { date: string; claude: UsageTokens; codex: UsageTokens }[];
   codexLimits: { plan: string | null; primary: RateWindow; secondary: RateWindow | null; credits: { has_credits: boolean; unlimited: boolean; balance: string } | null; at: number } | null;
+}
+
+// ---- Updater & GitHub Releases ----------------------------------------------------
+
+export type UpdateChannel = 'release' | 'beta' | 'dev';
+
+export interface UpdateAsset {
+  name: string;
+  downloadUrl: string;
+  size: number;
+  contentType: string;
+}
+
+export interface UpdateInfo {
+  version: string;
+  tag: string;
+  channel: UpdateChannel;
+  name: string;
+  notes: string;
+  publishedAt: string;
+  asset?: UpdateAsset;
+}
+
+export interface UpdateProgress {
+  percent: number;
+  transferred: number;
+  total: number;
+  bytesPerSecond: number;
+}
+
+export interface UpdateState {
+  status: 'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'downloaded' | 'error';
+  currentVersion: string;
+  channel: UpdateChannel;
+  updateInfo?: UpdateInfo;
+  progress?: UpdateProgress;
+  error?: string;
+  downloadPath?: string;
+  lastChecked?: number;
 }

@@ -1,6 +1,4 @@
-// Modell-Inspektion: Format, Architektur, Fähigkeiten und Quantisierung aus Dateien und Metadaten ableiten.
-// Liest nur Kopfdaten (Magic-Bytes, Safetensors-Header, config.json) – keine Gewichte, kein Modellcode.
-import { existsSync, openSync, readFileSync, readSync, closeSync, readdirSync, statSync } from 'node:fs';
+import { openSync, readSync, closeSync, promises as fsp } from 'node:fs';
 import { join, extname } from 'node:path';
 import type { Capability, ModelArchitecture, ModelDescriptor, ModelFormat } from '../../shared/models';
 
@@ -142,26 +140,48 @@ export function describeModel(args: {
 }
 
 /** Lokalen Ordner oder eine Datei inspizieren. Ergibt Dateiliste (relativ), Format und config.json. */
-export function inspectLocal(path: string): { files: string[]; configJson?: Record<string, unknown>; sizeBytes: number } {
-  if (!existsSync(path)) throw new Error(`Pfad nicht gefunden: ${path}`);
-  const st = statSync(path);
+export async function inspectLocal(path: string): Promise<{ files: string[]; configJson?: Record<string, unknown>; sizeBytes: number }> {
+  let st;
+  try {
+    st = await fsp.stat(path);
+  } catch {
+    throw new Error(`Pfad nicht gefunden: ${path}`);
+  }
   if (!st.isDirectory()) {
     return { files: [pathBase(path)], sizeBytes: st.size };
   }
   const files: string[] = [];
   let sizeBytes = 0;
-  const walk = (dir: string, rel: string, depth: number) => {
+  const walk = async (dir: string, rel: string, depth: number) => {
     if (depth > 4) return;
-    for (const e of readdirSync(dir, { withFileTypes: true })) {
+    let entries: import('node:fs').Dirent[] = [];
+    try {
+      entries = await fsp.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
       const full = join(dir, e.name);
       const r = rel ? `${rel}/${e.name}` : e.name;
-      if (e.isDirectory()) walk(full, r, depth + 1);
-      else if (e.isFile()) { files.push(r); sizeBytes += statSync(full).size; }
+      if (e.isDirectory()) {
+        await walk(full, r, depth + 1);
+      } else if (e.isFile()) {
+        files.push(r);
+        try {
+          const s = await fsp.stat(full);
+          sizeBytes += s.size;
+        } catch { /* ignore */ }
+      }
     }
   };
-  walk(path, '', 0);
+  await walk(path, '', 0);
   const cfg = files.find((f) => f === 'config.json');
-  const configJson = cfg ? (JSON.parse(readFileSync(join(path, cfg), 'utf8')) as Record<string, unknown>) : undefined;
+  let configJson: Record<string, unknown> | undefined;
+  if (cfg) {
+    try {
+      configJson = JSON.parse(await fsp.readFile(join(path, cfg), 'utf8')) as Record<string, unknown>;
+    } catch { /* ignore */ }
+  }
   return { files, configJson, sizeBytes };
 }
 

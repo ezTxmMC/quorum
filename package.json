@@ -1,6 +1,6 @@
 {
   "name": "ai-hub",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Quorum – Claude Code, GPT Codex, Antigravity, OpenCode und Ollama an einem Tisch, mit Multi-Agent-Modus.",
   "private": true,
   "type": "module",
@@ -16,7 +16,11 @@
     "dist:linux": "npm run icons && vite build && electron-builder --linux AppImage deb --x64 --publish never",
     "dist:win": "npm run icons && vite build && electron-builder --win zip --x64 --publish never",
     "dist:mac": "npm run icons && vite build && electron-builder --mac zip --arm64 --publish never",
-    "dist:all": "npm run dist:linux && npm run dist:win && npm run dist:mac"
+    "dist:all": "npm run dist:linux && npm run dist:win && npm run dist:mac",
+    "release": "node scripts/release.ts",
+    "release:dev": "node scripts/release.ts dev",
+    "release:beta": "node scripts/release.ts beta",
+    "release:stable": "node scripts/release.ts release"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

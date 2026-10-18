@@ -1,6 +1,6 @@
 // Persistenz für Workflows (mit Versionen) und Ausführungsprotokolle. Dateien im Datenordner, atomar geschrieben.
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import type { WorkflowDef, WorkflowNode } from '../../shared/workflow';
 import { dataDir } from '../store';
@@ -19,11 +19,31 @@ function readJson<T>(path: string, fallback: T): T {
   }
 }
 
+const pendingWrites = new Map<string, unknown>();
+const writingFiles = new Set<string>();
+
+async function flushFile(path: string): Promise<void> {
+  if (writingFiles.has(path)) return;
+  writingFiles.add(path);
+  try {
+    while (pendingWrites.has(path)) {
+      const val = pendingWrites.get(path);
+      pendingWrites.delete(path);
+      await fsp.mkdir(dataDir(), { recursive: true });
+      const tmp = path + '.tmp';
+      await fsp.writeFile(tmp, JSON.stringify(val, null, 2));
+      await fsp.rename(tmp, path);
+    }
+  } catch {
+    /* nächster Versuch beim nächsten Speichern */
+  } finally {
+    writingFiles.delete(path);
+  }
+}
+
 function writeJson(path: string, value: unknown): void {
-  mkdirSync(dataDir(), { recursive: true });
-  const tmp = path + '.tmp';
-  writeFileSync(tmp, JSON.stringify(value, null, 2));
-  renameSync(tmp, path);
+  pendingWrites.set(path, value);
+  void flushFile(path);
 }
 
 let workflows: WorkflowDef[] | null = null;
@@ -80,11 +100,11 @@ export function deleteWorkflow(id: string): boolean {
 }
 
 /** Export als JSON-Datei in den Datenordner; liefert den Pfad. */
-export function exportWorkflow(id: string): string | undefined {
+export async function exportWorkflow(id: string): Promise<string | undefined> {
   const w = getWorkflow(id);
   if (!w) return undefined;
   const dir = join(dataDir(), 'exports');
-  mkdirSync(dir, { recursive: true });
+  await fsp.mkdir(dir, { recursive: true });
   const safe = w.name.replace(/[^\w.-]+/g, '_').slice(0, 60) || 'workflow';
   const path = join(dir, `${safe}-v${w.version}.json`);
   writeJson(path, { format: 'quorum-workflow', version: 1, workflow: { name: w.name, version: w.version, nodes: w.nodes } });
@@ -92,8 +112,9 @@ export function exportWorkflow(id: string): string | undefined {
 }
 
 /** Import einer exportierten Datei als neuer Workflow. */
-export function importWorkflow(path: string): WorkflowDef {
-  const data = JSON.parse(readFileSync(path, 'utf8')) as { format?: string; workflow?: { name?: string; nodes?: WorkflowNode[] } };
+export async function importWorkflow(path: string): Promise<WorkflowDef> {
+  const text = await fsp.readFile(path, 'utf8');
+  const data = JSON.parse(text) as { format?: string; workflow?: { name?: string; nodes?: WorkflowNode[] } };
   if (data.format !== 'quorum-workflow' || !Array.isArray(data.workflow?.nodes)) throw new Error('Keine gültige Workflow-Datei');
   return saveWorkflow({ name: data.workflow.name ?? 'Importiert', nodes: data.workflow.nodes });
 }

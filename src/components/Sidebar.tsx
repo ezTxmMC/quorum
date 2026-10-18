@@ -30,7 +30,7 @@ function ago(ts: number) {
   return `${Math.floor(m / 1440)} d`;
 }
 
-export function Sidebar() {
+export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; onTogglePin?: () => void; onClose?: () => void } = {}) {
   const allSessions = useHubEq((s) => s.data.sessions, sessionsEqual);
   // Chats erscheinen erst, nachdem der erste Prompt gesendet wurde.
   const hidden = useHub((s) => s.data.hidden);
@@ -60,9 +60,30 @@ export function Sidebar() {
   const running = new Set(Object.values(runs).map((r) => r.sessionId));
 
   return (
-    <aside className="flex w-[340px] shrink-0 flex-col border-r border-edge bg-surface">
-      <div className="px-2.5 pb-2 pt-2.5">
-        <button className="btn btn-primary w-full justify-center" onClick={() => navigate(`/chat/${newSession()}`, { viewTransition: true })}><Icon name="lucide:plus" /> {t('Neuer Chat')}</button>
+    <aside className="flex h-full w-[340px] shrink-0 flex-col border-r border-edge bg-surface select-none">
+      <div className="flex items-center gap-1.5 px-2.5 pb-2 pt-2.5">
+        <button className="btn btn-primary min-w-0 flex-1 justify-center gap-2" onClick={() => navigate(`/chat/${newSession()}`, { viewTransition: true })}>
+          <Icon name="lucide:plus" size={15} />
+          <span className="truncate">{t('Neuer Chat')}</span>
+        </button>
+        {onTogglePin && (
+          <button
+            className={cx('icon-btn !size-8 shrink-0', pinned ? 'text-fg' : 'text-muted hover:text-fg')}
+            title={pinned ? t('Seitenleiste lösen (schweben)') + ' (Strg+B)' : t('Seitenleiste anheften') + ' (Strg+B)'}
+            onClick={onTogglePin}
+          >
+            <Icon name={pinned ? 'lucide:pin-off' : 'lucide:pin'} size={14} />
+          </button>
+        )}
+        {!pinned && onClose && (
+          <button
+            className="icon-btn !size-8 shrink-0 text-muted hover:text-fg md:hidden"
+            title={t('Schließen')}
+            onClick={onClose}
+          >
+            <Icon name="lucide:x" size={15} />
+          </button>
+        )}
       </div>
       <nav className="space-y-0.5 px-2.5 pb-2">
         {nav.map((n) => (

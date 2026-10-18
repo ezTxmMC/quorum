@@ -1,7 +1,7 @@
 // 3D-Projekte: je Projekt ein Ordner im Datenordner mit model.bbmodel, Verlauf früherer Stände, Renderings und Exporten.
 // Schreibt nur innerhalb dieses Ordners. Vor jedem Speichern wird der alte Stand im Verlauf abgelegt.
 import { randomUUID } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import type { ChatEngine } from './llm';
 import { chatFor } from './llm';
@@ -28,67 +28,96 @@ export const projectDir = (id: string) => {
   return join(root(), id);
 };
 
-export function listProjects(): ProjectInfo[] {
-  if (!existsSync(root())) return [];
-  return readdirSync(root())
-    .filter((id) => existsSync(join(root(), id, 'model.bbmodel')))
-    .map((id) => {
-      const model = readModel(id);
-      return { id, name: model.name, updatedAt: statSync(join(root(), id, 'model.bbmodel')).mtimeMs };
-    })
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+export async function listProjects(): Promise<ProjectInfo[]> {
+  try {
+    const entries = await fsp.readdir(root());
+    const list: ProjectInfo[] = [];
+    for (const id of entries) {
+      const modelFile = join(root(), id, 'model.bbmodel');
+      try {
+        const st = await fsp.stat(modelFile);
+        const model = await readModel(id);
+        list.push({ id, name: model.name, updatedAt: st.mtimeMs });
+      } catch {
+        /* kein model.bbmodel oder ungültig */
+      }
+    }
+    return list.sort((a, b) => b.updatedAt - a.updatedAt);
+  } catch {
+    return [];
+  }
 }
 
-export function createProject(name: string): ProjectInfo {
+export async function createProject(name: string): Promise<ProjectInfo> {
   const id = randomUUID().slice(0, 12);
   const dir = projectDir(id);
-  mkdirSync(join(dir, 'history'), { recursive: true });
-  mkdirSync(join(dir, 'renders'), { recursive: true });
-  mkdirSync(join(dir, 'exports'), { recursive: true });
+  await Promise.all([
+    fsp.mkdir(join(dir, 'history'), { recursive: true }),
+    fsp.mkdir(join(dir, 'renders'), { recursive: true }),
+    fsp.mkdir(join(dir, 'exports'), { recursive: true }),
+  ]);
   const model = newModel(name.trim() || 'Neues Modell');
-  writeFileSync(join(dir, 'model.bbmodel'), JSON.stringify(model, null, 2));
+  await fsp.writeFile(join(dir, 'model.bbmodel'), JSON.stringify(model, null, 2));
   return { id, name: model.name, updatedAt: Date.now() };
 }
 
-export function deleteProject(id: string): void {
-  rmSync(projectDir(id), { recursive: true, force: true });
+export async function deleteProject(id: string): Promise<void> {
+  try {
+    await fsp.rm(projectDir(id), { recursive: true, force: true });
+  } catch { /* ignore */ }
 }
 
-export function readModel(id: string): BbModel {
-  return JSON.parse(readFileSync(join(projectDir(id), 'model.bbmodel'), 'utf8')) as BbModel;
+export async function readModel(id: string): Promise<BbModel> {
+  const text = await fsp.readFile(join(projectDir(id), 'model.bbmodel'), 'utf8');
+  return JSON.parse(text) as BbModel;
 }
 
 /** Modell speichern. Der bisherige Stand wird vorher im Verlauf abgelegt (begrenzt auf die letzten Stände). */
-export function writeModel(id: string, model: BbModel): void {
+export async function writeModel(id: string, model: BbModel): Promise<void> {
   const dir = projectDir(id);
   const current = join(dir, 'model.bbmodel');
-  if (existsSync(current)) {
+  try {
+    await fsp.access(current);
     const hist = join(dir, 'history');
-    mkdirSync(hist, { recursive: true });
-    copyFileSync(current, join(hist, `${Date.now()}-${randomUUID().slice(0, 6)}.bbmodel`));
-    const files = readdirSync(hist).sort();
-    for (const f of files.slice(0, Math.max(0, files.length - HISTORY_LIMIT))) rmSync(join(hist, f));
+    await fsp.mkdir(hist, { recursive: true });
+    await fsp.copyFile(current, join(hist, `${Date.now()}-${randomUUID().slice(0, 6)}.bbmodel`));
+    const files = (await fsp.readdir(hist)).sort();
+    for (const f of files.slice(0, Math.max(0, files.length - HISTORY_LIMIT))) {
+      await fsp.rm(join(hist, f), { force: true });
+    }
+  } catch {
+    /* Datei existiert noch nicht */
   }
-  writeFileSync(current, JSON.stringify(model, null, 2));
+  await fsp.writeFile(current, JSON.stringify(model, null, 2));
 }
 
-export function history(id: string): { file: string; at: number }[] {
+export async function history(id: string): Promise<{ file: string; at: number }[]> {
   const hist = join(projectDir(id), 'history');
-  if (!existsSync(hist)) return [];
-  return readdirSync(hist).sort().reverse().map((file) => ({ file, at: Number(file.split('-')[0]) }));
+  try {
+    const entries = await fsp.readdir(hist);
+    return entries.sort().reverse().map((file) => ({ file, at: Number(file.split('-')[0]) }));
+  } catch {
+    return [];
+  }
 }
 
 /** Frühen Stand wiederherstellen (der aktuelle Stand wird dabei selbst im Verlauf gesichert). */
-export function restoreVersion(id: string, file: string): BbModel {
+export async function restoreVersion(id: string, file: string): Promise<BbModel> {
   if (!/^[\w.-]+\.bbmodel$/.test(file)) throw new Error('Ungültige Versionsdatei');
-  const model = JSON.parse(readFileSync(join(projectDir(id), 'history', file), 'utf8')) as BbModel;
-  writeModel(id, model);
+  const text = await fsp.readFile(join(projectDir(id), 'history', file), 'utf8');
+  const model = JSON.parse(text) as BbModel;
+  await writeModel(id, model);
   return model;
 }
 
-export function renders(id: string): string[] {
+export async function renders(id: string): Promise<string[]> {
   const p = join(projectDir(id), 'renders.json');
-  return existsSync(p) ? (JSON.parse(readFileSync(p, 'utf8')) as string[]) : [];
+  try {
+    const text = await fsp.readFile(p, 'utf8');
+    return JSON.parse(text) as string[];
+  } catch {
+    return [];
+  }
 }
 
 const active = new Map<string, AbortController>();
@@ -120,14 +149,14 @@ export async function runProject(opts: RunOptions): Promise<LoopResult> {
   const work = join(dir, 'work');
   const collected: string[] = [];
   try {
-    const start = readModel(opts.projectId);
+    const start = await readModel(opts.projectId);
     const result = await runModelingLoop(start, opts.goal, {
       chat: chatFor(opts.engine, opts.binaries),
       emit: opts.emit,
       signal: ctl.signal,
       render: async (model, n) => {
-        mkdirSync(join(work, 'renders'), { recursive: true });
-        writeFileSync(join(work, 'model.bbmodel'), JSON.stringify(model));
+        await fsp.mkdir(join(work, 'renders'), { recursive: true });
+        await fsp.writeFile(join(work, 'model.bbmodel'), JSON.stringify(model));
         opts.onIteration?.(join(work, 'model.bbmodel'));
         const ops: BlenderOp[] = [{ op: 'bbmodel_to_scene', file: join(work, 'model.bbmodel') }];
         for (const view of VIEWS) ops.push({ op: 'render', file: join(work, 'renders', `iter-${n}-${view}.png`), size: 512, view });
@@ -135,23 +164,27 @@ export async function runProject(opts: RunOptions): Promise<LoopResult> {
         ops.push({ op: 'export', format: 'glb', file: join(work, 'exports', 'model.glb') });
         const r: BlenderResult = await runBlenderOps({ bin: opts.blender, script: opts.script, workdir: work, ops, signal: ctl.signal });
         if (!r.ok) return { ok: false, error: r.error };
-        mkdirSync(join(dir, 'exports'), { recursive: true });
-        copyFileSync(join(work, 'exports', 'model.glb'), join(dir, 'exports', 'model.glb'));
+        await fsp.mkdir(join(dir, 'exports'), { recursive: true });
+        await fsp.copyFile(join(work, 'exports', 'model.glb'), join(dir, 'exports', 'model.glb'));
         // Renderings in den Bilderordner kopieren, damit die Oberfläche sie zeigen kann.
         const shown: string[] = [];
         for (const view of VIEWS) {
           const src = join(work, 'renders', `iter-${n}-${view}.png`);
-          if (!existsSync(src)) continue;
-          const dst = join(imagesDir(), `3d-${opts.projectId}-${n}-${view}.png`);
-          copyFileSync(src, dst);
-          shown.push(dst);
+          try {
+            await fsp.access(src);
+            const dst = join(imagesDir(), `3d-${opts.projectId}-${n}-${view}.png`);
+            await fsp.copyFile(src, dst);
+            shown.push(dst);
+          } catch {
+            /* Datei existiert noch nicht */
+          }
         }
         collected.push(...shown);
-        writeFileSync(join(dir, 'renders.json'), JSON.stringify(collected.slice(-60)));
+        await fsp.writeFile(join(dir, 'renders.json'), JSON.stringify(collected.slice(-60)));
         return { ok: true, png: shown[0] };
       },
     }, opts.maxIterations);
-    writeModel(opts.projectId, result.model);
+    await writeModel(opts.projectId, result.model);
     opts.emit({ type: 'log', text: summarize(result.model).cubes + ' Würfel gespeichert' });
     return result;
   } finally {

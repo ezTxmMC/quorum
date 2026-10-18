@@ -57,7 +57,8 @@ export interface SidebarHover { open: boolean; enter: () => void; leave: () => v
 export function TopBar({ hover, minimal }: { hover?: SidebarHover; minimal?: boolean }) {
   const pinned = useHub((s) => s.data.settings.sidebarPinned);
   const panels = useHub((s) => s.data.settings.dock.panels);
-  const { setSettings, togglePanel } = useHub.getState();
+  const updaterState = useHub((s) => s.updaterState);
+  const { setSettings, togglePanel, openSettings } = useHub.getState();
   const mac = hub.platform === 'darwin';
   const chat = useMatch('/chat/:id');
   const cwd = useHub((s) => s.activeCwd);
@@ -91,6 +92,21 @@ export function TopBar({ hover, minimal }: { hover?: SidebarHover; minimal?: boo
           ))}
           <div className="mx-1 h-4 w-px bg-edge" />
           <button className="icon-btn !size-8" title={t('Neues Fenster') + ' (Ctrl+N)'} onClick={() => hub.newWindow()}><Icon name="lucide:app-window" size={16} /></button>
+          {(updaterState?.status === 'available' || updaterState?.status === 'downloaded' || updaterState?.status === 'downloading') && (
+            <button
+              className={cx(
+                'no-drag ml-1 flex items-center gap-1.5 rounded-lumen-sm px-2 py-1 text-[11px] font-medium transition-colors',
+                updaterState.status === 'downloaded'
+                  ? 'bg-ok/20 text-ok hover:bg-ok/30'
+                  : 'bg-accent/20 text-accent hover:bg-accent/30'
+              )}
+              onClick={() => openSettings('updates')}
+              title={updaterState.status === 'downloaded' ? t('Update bereit zur Installation') : t('Software-Update verfügbar')}
+            >
+              <span className={cx('size-1.5 rounded-full', updaterState.status === 'downloaded' ? 'bg-ok' : 'bg-accent animate-pulse')} />
+              <span>{updaterState.status === 'downloaded' ? t('Update bereit') : t('Update')}</span>
+            </button>
+          )}
         </div>
       )}
       {!mac && <WindowControls />}

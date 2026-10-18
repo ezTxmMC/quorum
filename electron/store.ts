@@ -28,6 +28,8 @@ export function defaults(): Persisted {
       defaultCwd: homedir(),
       binaries: {},
       providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {} },
+      updateChannel: 'release',
+      autoCheckUpdate: true,
     },
     recentProjects: [],
     projects: [],

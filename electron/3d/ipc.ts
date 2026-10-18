@@ -20,10 +20,10 @@ export function pythonDir(): string {
 export function register3dIpc(send: Send, binaries: () => Partial<Record<ProviderId, string>>): void {
   ipcMain.handle('3d:list', () => listProjects());
   ipcMain.handle('3d:create', (_e, name: string) => createProject(name));
-  ipcMain.handle('3d:delete', (_e, id: string) => { cancelProjectRun(id); deleteProject(id); return true; });
-  ipcMain.handle('3d:get', (_e, id: string) => {
-    const model = readModel(id);
-    return { model, summary: summarize(model), description: describe(model), renders: renders(id), history: history(id) };
+  ipcMain.handle('3d:delete', async (_e, id: string) => { cancelProjectRun(id); await deleteProject(id); return true; });
+  ipcMain.handle('3d:get', async (_e, id: string) => {
+    const [model, r, h] = await Promise.all([readModel(id), renders(id), history(id)]);
+    return { model, summary: summarize(model), description: describe(model), renders: r, history: h };
   });
   ipcMain.handle('3d:restore', (_e, id: string, file: string) => restoreVersion(id, file));
   ipcMain.handle('3d:cancel', (_e, id: string) => cancelProjectRun(id));

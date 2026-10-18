@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { create } from 'zustand';
 import { DEFAULT_OPTIONS, DIRECT_MESSAGES, PROVIDERS, defaultDock, defaultTerminal, isTextOnly } from '@shared/catalog';
 import type {
-  Attachment, CliUsage, DockPos, ImportedSession, ChatSession, HubEvent, PanelId, Message, MultiConfig, MultiEvent, MultiRunRecord, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunRequest,
+  Attachment, CliUsage, DockPos, ImportedSession, ChatSession, HubEvent, PanelId, Message, MultiConfig, MultiEvent, MultiRunRecord, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunRequest, UpdateChannel, UpdateState,
 } from '@shared/types';
 import { hub, uid } from './api';
 import { queryCliUsage } from './cliUsage';
@@ -65,6 +65,11 @@ interface State {
   deleteMulti: (id: string) => void;
   savePreset: (name: string, config: MultiConfig) => void;
   deletePreset: (id: string) => void;
+
+  updaterState: UpdateState;
+  checkUpdate: (channel?: UpdateChannel) => Promise<UpdateState>;
+  downloadUpdate: () => Promise<boolean>;
+  installUpdate: () => Promise<boolean>;
 }
 
 const emptyData = (): Persisted => ({
@@ -72,6 +77,7 @@ const emptyData = (): Persisted => ({
   settings: {
     theme: 'dark', language: navigator.language.startsWith('de') ? 'de' : 'en', autoImport: true, sidebarPinned: true, quickHotkey: 'CommandOrControl+Shift+Space', dock: defaultDock(), terminal: defaultTerminal(), accent: '#7c8cff', defaultProvider: 'claude', defaultCwd: '', binaries: {},
     providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {} },
+    updateChannel: 'release', autoCheckUpdate: true,
   },
   recentProjects: [], projects: [], hidden: [], dismissed: [], sessions: [], multiRuns: [], presets: [],
 });
@@ -352,6 +358,18 @@ export const useHub = create<State>((set, get) => {
       mutData((d) => ({ ...d, presets: [...d.presets, { id: uid(), name, config: rest }] }));
     },
     deletePreset(id) { mutData((d) => ({ ...d, presets: d.presets.filter((p) => p.id !== id) })); },
+
+    updaterState: { status: 'idle', currentVersion: '1.0.0', channel: 'release' },
+    async checkUpdate(channel) {
+      const ch = channel ?? get().data.settings.updateChannel ?? 'release';
+      return hub.updaterCheck(ch);
+    },
+    async downloadUpdate() {
+      return hub.updaterDownload();
+    },
+    async installUpdate() {
+      return hub.updaterInstall();
+    },
   };
 });
 
@@ -443,7 +461,12 @@ function schedule() {
 export function wireEvents(): () => void {
   const a = hub.onRun((p) => { queue.push({ kind: 'run', runId: p.runId, event: p.event }); schedule(); });
   const b = hub.onMulti((p) => { queue.push({ kind: 'multi', multiId: p.multiId, event: p.event }); schedule(); });
-  return () => { a(); b(); };
+  const c = hub.onUpdaterStatus((s) => useHub.setState({ updaterState: s }));
+  const d = hub.onUpdaterProgress((p) => {
+    useHub.setState((s) => ({ updaterState: { ...s.updaterState, status: 'downloading', progress: p } }));
+  });
+  void hub.updaterState().then((s) => { if (s) useHub.setState({ updaterState: s }); }).catch(() => {});
+  return () => { a(); b(); c(); d(); };
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;

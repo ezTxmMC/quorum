@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { PROVIDERS, TERMINAL_THEMES, defaultTerminal } from '@shared/catalog';
-import type { ProviderId, TerminalStyle } from '@shared/types';
+import type { ProviderId, TerminalStyle, UpdateChannel } from '@shared/types';
 import { hub } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
@@ -8,6 +8,7 @@ import { useHub } from '@/lib/store';
 import { Dot } from './ModelPicker';
 import { OptionsPanel } from './OptionsPanel';
 import { UsageView } from './UsageView';
+import { Markdown } from './Markdown';
 import { termBackground } from './panels/TerminalPanel';
 import { Label, Modal, Select, Toggle, cx } from './ui';
 
@@ -43,6 +44,7 @@ const TABS = [
   { id: 'providers', icon: 'lucide:plug', label: 'Anbieter' },
   { id: 'terminal', icon: 'lucide:square-terminal', label: 'Terminal' },
   { id: 'usage', icon: 'lucide:chart-no-axes-column', label: 'Nutzung' },
+  { id: 'updates', icon: 'lucide:sparkles', label: 'Updates' },
 ];
 
 function General() {
@@ -210,6 +212,217 @@ function TerminalTab() {
   );
 }
 
+function UpdatesTab() {
+  const settings = useHub((s) => s.data.settings);
+  const { setSettings, checkUpdate, downloadUpdate, installUpdate } = useHub.getState();
+  const updaterState = useHub((s) => s.updaterState);
+  const [checking, setChecking] = useState(false);
+
+  const handleCheck = async () => {
+    setChecking(true);
+    try {
+      await checkUpdate(settings.updateChannel);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const channelOptions = [
+    { value: 'release', label: `${t('Release')} (${t('Stabil')})` },
+    { value: 'beta', label: `${t('Beta')} (${t('Vorabversionen')})` },
+    { value: 'dev', label: `${t('Dev')} (${t('Bleeding Edge - Jeder Commit')})` },
+  ];
+
+  const info = updaterState.updateInfo;
+  const progress = updaterState.progress;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-[16px] font-semibold">{t('Software-Updates')}</h2>
+          <p className="text-[12.5px] text-muted">
+            {t('Verwalte Aktualisierungen über GitHub Releases und automatische Update-Kanäle.')}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-edge bg-surface px-2.5 py-1 font-mono text-[11.5px] text-muted">
+            v{updaterState.currentVersion}
+          </span>
+          <span className={cx(
+            'rounded-full px-2.5 py-0.5 text-[10.5px] font-medium uppercase tracking-wide',
+            settings.updateChannel === 'release' ? 'bg-ok/15 text-ok' : settings.updateChannel === 'beta' ? 'bg-accent/15 text-accent' : 'bg-warn/15 text-warn'
+          )}>
+            {settings.updateChannel}
+          </span>
+        </div>
+      </div>
+
+      <section className="space-y-4 rounded-lumen border border-edge bg-surface/50 p-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label hint={t('Bestimmt, welche Releases bezogen werden')}>
+              {t('Release-Kanal')}
+            </Label>
+            <Select
+              value={settings.updateChannel}
+              onChange={(updateChannel) => {
+                setSettings({ updateChannel: updateChannel as UpdateChannel });
+                void checkUpdate(updateChannel as UpdateChannel);
+              }}
+              options={channelOptions}
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              className="btn btn-primary h-9 w-full justify-center gap-2"
+              disabled={checking || updaterState.status === 'downloading'}
+              onClick={handleCheck}
+            >
+              <Icon name={checking ? 'lucide:loader-2' : 'lucide:refresh-cw'} className={cx(checking && 'animate-spin')} size={15} />
+              {checking ? t('Suche nach Updates …') : t('Nach Updates suchen')}
+            </button>
+          </div>
+        </div>
+
+        <Toggle
+          checked={settings.autoCheckUpdate}
+          onChange={(autoCheckUpdate) => setSettings({ autoCheckUpdate })}
+          label={t('Automatisch nach Updates suchen')}
+          hint={t('Prüft beim Starten der App im Hintergrund und meldet verfügbare Aktualisierungen')}
+        />
+      </section>
+
+      {/* Status-Bereiche */}
+      {updaterState.status === 'checking' && (
+        <div className="flex items-center gap-3 rounded-lumen border border-edge bg-surface p-4">
+          <Icon name="lucide:loader-2" className="animate-spin text-accent" size={20} />
+          <div>
+            <div className="font-medium">{t('Prüfe auf GitHub Releases …')}</div>
+            <div className="text-[12px] text-muted">github.com/ezTxmMC/quorum</div>
+          </div>
+        </div>
+      )}
+
+      {updaterState.status === 'up-to-date' && (
+        <div className="flex items-center gap-3 rounded-lumen border border-ok/30 bg-ok/5 p-4 text-fg">
+          <Icon name="lucide:check-circle-2" className="text-ok" size={22} />
+          <div className="flex-1">
+            <div className="font-medium text-ok">{t('Quorum ist auf dem neuesten Stand')}</div>
+            <div className="text-[12px] text-muted">
+              {t('Installierte Version')}: <span className="font-mono">v{updaterState.currentVersion}</span> ({settings.updateChannel}-Kanal)
+            </div>
+          </div>
+          <span className="text-[11px] text-subtle">{t('Gerade geprüft')}</span>
+        </div>
+      )}
+
+      {updaterState.status === 'error' && (
+        <div className="flex items-start gap-3 rounded-lumen border border-bad/30 bg-bad/10 p-4">
+          <Icon name="lucide:alert-circle" className="text-bad shrink-0 mt-0.5" size={18} />
+          <div className="flex-1">
+            <div className="font-medium text-bad">{t('Update-Fehler')}</div>
+            <div className="text-[12px] text-muted mt-0.5">{updaterState.error}</div>
+          </div>
+          <button className="btn btn-ghost !px-2.5 !py-1 text-[12px]" onClick={handleCheck}>
+            {t('Erneut versuchen')}
+          </button>
+        </div>
+      )}
+
+      {updaterState.status === 'available' && info && (
+        <div className="space-y-4 rounded-lumen border border-accent/40 bg-accent/5 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex size-2 rounded-full bg-accent animate-pulse" />
+                <h3 className="text-[15px] font-semibold">{t('Neue Version verfügbar')}: {info.name}</h3>
+              </div>
+              <div className="mt-1 flex items-center gap-3 font-mono text-[12px] text-subtle">
+                <span>Tag: {info.tag}</span>
+                {info.asset && <span>Größe: {(info.asset.size / 1024 / 1024).toFixed(1)} MB</span>}
+                <span>{new Date(info.publishedAt).toLocaleDateString()}</span>
+              </div>
+            </div>
+            <button
+              className="btn btn-primary gap-2"
+              onClick={() => void downloadUpdate()}
+            >
+              <Icon name="lucide:download" size={15} />
+              {t('Update herunterladen')}
+            </button>
+          </div>
+
+          {info.notes && (
+            <div className="mt-3 max-h-48 overflow-y-auto rounded-lumen-sm border border-edge bg-bg p-3 text-[12.5px] leading-relaxed">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-subtle mb-1">{t('Änderungen')}</div>
+              <Markdown text={info.notes} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {updaterState.status === 'downloading' && (
+        <div className="space-y-3 rounded-lumen border border-accent/40 bg-accent/5 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-medium">
+              <Icon name="lucide:loader-2" className="animate-spin text-accent" size={16} />
+              {t('Update wird heruntergeladen …')}
+            </div>
+            <span className="font-mono text-[13px] font-semibold text-accent">
+              {progress?.percent ?? 0}%
+            </span>
+          </div>
+
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface">
+            <div
+              className="h-full bg-accent transition-all duration-300 ease-out"
+              style={{ width: `${progress?.percent ?? 0}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[11.5px] text-subtle font-mono">
+            <span>
+              {progress ? `${(progress.transferred / 1024 / 1024).toFixed(1)} MB / ${(progress.total / 1024 / 1024).toFixed(1)} MB` : ''}
+            </span>
+            <span>
+              {progress?.bytesPerSecond ? `${(progress.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s` : ''}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {updaterState.status === 'downloaded' && (
+        <div className="flex items-start justify-between gap-4 rounded-lumen border border-ok/40 bg-ok/10 p-4">
+          <div className="flex items-start gap-3">
+            <Icon name="lucide:check-circle" className="text-ok shrink-0 mt-0.5" size={20} />
+            <div>
+              <div className="font-semibold text-ok">{t('Update bereit zur Installation')}</div>
+              <p className="mt-0.5 text-[12px] text-muted">
+                {t('Das Update wurde vollständig geladen. Beim Klick auf „Jetzt neu starten“ wird Quorum aktualisiert und automatisch neu gestartet.')}
+              </p>
+            </div>
+          </div>
+          <button
+            className="btn btn-primary gap-2 shrink-0 !bg-ok !text-black hover:!bg-ok/90"
+            onClick={() => void installUpdate()}
+          >
+            <Icon name="lucide:rotate-cw" size={15} />
+            {t('Jetzt neu starten')}
+          </button>
+        </div>
+      )}
+
+      <div className="rounded-lumen border border-edge bg-surface/30 p-3 text-[12px] text-subtle space-y-1">
+        <div className="font-medium text-muted">{t('Über die Release-Kanäle')}:</div>
+        <div>• <span className="text-fg font-medium">dev</span>: {t('Jeder erfolgreiche Commit erzeugt eine Vorabversion (1.0.0-dev.<8 Zeichen>)')}</div>
+        <div>• <span className="text-fg font-medium">beta</span>: {t('Vorabversionen mit Tag 1.0.0-beta.<Nummer> für frühe Tester')}</div>
+        <div>• <span className="text-fg font-medium">release</span>: {t('Stabile Hauptversionen mit Tag 1.0.0-release.<Nummer>')}</div>
+      </div>
+    </div>
+  );
+}
+
 /** Einstellungen als Popup im Stil der Claude-App: links Kategorien, rechts Inhalt. */
 export function SettingsModal() {
   const tab = useHub((s) => s.settingsTab);
@@ -230,6 +443,7 @@ export function SettingsModal() {
         {tab === 'providers' && <ProvidersTab />}
         {tab === 'terminal' && <TerminalTab />}
         {tab === 'usage' && <UsageView />}
+        {tab === 'updates' && <UpdatesTab />}
       </div>
     </Modal>
   );

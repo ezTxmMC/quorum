@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs';
+import { promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Block, ImportEntry, ImportedSession, Message, ProviderId } from '../shared/types';
@@ -8,13 +8,21 @@ const HEAD_BYTES = 256 * 1024;
 /** Gibt dem Event-Loop des Hauptprozesses Luft zwischen zwei Dateien, damit Fenster und Streaming nicht ruckeln. */
 const tick = () => new Promise<void>((r) => setImmediate(r));
 
-function readHead(file: string): string[] {
-  const fd = openSync(file, 'r');
+async function readHead(file: string): Promise<string[]> {
   try {
-    const buf = Buffer.alloc(Math.min(HEAD_BYTES, statSync(file).size));
-    readSync(fd, buf, 0, buf.length, 0);
-    return buf.toString('utf8').split('\n').slice(0, -1);
-  } finally { closeSync(fd); }
+    const fh = await fsp.open(file, 'r');
+    try {
+      const st = await fh.stat();
+      const len = Math.min(HEAD_BYTES, st.size);
+      const buf = Buffer.alloc(len);
+      await fh.read(buf, 0, len, 0);
+      return buf.toString('utf8').split('\n').slice(0, -1);
+    } finally {
+      await fh.close();
+    }
+  } catch {
+    return [];
+  }
 }
 
 const safe = (l: string): Record<string, any> | null => { try { return JSON.parse(l); } catch { return null; } };
@@ -22,11 +30,17 @@ const safe = (l: string): Record<string, any> | null => { try { return JSON.pars
 const isHubPrompt = (t: string) => /^(Frage\/Aufgabe:|Du bist Schiedsrichter|Gesamtziel:|Ziel:\s|Aufgabe:\s|Frage:\s|Du arbeitest als)/.test(t.trim());
 const clip = (s: string, n = 70) => { const t = s.replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n) + '…' : t; };
 
-function walk(dir: string, match: (n: string) => boolean, out: string[] = [], depth = 0): string[] {
-  if (!existsSync(dir) || depth > 5) return out;
-  for (const n of readdirSync(dir, { withFileTypes: true })) {
+async function walk(dir: string, match: (n: string) => boolean, out: string[] = [], depth = 0): Promise<string[]> {
+  if (depth > 5) return out;
+  let entries: import('node:fs').Dirent[] = [];
+  try {
+    entries = await fsp.readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const n of entries) {
     const p = join(dir, n.name);
-    if (n.isDirectory()) walk(p, match, out, depth + 1);
+    if (n.isDirectory()) await walk(p, match, out, depth + 1);
     else if (match(n.name)) out.push(p);
   }
   return out;
@@ -52,11 +66,13 @@ function claudeUserText(m: Record<string, any>): string | null {
 
 async function listClaude(): Promise<ImportEntry[]> {
   const out: ImportEntry[] = [];
-  for (const file of walk(claudeRoot(), (n) => n.endsWith('.jsonl'), [], 3)) {
+  const files = await walk(claudeRoot(), (n) => n.endsWith('.jsonl'), [], 3);
+  for (const file of files) {
     await tick();
     if (file.includes('/subagents/')) continue;
     let title = ''; let cwd = ''; let custom = '';
-    for (const l of readHead(file)) {
+    const lines = await readHead(file);
+    for (const l of lines) {
       const m = safe(l);
       if (!m) continue;
       if (!cwd && typeof m.cwd === 'string') cwd = m.cwd;
@@ -64,17 +80,20 @@ async function listClaude(): Promise<ImportEntry[]> {
       if (!title && m.type === 'user') { const t = claudeUserText(m); if (t) title = clip(t); }
     }
     if ((!title && !custom) || isHubPrompt(title)) continue;
-    const st = statSync(file);
-    out.push({ provider: 'claude', sessionId: file.split('/').pop()!.replace('.jsonl', ''), cwd: cwd || homedir(), title: custom || title, updatedAt: st.mtimeMs, file });
+    let updatedAt = Date.now();
+    try { const st = await fsp.stat(file); updatedAt = st.mtimeMs; } catch { /* ignore */ }
+    out.push({ provider: 'claude', sessionId: file.split('/').pop()!.replace('.jsonl', ''), cwd: cwd || homedir(), title: custom || title, updatedAt, file });
   }
   return out;
 }
 
-function loadClaude(file: string): Message[] {
+async function loadClaude(file: string): Promise<Message[]> {
   const msgs: Message[] = [];
   let cur: Message | null = null;
   const toolIdx = new Map<string, Block & { kind: 'tool' }>();
-  for (const l of readFileSync(file, 'utf8').split('\n')) {
+  let content = '';
+  try { content = await fsp.readFile(file, 'utf8'); } catch { return []; }
+  for (const l of content.split('\n')) {
     const m = safe(l);
     if (!m || m.isSidechain) continue;
     const ts = m.timestamp ? Date.parse(m.timestamp) : Date.now();
@@ -120,10 +139,12 @@ function codexUserText(it: Record<string, any>): string {
 
 async function listCodex(): Promise<ImportEntry[]> {
   const out: ImportEntry[] = [];
-  for (const file of walk(codexRoot(), (n) => n.startsWith('rollout-') && n.endsWith('.jsonl'))) {
+  const files = await walk(codexRoot(), (n) => n.startsWith('rollout-') && n.endsWith('.jsonl'));
+  for (const file of files) {
     await tick();
     let id = ''; let cwd = ''; let title = '';
-    for (const l of readHead(file)) {
+    const lines = await readHead(file);
+    for (const l of lines) {
       const m = safe(l);
       if (!m) continue;
       if (m.type === 'session_meta') { id = m.payload?.id ?? ''; cwd = m.payload?.cwd ?? ''; }
@@ -131,16 +152,20 @@ async function listCodex(): Promise<ImportEntry[]> {
       if (id && title) break;
     }
     if (!id || !title || isHubPrompt(title)) continue; // Multi-Agent-Läufe des Hubs selbst überspringen
-    out.push({ provider: 'codex', sessionId: id, cwd: cwd || homedir(), title, updatedAt: statSync(file).mtimeMs, file });
+    let updatedAt = Date.now();
+    try { const st = await fsp.stat(file); updatedAt = st.mtimeMs; } catch { /* ignore */ }
+    out.push({ provider: 'codex', sessionId: id, cwd: cwd || homedir(), title, updatedAt, file });
   }
   return out;
 }
 
-function loadCodex(file: string): Message[] {
+async function loadCodex(file: string): Promise<Message[]> {
   const msgs: Message[] = [];
   let cur: Message | null = null;
   const ensure = (ts: number) => cur ?? (cur = (msgs[msgs.push({ id: randomUUID(), role: 'assistant', provider: 'codex', blocks: [], createdAt: ts }) - 1]));
-  for (const l of readFileSync(file, 'utf8').split('\n')) {
+  let content = '';
+  try { content = await fsp.readFile(file, 'utf8'); } catch { return []; }
+  for (const l of content.split('\n')) {
     const m = safe(l);
     if (!m || m.type !== 'event_msg' || m.payload?.type !== 'item_completed') continue;
     const it = m.payload.item as Record<string, any>;
@@ -197,7 +222,7 @@ export async function loadImportable(entries: ImportEntry[]): Promise<ImportedSe
   for (const e of entries) {
     await tick();
     try {
-      const messages = (e.provider as ProviderId) === 'claude' ? loadClaude(e.file) : loadCodex(e.file);
+      const messages = (e.provider as ProviderId) === 'claude' ? await loadClaude(e.file) : await loadCodex(e.file);
       if (messages.length) out.push({ entry: e, messages });
     } catch { /* defekte Datei überspringen */ }
   }

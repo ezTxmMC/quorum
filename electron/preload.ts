@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import type { Attachment, UsageReport, FsEntry, CliCommandResult, GitStatus, ImportEntry, ImportedSession, MultiEnvelope, MultiStart, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunEnvelope, RunRequest } from '../shared/types';
+import type { Attachment, UsageReport, FsEntry, CliCommandResult, GitStatus, ImportEntry, ImportedSession, MultiEnvelope, MultiStart, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunEnvelope, RunRequest, UpdateChannel, UpdateProgress, UpdateState } from '../shared/types';
 import type { ChatMessage, ModelRecord, RuntimeDetection } from '../shared/models';
 import type { HfModelInfo, HfSearchHit } from './models/hf';
 import type { DownloadState } from './models/manager';
@@ -128,6 +128,13 @@ const api = {
   onModelRegistry: (cb: () => void) => sub('models:registry', cb),
   onModelEvent: (cb: (e: { type: string; modelId: string; text?: string }) => void) => sub('models:event', cb),
   onModelChat: (cb: (e: { runId: string; event: { type: string; delta?: string; ok?: boolean; error?: string } }) => void) => sub('models:chat-event', cb),
+  // GitHub Updater
+  updaterCheck: (channel?: UpdateChannel): Promise<UpdateState> => ipcRenderer.invoke('updater:check', channel),
+  updaterDownload: (): Promise<boolean> => ipcRenderer.invoke('updater:download'),
+  updaterInstall: (): Promise<boolean> => ipcRenderer.invoke('updater:install'),
+  updaterState: (): Promise<UpdateState> => ipcRenderer.invoke('updater:state'),
+  onUpdaterStatus: (cb: (s: UpdateState) => void) => sub('updater:status', cb),
+  onUpdaterProgress: (cb: (p: UpdateProgress) => void) => sub('updater:progress', cb),
   platform: process.platform,
 };
 
