@@ -1,0 +1,100 @@
+{
+  "name": "ai-hub",
+  "version": "0.1.0",
+  "description": "Quorum – Claude Code, GPT Codex, Antigravity, OpenCode und Ollama an einem Tisch, mit Multi-Agent-Modus.",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "start": "electron . --no-sandbox",
+    "dist": "vite build && electron-builder --publish never",
+    "update:linux": "bash scripts/update-linux.sh",
+    "icons": "node scripts/make-icons.ts",
+    "dist:linux": "npm run icons && vite build && electron-builder --linux AppImage deb --x64 --publish never",
+    "dist:win": "npm run icons && vite build && electron-builder --win zip --x64 --publish never",
+    "dist:mac": "npm run icons && vite build && electron-builder --mac zip --arm64 --publish never",
+    "dist:all": "npm run dist:linux && npm run dist:win && npm run dist:mac"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "^1.2.0",
+    "@iconify/react": "^6.0.0",
+    "@iconify/types": "^2.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.9.0",
+    "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.3.0",
+    "vite-plugin-electron": "^0.29.0",
+    "zustand": "^5.0.3"
+  },
+  "build": {
+    "appId": "dev.quorum.app",
+    "productName": "Quorum",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "maintainer": "Quorum <admin@bluenet-hosting.com>",
+      "executableName": "quorum",
+      "icon": "build/icon.png",
+      "syncDesktopName": true
+    },
+    "win": {
+      "target": [
+        "zip"
+      ],
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    },
+    "extraResources": [
+      {
+        "from": "python",
+        "to": "python",
+        "filter": [
+          "**/*.py",
+          "requirements.txt"
+        ]
+      }
+    ]
+  },
+  "author": {
+    "name": "Quorum",
+    "email": "admin@bluenet-hosting.com"
+  },
+  "homepage": "https://localhost",
+  "desktopName": "quorum.desktop"
+}

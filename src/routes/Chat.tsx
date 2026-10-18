@@ -1,0 +1,140 @@
+import { getLang, t } from '@/lib/i18n';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { PROVIDERS, isTextOnly } from '@shared/catalog';
+import type { ProviderId } from '@shared/types';
+import { Composer } from '@/components/Composer';
+import { MessageView } from '@/components/MessageView';
+import { ModelPane } from '@/components/ModelPane';
+import { OptionsPanel } from '@/components/OptionsPanel';
+import { ProviderMark, cx, usePresence } from '@/components/ui';
+import { hub } from '@/lib/api';
+import { Icon } from '@/lib/icons';
+import { useHub } from '@/lib/store';
+
+const ALIASES: Record<string, ProviderId> = { claude: 'claude', codex: 'codex', gpt: 'codex', agy: 'antigravity', gemini: 'antigravity', antigravity: 'antigravity' };
+
+export function ChatPage() {
+  const { id = '' } = useParams();
+  const navigate = useNavigate();
+  const session = useHub((s) => s.data.sessions.find((x) => x.id === id));
+  const runs = useHub((s) => s.runs);
+  const statuses = useHub((s) => s.statuses);
+  const optionsOpen = useHub((s) => s.chatOptionsOpen);
+  const { send, submit, cancel, patchSession, newSession } = useHub.getState();
+  const panelPresence = usePresence(optionsOpen, 170);
+  // Modell aus dem Chat: wird die Projekt-ID gemeldet, zeigt die Ansicht rechts das Modell.
+  const [modelProject, setModelProject] = useState<string | null>(null);
+  useEffect(() => { setModelProject(null); return hub.onChatProject((p) => setModelProject(p.projectId)); }, [id]);
+  const scroller = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+
+  const running = !!session && Object.values(runs).some((r) => r.sessionId === id);
+  const lastLen = session?.messages.at(-1)?.blocks.length ?? 0;
+  const lb = session?.messages.at(-1)?.blocks.at(-1);
+  const lastText = !lb ? 0 : lb.kind === 'tool' ? (lb.output?.length ?? 0) + (lb.running ? 1 : 0) : lb.kind === 'image' ? 1 : lb.text.length;
+
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [session?.messages.length, lastLen, lastText]);
+  useEffect(() => { stick.current = true; }, [id]);
+
+  // Neuer, leerer Chat mit nicht verfügbarem Anbieter: automatisch auf den ersten verfügbaren wechseln.
+  const providerGone = !!session && session.messages.length === 0 && statuses[session.provider]?.installed === false;
+  useEffect(() => {
+    if (!session || !providerGone) return;
+    const st = useHub.getState();
+    const next = (['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local'] as ProviderId[]).find((p) => st.statuses[p]?.installed);
+    if (next) patchSession(session.id, { provider: next, options: { ...st.data.settings.providerDefaults[next] } });
+  }, [providerGone, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setActiveCwd = useHub.getState().setActiveCwd;
+  useEffect(() => { if (session) setActiveCwd(session.cwd); }, [session?.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!session) return <Navigate to="/" replace />;
+  const meta = PROVIDERS[session.provider];
+  const status = statuses[session.provider];
+
+  const setOpts = (patch: object) => patchSession(id, { options: { ...session.options, ...patch } });
+
+  const onCommand = (cmd: string, arg: string): boolean => {
+    switch (cmd) {
+      case 'new': navigate(`/chat/${newSession({ cwd: session.cwd, provider: session.provider })}`, { viewTransition: true }); return true;
+      case 'plan': {
+        const key = session.provider === 'codex' ? 'sandbox' : 'permission';
+        const cur = session.provider === 'codex' ? session.options.sandbox : session.options.permission;
+        const planVal = session.provider === 'codex' ? 'read-only' : 'plan';
+        const def = useHub.getState().data.settings.providerDefaults[session.provider][key as 'permission'] ;
+        setOpts({ [key]: cur === planVal ? (def === planVal ? undefined : def) : planVal });
+        return true;
+      }
+      case 'provider': {
+        const p = ALIASES[arg.trim().toLowerCase()];
+        if (!p) return false;
+        patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p] } });
+        return true;
+      }
+      case 'model': setOpts({ model: arg.trim() || undefined }); return true;
+      case 'effort': setOpts({ effort: arg.trim() || undefined }); return true;
+      case 'diff': { const st = useHub.getState(); if (!st.data.settings.dock.panels.changes.visible) st.togglePanel('changes'); return true; }
+      case 'review':
+        if (session.provider === 'codex') send(id, '/review (Codex: uncommitted changes)', { review: { target: 'uncommitted' } });
+        else send(id, getLang() === 'en' ? 'Review the current uncommitted changes in this project (git diff, git status) thoroughly as a code review. Name concrete bugs, risks and improvements with file references. Do not change anything.' : 'Prüfe die aktuellen, nicht committeten Änderungen in diesem Projekt (git diff, git status) gründlich als Code-Review. Nenne konkrete Fehler, Risiken und Verbesserungen mit Dateiverweisen. Ändere nichts.');
+        return true;
+      case 'continue': send(id, arg || 'Fahre fort.', { continueLast: true }); return true;
+      case 'fork': send(id, arg || 'Fahre fort.', { fork: true }); return true;
+    }
+    return false;
+  };
+
+  const pickProject = async () => {
+    const d = await hub.pickFolder();
+    if (d) { patchSession(id, { cwd: d, providerSessions: {} }); useHub.getState().addProject(d); }
+  };
+
+  return (
+    <div className="flex h-full min-h-0">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
+          {session.messages.length === 0 ? (
+            <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center px-6 text-center">
+              {/* Nur verfügbare Anbieter anbieten (CLI vorhanden, angemeldet bzw. erreichbar) – der aktuell gewählte bleibt sichtbar. */}
+              <div className="mb-5 flex gap-2">{(Object.keys(PROVIDERS) as ProviderId[]).filter((p) => statuses[p]?.installed || p === session.provider).map((p) => (
+                <button key={p} onClick={() => patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p] } })} className={cx('flex w-36 flex-col items-center gap-2 rounded-lumen-lg border p-4 transition-colors hover:bg-hover', p === session.provider ? 'border-accent bg-hover' : 'border-edge')}>
+                  <ProviderMark id={p} size={22} /><span className="text-[13px] font-medium">{PROVIDERS[p].name}</span>
+                  <span className="text-[11px] text-subtle">{statuses[p]?.installed === false ? (p === 'ollama' ? t('läuft nicht') : t('nicht installiert')) : PROVIDERS[p].vendor}</span>
+                </button>
+              ))}</div>
+              <h1 className="mb-1.5 text-[22px] font-semibold tracking-tight">{t('Woran arbeiten wir?')}</h1>
+              <p className="text-muted">{isTextOnly(session.provider) ? <span className="text-subtle">{session.provider === 'ollama' || session.provider === 'local' ? t('Lokaler Chat – kein Dateizugriff, keine Limits') : t('Chat-Modus – kein Dateizugriff, kein Codex-Kontingent')}</span> : session.cwd ? <>{t('Projekt:')} <button className="text-fg underline decoration-edge-strong underline-offset-4 hover:decoration-accent" onClick={pickProject}>{session.cwd}</button></> : <><button className="btn mx-auto" onClick={pickProject}><Icon name="lucide:folder-open" /> {t('Ordner wählen')}</button><span className="mt-2 block text-[12px] text-subtle">{t('Ohne Ordner läuft der Chat ohne Zugriff auf deine Dateien.')}</span></>}</p>
+              <p className="mt-6 text-[12px] text-subtle">{t('Tipp:')} <kbd className="rounded bg-active px-1">/</kbd> {t('Befehle & Skills ·')} <kbd className="rounded bg-active px-1">@</kbd> {t('Dateien · Bilder per Drag & Drop · Anbieter wechseln behält den Kontext')}</p>
+            </div>
+          ) : (
+            <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+              {session.messages.map((m, i) => <MessageView key={m.id} m={m} live={running && i === session.messages.length - 1} />)}
+            </div>
+          )}
+        </div>
+
+        {status?.installed === false && (
+          <div className="mx-auto mb-2 flex w-full max-w-3xl items-center gap-2 rounded-lumen border border-warn/30 bg-warn/10 px-3 py-2 text-warn">
+            <Icon name="lucide:triangle-alert" size={14} /> <span>{session.provider === 'ollama' ? t('Ollama ist nicht erreichbar. Starte es mit „ollama serve“ und lade ein Modell (ollama pull …).') : <><b>{meta.bin}</b> {t('wurde nicht gefunden. Pfad unter Einstellungen angeben.')}</>}</span>
+          </div>
+        )}
+        <Composer session={session} running={running} onSend={(txt, imgs, mode, attachments) => void submit(id, txt, { images: imgs, mode, attachments })} onStop={() => cancel(id)} onCommand={onCommand} />
+      </div>
+
+      {modelProject && !panelPresence.mounted && <ModelPane projectId={modelProject} onClose={() => setModelProject(null)} />}
+
+      {panelPresence.mounted && (
+        <aside data-state={panelPresence.state} className="dock-zone dock-right flex w-[380px] shrink-0 flex-col border-l border-edge bg-surface">
+          <div className="flex items-center justify-between border-b border-edge px-3 py-2">
+            <span className="font-medium">{meta.name} – {t('CLI-Optionen')}</span>
+            <button className="icon-btn" onClick={() => useHub.getState().toggleChatOptions(false)}><Icon name="lucide:x" /></button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3"><OptionsPanel provider={session.provider} value={session.options} onChange={setOpts} /></div>
+        </aside>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,7 @@
+# Pins für die Python-Umgebung der Runtimes (Transformers, Diffusers).
+# Torch (ROCm) wird vom System bereitgestellt und nicht hier installiert.
+transformers==4.57.6
+diffusers==0.37.1
+accelerate==1.15.0
+safetensors==0.8.0
+httpx==0.28.1

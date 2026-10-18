@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Quorum">
+  <title>Quorum – Wortmarke</title>
+  <rect width="1200" height="630" fill="#0E0F13"/>
+  <g transform="translate(236 197) scale(2.35)">
+    <polygon points="48.88,9.05 48.88,36.3 30.47,69.78 7.96,83.45" fill="#4F7BFF"/>
+    <polygon points="51.12,9.05 92.04,83.45 69.53,69.78 51.12,36.3" fill="#8A6BFF"/>
+    <polygon points="90.92,85.48 9.08,85.48 31.59,71.81 68.41,71.81" fill="#C9D3FF"/>
+    <polygon points="50,47.5 58.4,63.5 41.6,63.5" fill="#FFFFFF"/>
+  </g>
+  <!-- Wortmarke: schwere, eckige Grotesk in Versalien (Space Grotesk / Archivo Black / Montserrat ExtraBold) -->
+  <text x="498" y="352" font-family="'Space Grotesk', 'Archivo Black', Montserrat, Inter, 'Segoe UI', system-ui, sans-serif" font-weight="800" font-size="132" letter-spacing="6" fill="#FFFFFF">QUORUM</text>
+  <text x="502" y="412" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-weight="600" font-size="27" letter-spacing="9" fill="#7E889C">ALLE MODELLE. EIN TISCH.</text>
+</svg>
