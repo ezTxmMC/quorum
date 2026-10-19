@@ -1,7 +1,6 @@
 import { t } from '@/lib/i18n';
 import { useEffect, useState } from 'react';
 import type { ModelRecord } from '@shared/models';
-import type { BbModel, BbSummary } from '@shared/bbmodel';
 import type { ProjectInfo } from '../../electron/3d/service';
 import type { LoopEvent } from '../../electron/3d/loop';
 import type { ChatEngine } from '../../electron/3d/llm';
@@ -9,9 +8,10 @@ import { imageUrl } from '@/components/MessageView';
 import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
 import { cx } from '@/components/ui';
+import { ModelTextures, ModelAnimations } from '@/components/ModelAssets';
 import { ThreeDTools } from '@/components/ThreeDTools';
 
-type Detail = { model: BbModel; summary: BbSummary; description: string; renders: string[]; history: { file: string; at: number }[] };
+type Detail = Awaited<ReturnType<typeof hub.threedGet>>;
 type LogLine = { at: number; text: string; kind: 'ok' | 'warn' | 'err' | 'info' };
 
 function fmtEvent(e: LoopEvent | { type: 'log'; text: string }): LogLine | undefined {
@@ -40,7 +40,7 @@ export function ThreeDPage() {
   const [err, setErr] = useState<string | null>(null);
   const [frame, setFrame] = useState<string | null>(null);
   const [live, setLive] = useState(false);
-  const [tab, setTab] = useState<'renders' | 'history'>('renders');
+  const [tab, setTab] = useState<'renders' | 'textures' | 'animations' | 'history'>('renders');
   const [viewerErr, setViewerErr] = useState<string | null>(null);
 
   const reloadList = () => void hub.threedList().then(setProjects);
@@ -146,6 +146,8 @@ export function ThreeDPage() {
                 <div className="flex flex-wrap gap-1.5 pb-1 text-[11.5px] text-muted">
                   <span className="rounded-full bg-hover px-2 py-0.5">{detail.summary.cubes} {t('Würfel')}</span>
                   <span className="rounded-full bg-hover px-2 py-0.5">{detail.summary.groups} {t('Gruppen')}</span>
+                  <span className="rounded-full bg-hover px-2 py-0.5">{detail.model.textures.length} {t('Texturen')}</span>
+                  <span className="rounded-full bg-hover px-2 py-0.5">{detail.model.animations?.length ?? 0} {t('Animationen')}</span>
                   <span className="rounded-full bg-hover px-2 py-0.5">{detail.summary.format}</span>
                   <span className={cx('rounded-full px-2 py-0.5', blender?.bin ? 'bg-ok/15 text-ok' : 'bg-warn/15 text-warn')}>{blender?.bin ? `Blender ${blender.version ?? ''}` : t('Blender fehlt – oben installieren')}</span>
                 </div>
@@ -172,6 +174,7 @@ export function ThreeDPage() {
 
                 <section className="space-y-3 rounded-lumen-lg border border-edge bg-surface p-4 lg:col-span-2">
                   <h2 className="text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Modellierungsauftrag')}</h2>
+                  <p className="text-[12px] text-muted">{t('Beschreibe Form, Farben, Texturmuster, Materialien und gewünschte Animationen.')}</p>
                   <textarea className="field min-h-24" placeholder={detail?.summary.cubes === 0 ? t('Das Modell ist noch leer – beschreibe, was erzeugt werden soll, z. B. ein Stuhl mit vier Beinen') : t('Beschreibe das Modell, z. B. ein Stuhl mit vier Beinen')} value={goal} onChange={(e) => setGoal(e.target.value)} />
                   <div className="flex flex-wrap items-end gap-3 text-[12px]">
                     <label className="flex min-w-40 flex-1 flex-col gap-1"><span className="text-subtle">{t('Modell für den Plan')}</span>
@@ -196,13 +199,16 @@ export function ThreeDPage() {
               </div>
 
               <section className="space-y-3 rounded-lumen-lg border border-edge bg-surface p-4">
-                <div className="flex gap-1">
-                  {(['renders', 'history'] as const).map((k) => (
+                <div className="flex flex-wrap items-center gap-1">
+                  {(['renders', 'textures', 'animations', 'history'] as const).map((k) => (
                     <button key={k} onClick={() => setTab(k)} className={cx('rounded-lumen-sm px-3 py-1 text-[12px] transition-colors', tab === k ? 'bg-active text-fg' : 'text-muted hover:bg-hover')}>
-                      {k === 'renders' ? `${t('Vorschauen')} (${detail.renders.length})` : `${t('Verlauf')} (${detail.history.length})`}
+                      {k === 'renders' ? `${t('Vorschauen')} (${detail.renders.length})` : k === 'textures' ? `${t('Texturen')} (${detail.model.textures.length})` : k === 'animations' ? `${t('Animationen')} (${detail.model.animations?.length ?? 0})` : `${t('Verlauf')} (${detail.history.length})`}
                     </button>
                   ))}
+                  {detail.exportFile && <button className="btn ml-auto" onClick={() => void hub.revealPath(detail.exportFile!)}><Icon name="lucide:folder-open" size={13} />{t('GLB im Ordner zeigen')}</button>}
                 </div>
+                {tab === 'textures' && <ModelTextures model={detail.model} />}
+                {tab === 'animations' && <ModelAnimations key={sel} model={detail.model} previews={detail.animationPreviews} />}
                 {tab === 'renders' && (detail.renders.length === 0
                   ? <div className="text-[12px] text-subtle">{t('Noch keine Vorschauen.')}</div>
                   : <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{detail.renders.slice(-12).map((p) => <img key={p} src={imageUrl(p)} alt="" className="rounded-lumen border border-edge" />)}</div>)}

@@ -34,7 +34,7 @@ export async function runChatModeling(req: RunRequest, emit: (e: HubEvent) => vo
   const project = await createProject(goal.slice(0, 40));
   say(`Ich modelliere das – Projekt „${project.name}“. Ich melde mich mit jedem Schritt.`);
   let cubes = 0;
-  await runProject({
+  const result = await runProject({
     projectId: project.id,
     goal,
     engine,
@@ -50,7 +50,7 @@ export async function runChatModeling(req: RunRequest, emit: (e: HubEvent) => vo
       else if (e.type === 'log') { const m = /^(\d+) Würfel/.exec(e.text); if (m) cubes = Number(m[1]); }
     },
   });
-  say(`Modell gespeichert: ${cubes} Würfel. Rechts siehst du es; mit „In Blockbench öffnen“ kannst du es dort weiterbearbeiten.`);
-  emit({ type: 'done', ok: true, code: 0 });
+  say(`Modell mit Texturen und Animationen gespeichert: ${cubes} Würfel. Rechts siehst du es; mit „In Blockbench öffnen“ kannst du es dort weiterbearbeiten.`);
+  emit({ type: 'done', ok: result.ok, code: result.ok ? 0 : 1, error: result.ok ? undefined : result.reason });
   return { projectId: project.id };
 }

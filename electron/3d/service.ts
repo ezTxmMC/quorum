@@ -6,8 +6,10 @@ import { join } from 'node:path';
 import type { ChatEngine } from './llm';
 import { chatFor } from './llm';
 import { runBlenderOps, type BlenderOp, type BlenderResult } from './blender';
-import { newModel, summarize, type BbModel } from '../../shared/bbmodel';
+import { bakeTexture, newModel, summarize, type BbModel } from '../../shared/bbmodel';
+import { encodePng, toBase64 } from '../../shared/png';
 import { runModelingLoop, type LoopEvent, type LoopResult } from './loop';
+import type { AnimationPreview } from '../../shared/threed';
 import type { ProviderId } from '../../shared/types';
 import { imagesDir } from '../images';
 import { dataDir } from '../store';
@@ -88,6 +90,7 @@ export async function writeModel(id: string, model: BbModel): Promise<void> {
   } catch {
     /* Datei existiert noch nicht */
   }
+  bakeTexture(model, (w, h, rgba) => toBase64(encodePng(w, h, rgba)));
   await fsp.writeFile(current, JSON.stringify(model, null, 2));
 }
 
@@ -107,6 +110,8 @@ export async function restoreVersion(id: string, file: string): Promise<BbModel>
   const text = await fsp.readFile(join(projectDir(id), 'history', file), 'utf8');
   const model = JSON.parse(text) as BbModel;
   await writeModel(id, model);
+  await fsp.rm(join(projectDir(id), 'animations.json'), { force: true });
+  await fsp.rm(join(projectDir(id), 'exports', 'model.glb'), { force: true });
   return model;
 }
 
@@ -118,6 +123,16 @@ export async function renders(id: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+export async function animationPreviews(id: string): Promise<AnimationPreview[]> {
+  try { return JSON.parse(await fsp.readFile(join(projectDir(id), 'animations.json'), 'utf8')) as AnimationPreview[]; }
+  catch { return []; }
+}
+
+export async function exportFile(id: string): Promise<string | undefined> {
+  const file = join(projectDir(id), 'exports', 'model.glb');
+  try { await fsp.access(file); return file; } catch { return undefined; }
 }
 
 const active = new Map<string, AbortController>();
@@ -143,23 +158,38 @@ export interface RunOptions {
 
 /** Modellierungsschleife für ein Projekt: Chat mit dem gewählten Modell, Blender für Geometrie und Renderings. */
 export async function runProject(opts: RunOptions): Promise<LoopResult> {
+  if (active.has(opts.projectId)) throw new Error('Für dieses Projekt läuft bereits ein Auftrag.');
   const dir = projectDir(opts.projectId);
   const ctl = new AbortController();
   active.set(opts.projectId, ctl);
   const work = join(dir, 'work');
   const collected: string[] = [];
+  const runId = randomUUID().slice(0, 8);
+  let completion: Extract<LoopEvent, { type: 'done' }> | undefined;
+  let renderedSignature = '';
   try {
     const start = await readModel(opts.projectId);
     const result = await runModelingLoop(start, opts.goal, {
       chat: chatFor(opts.engine, opts.binaries),
-      emit: opts.emit,
+      emit: (event) => { if (event.type === 'done') completion = event; else opts.emit(event); },
       signal: ctl.signal,
       render: async (model, n) => {
         await fsp.mkdir(join(work, 'renders'), { recursive: true });
+        bakeTexture(model, (w, h, rgba) => toBase64(encodePng(w, h, rgba)));
         await fsp.writeFile(join(work, 'model.bbmodel'), JSON.stringify(model));
         opts.onIteration?.(join(work, 'model.bbmodel'));
         const ops: BlenderOp[] = [{ op: 'bbmodel_to_scene', file: join(work, 'model.bbmodel') }];
+        ops.push({ op: 'pose' });
         for (const view of VIEWS) ops.push({ op: 'render', file: join(work, 'renders', `iter-${n}-${view}.png`), size: 512, view });
+        const previews: AnimationPreview[] = [];
+        for (const [index, animation] of (model.animations ?? []).entries()) {
+          const preview: AnimationPreview = { name: animation.name, length: animation.length, loop: animation.loop, frames: [] };
+          for (let frame = 0; frame < 8; frame++) {
+            ops.push({ op: 'pose', animation: animation.name, time: animation.length * frame / 7 });
+            ops.push({ op: 'render', file: join(work, 'renders', `anim-${n}-${index}-${frame}.png`), size: 256, view: 'iso' });
+          }
+          previews.push(preview);
+        }
         // Export im Arbeitsordner (Blender darf nur dort schreiben); erst danach ins Projekt kopieren.
         ops.push({ op: 'export', format: 'glb', file: join(work, 'exports', 'model.glb') });
         const r: BlenderResult = await runBlenderOps({ bin: opts.blender, script: opts.script, workdir: work, ops, signal: ctl.signal });
@@ -172,20 +202,37 @@ export async function runProject(opts: RunOptions): Promise<LoopResult> {
           const src = join(work, 'renders', `iter-${n}-${view}.png`);
           try {
             await fsp.access(src);
-            const dst = join(imagesDir(), `3d-${opts.projectId}-${n}-${view}.png`);
+            const dst = join(imagesDir(), `3d-${opts.projectId}-${runId}-${n}-${view}.png`);
             await fsp.copyFile(src, dst);
             shown.push(dst);
           } catch {
             /* Datei existiert noch nicht */
           }
         }
+        for (const [index, preview] of previews.entries()) {
+          for (let frame = 0; frame < 8; frame++) {
+            const dst = join(imagesDir(), `3d-${opts.projectId}-${runId}-${n}-anim-${index}-${frame}.png`);
+            await fsp.copyFile(join(work, 'renders', `anim-${n}-${index}-${frame}.png`), dst);
+            preview.frames.push(dst);
+          }
+        }
+        await fsp.writeFile(join(dir, 'animations.json'), JSON.stringify(previews));
         collected.push(...shown);
         await fsp.writeFile(join(dir, 'renders.json'), JSON.stringify(collected.slice(-60)));
+        renderedSignature = JSON.stringify(model);
         return { ok: true, png: shown[0] };
       },
     }, opts.maxIterations);
     await writeModel(opts.projectId, result.model);
-    opts.emit({ type: 'log', text: summarize(result.model).cubes + ' Würfel gespeichert' });
+    if (renderedSignature !== JSON.stringify(result.model)) {
+      await Promise.all([
+        fsp.rm(join(dir, 'animations.json'), { force: true }),
+        fsp.rm(join(dir, 'exports', 'model.glb'), { force: true }),
+      ]);
+    }
+    const summary = summarize(result.model);
+    opts.emit({ type: 'log', text: `${summary.cubes} Würfel, ${summary.colors ?? 0} Farben und ${summary.animations?.length ?? 0} Animationen gespeichert` });
+    opts.emit(completion ?? { type: 'done', ok: result.ok, iterations: result.iterations, reason: result.reason });
     return result;
   } finally {
     active.delete(opts.projectId);

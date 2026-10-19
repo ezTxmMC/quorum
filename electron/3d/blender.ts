@@ -7,7 +7,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { managedBlender, sandboxed, toolsDir } from './tools';
 
 export interface BlenderOp {
-  op: 'load' | 'info' | 'decimate' | 'smooth' | 'export' | 'render' | 'bbmodel_to_scene';
+  op: 'load' | 'info' | 'decimate' | 'smooth' | 'export' | 'render' | 'pose' | 'bbmodel_to_scene';
   [key: string]: unknown;
 }
 

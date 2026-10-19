@@ -14,6 +14,33 @@ export interface BbCube {
   rotation?: [number, number, number];
   uv_offset?: [number, number];
   color?: number;
+  /** Farbe des Würfels (#rrggbb). Beim Speichern wird daraus eine Paletten-Textur mit UVs gebacken. */
+  paint?: string;
+  pattern?: { type: 'checker' | 'stripes' | 'noise'; color: string };
+  material?: { roughness: number; metalness: number };
+  /** Abweichende Farben einzelner Seiten. */
+  facePaint?: Partial<Record<BbFace, string>>;
+  /** Von der Textur-Bäckerei erzeugt: Seiten mit UV-Ausschnitt in der Palette. */
+  faces?: Record<string, { uv: [number, number, number, number]; texture: number }>;
+}
+
+export const FACES = ['north', 'east', 'south', 'west', 'up', 'down'] as const;
+export type BbFace = (typeof FACES)[number];
+
+export interface BbKeyframe {
+  channel: 'rotation' | 'position' | 'scale';
+  time: number;
+  data_points: { x: number; y: number; z: number }[];
+  interpolation?: 'linear' | 'catmullrom';
+}
+
+export interface BbAnimation {
+  uuid: string;
+  name: string;
+  loop: 'once' | 'loop' | 'hold';
+  override: boolean;
+  length: number;
+  animators: Record<string, { name: string; type: 'bone'; keyframes: BbKeyframe[] }>;
 }
 
 export interface BbGroup {
@@ -30,8 +57,8 @@ export interface BbModel {
   resolution: { width: number; height: number };
   elements: BbCube[];
   outliner: (BbGroup | string)[];
-  textures: unknown[];
-  animations: unknown[];
+  textures: { uuid: string; name: string; source: string; width: number; height: number; [key: string]: unknown }[];
+  animations: BbAnimation[];
 }
 
 export interface BbIssue {
@@ -47,6 +74,9 @@ export interface BbSummary {
   groups: number;
   bbox?: { min: [number, number, number]; max: [number, number, number] };
   issues: BbIssue[];
+  /** Anzahl verschiedener Farben (Textur-Palette). */
+  colors?: number;
+  animations?: { name: string; length: number }[];
 }
 
 const uid = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
@@ -156,6 +186,10 @@ export function validate(model: BbModel): BbIssue[] {
     if (names.has(c.name)) warn(`Doppelter Würfelname: ${c.name}`, c.uuid);
     names.add(c.name);
   }
+  for (const a of model.animations ?? []) {
+    if (!Number.isFinite(a.length) || !(a.length > 0)) err(`Animation ${a.name}: Länge muss größer als 0 sein`);
+    for (const an of Object.values(a.animators)) for (const k of an.keyframes) if (!Number.isFinite(k.time) || k.time < 0 || k.time > a.length) err(`Animation ${a.name}: Keyframe bei ${k.time}s liegt außerhalb der Länge`);
+  }
   if (model.elements.length === 0) warn('Modell hat keine Würfel');
   return issues;
 }
@@ -174,7 +208,8 @@ export function summarize(model: BbModel): BbSummary {
   let groups = 0;
   const count = (nodes: (BbGroup | string)[]) => nodes.forEach((n) => { if (typeof n !== 'string') { groups++; count(n.children); } });
   count(model.outliner);
-  return { name: model.name, format: model.meta.model_format, cubes: model.elements.length, groups, bbox, issues };
+  const painted = new Set([...model.elements.flatMap((c) => [c.paint, c.pattern?.color, ...Object.values(c.facePaint ?? {})])].filter(Boolean)).size;
+  return { name: model.name, format: model.meta.model_format, cubes: model.elements.length, groups, bbox, issues, colors: painted, animations: (model.animations ?? []).map((a) => ({ name: a.name, length: a.length })) };
 }
 
 /** Textbeschreibung für den Agenten-Kontext (kurz und stabil). */
@@ -182,8 +217,122 @@ export function describe(model: BbModel): string {
   const s = summarize(model);
   const lines = [
     `Modell „${s.name}“ (${s.format}), ${s.cubes} Würfel, ${s.groups} Gruppen.`,
-    ...model.elements.map((c) => `- ${c.name}: from [${c.from.join(', ')}] to [${c.to.join(', ')}]`),
+    ...model.elements.map((c) => `- ${c.name}: from [${c.from.join(', ')}] to [${c.to.join(', ')}]${c.rotation ? ` rotation [${c.rotation.join(', ')}]` : ''}${c.paint ? ` farbe ${c.paint}` : ''}${c.pattern ? ` Muster ${c.pattern.type}/${c.pattern.color}` : ''}${c.material ? ` Material ${JSON.stringify(c.material)}` : ''}`),
   ];
+  const groups: string[] = [];
+  const walk = (nodes: (BbGroup | string)[]) => nodes.forEach((n) => { if (typeof n !== 'string') { groups.push(`${n.name} origin [${n.origin.join(', ')}]${n.rotation ? ` rotation [${n.rotation.join(', ')}]` : ''}`); walk(n.children); } });
+  walk(model.outliner);
+  if (groups.length) lines.push(`Gruppen: ${groups.join(', ')}`);
+  for (const a of model.animations ?? []) {
+    const keys = Object.values(a.animators).reduce((n, an) => n + an.keyframes.length, 0);
+    lines.push(`Animation „${a.name}“ (${a.length}s, ${a.loop}, ${keys} Keyframes): ${JSON.stringify(a.animators)}`);
+  }
   if (s.issues.length) lines.push(...s.issues.map((i) => `${i.level === 'error' ? 'Fehler' : 'Hinweis'}: ${i.message}`));
   return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Texturen und Animationen
+
+export const HEX = /^#[0-9a-fA-F]{6}$/;
+const DEFAULT_COLOR = '#b4b4b4';
+const hexRgb = (h: string): [number, number, number] => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+
+/** Alle Würfel unterhalb eines Gruppen-Knotens (rekursiv). */
+export function cubesOf(model: BbModel, node: BbGroup): BbCube[] {
+  const out: BbCube[] = [];
+  const walk = (n: BbGroup | string) => {
+    if (typeof n === 'string') { const c = model.elements.find((e) => e.uuid === n); if (c) out.push(c); }
+    else n.children.forEach(walk);
+  };
+  walk(node);
+  return out;
+}
+
+/** Gruppe samt Inhalt entfernen. */
+export function removeGroup(model: BbModel, name: string): boolean {
+  const g = findGroup(model, name);
+  if (!g) return false;
+  const gone = new Set(cubesOf(model, g).map((c) => c.uuid));
+  const bones = new Set<string>();
+  const collect = (node: BbGroup) => { bones.add(node.uuid); for (const child of node.children) if (typeof child !== 'string') collect(child); };
+  collect(g);
+  model.elements = model.elements.filter((e) => !gone.has(e.uuid));
+  const strip = (nodes: (BbGroup | string)[]): (BbGroup | string)[] =>
+    nodes.filter((n) => n !== g && !(typeof n === 'string' && gone.has(n))).map((n) => (typeof n === 'string' ? n : { ...n, children: strip(n.children) }));
+  model.outliner = strip(model.outliner);
+  for (const a of model.animations ?? []) for (const id of bones) delete a.animators[id];
+  return true;
+}
+
+/**
+ * Backt aus den Farben der Würfel eine Paletten-Textur (je Farbe ein Feld) und setzt UVs auf jede Seite.
+ * Ergebnis ist eine normale Blockbench-Textur (eingebettetes PNG): in Blockbench sichtbar und dort weiter bemalbar.
+ */
+export function bakeTexture(model: BbModel, encode: (w: number, h: number, rgba: Uint8Array) => string): void {
+  if (!model.elements.length) { model.textures = []; return; }
+  const tiles = new Map<string, { color: string; pattern?: BbCube['pattern'] }>();
+  const tile = (cube: BbCube, face: BbFace) => {
+    const color = (cube.facePaint?.[face] ?? cube.paint ?? DEFAULT_COLOR).toLowerCase();
+    const pattern = cube.facePaint?.[face] ? undefined : cube.pattern;
+    const key = [color, pattern?.type, pattern?.color.toLowerCase()].join(':');
+    if (!tiles.has(key)) tiles.set(key, { color, pattern });
+    return key;
+  };
+  for (const cube of model.elements) for (const face of FACES) tile(cube, face);
+  const cell = 8;
+  let size = 16;
+  while ((size / cell) ** 2 < tiles.size) size *= 2;
+  const per = size / cell;
+  const rgba = new Uint8Array(size * size * 4);
+  const keys = [...tiles.keys()];
+  keys.forEach((key, i) => {
+    const { color, pattern } = tiles.get(key)!;
+    const base = hexRgb(color), detail = hexRgb(pattern?.color ?? color);
+    const ox = (i % per) * cell, oy = Math.floor(i / per) * cell;
+    for (let y = 0; y < cell; y++) for (let x = 0; x < cell; x++) {
+      const alternate = pattern?.type === 'checker' ? (Math.floor(x / 2) + Math.floor(y / 2)) % 2
+        : pattern?.type === 'stripes' ? Math.floor(x / 2) % 2
+        : pattern?.type === 'noise' ? ((x * 31 + y * 17 + x * y * 13) % 11) < 4 : false;
+      rgba.set([...(alternate ? detail : base), 255], ((oy + y) * size + ox + x) * 4);
+    }
+  });
+  for (const cube of model.elements) {
+    cube.faces = Object.fromEntries(FACES.map((face) => {
+      const i = keys.indexOf(tile(cube, face));
+      const x = (i % per) * cell, y = Math.floor(i / per) * cell;
+      return [face, { uv: [x, y, x + cell, y + cell], texture: 0 }];
+    }));
+  }
+  model.meta.box_uv = false;
+  model.resolution = { width: size, height: size };
+  model.textures = [{
+    path: '', name: 'palette.png', folder: '', namespace: '', id: '0', particle: false, render_mode: 'default', render_sides: 'auto',
+    frame_time: 1, frame_order_type: 'loop', frame_order: '', frame_interpolate: false, visible: true, internal: true, saved: true,
+    uuid: model.textures[0]?.uuid ?? uid(), width: size, height: size, uv_width: size, uv_height: size, source: `data:image/png;base64,${encode(size, size, rgba)}`,
+  }];
+}
+
+/** Animation anlegen (oder Länge/Schleife einer vorhandenen ändern). */
+export function addAnimation(model: BbModel, spec: { name: string; length: number; loop?: BbAnimation['loop'] }): BbAnimation {
+  model.animations ??= [];
+  const existing = model.animations.find((a) => a.name === spec.name);
+  if (existing) { existing.length = spec.length; if (spec.loop) existing.loop = spec.loop; return existing; }
+  const anim: BbAnimation = { uuid: uid(), name: spec.name, loop: spec.loop ?? 'loop', override: false, length: spec.length, animators: {} };
+  model.animations.push(anim);
+  return anim;
+}
+
+/** Keyframe für eine Gruppe setzen (gleicher Kanal und Zeitpunkt wird ersetzt). */
+export function addKeyframe(model: BbModel, spec: { animation: string; group: string; channel: BbKeyframe['channel']; time: number; value: [number, number, number] }): string | undefined {
+  const anim = (model.animations ?? []).find((a) => a.name === spec.animation);
+  if (!anim) return `Animation ${spec.animation} existiert nicht`;
+  if (!Number.isFinite(spec.time) || spec.time < 0 || spec.time > anim.length) return `Keyframe muss innerhalb von 0 bis ${anim.length}s liegen`;
+  const group = findGroup(model, spec.group);
+  if (!group) return `Gruppe ${spec.group} existiert nicht`;
+  const animator = (anim.animators[group.uuid] ??= { name: group.name, type: 'bone', keyframes: [] });
+  animator.keyframes = animator.keyframes.filter((k) => !(k.channel === spec.channel && k.time === spec.time));
+  animator.keyframes.push({ channel: spec.channel, time: spec.time, data_points: [{ x: spec.value[0], y: spec.value[1], z: spec.value[2] }], interpolation: 'linear' });
+  animator.keyframes.sort((a, b) => a.time - b.time);
+  return undefined;
 }

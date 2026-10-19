@@ -11,3 +11,10 @@ export interface ToolStatus {
   sandbox: 'bubblewrap' | 'none';
   size: number;
 }
+
+export interface AnimationPreview {
+  name: string;
+  length: number;
+  loop: 'once' | 'loop' | 'hold';
+  frames: string[];
+}

@@ -6,7 +6,7 @@ import type { ProviderId } from '../../shared/types';
 import { describe, summarize } from '../../shared/bbmodel';
 import type { ChatEngine } from './llm';
 import { blenderScript, blenderVersion, findBlender } from './blender';
-import { cancelProjectRun, createProject, deleteProject, history, listProjects, projectDir, readModel, renders, restoreVersion, runProject } from './service';
+import { animationPreviews, exportFile, cancelProjectRun, createProject, deleteProject, history, listProjects, projectDir, readModel, renders, restoreVersion, runProject } from './service';
 import { closeViewer, findBlockbench, hasViewer, openViewer, openWindow } from './viewer';
 import { dataDir } from '../store';
 import { cancelInstall, installTool, setMcp, toolStatus, uninstallTool } from './tools';
@@ -24,8 +24,8 @@ export function register3dIpc(send: Send, binaries: () => Partial<Record<Provide
   ipcMain.handle('3d:create', (_e, name: string) => createProject(name));
   ipcMain.handle('3d:delete', async (_e, id: string) => { cancelProjectRun(id); await deleteProject(id); return true; });
   ipcMain.handle('3d:get', async (_e, id: string) => {
-    const [model, r, h] = await Promise.all([readModel(id), renders(id), history(id)]);
-    return { model, summary: summarize(model), description: describe(model), renders: r, history: h };
+    const [model, r, h, animations, exported] = await Promise.all([readModel(id), renders(id), history(id), animationPreviews(id), exportFile(id)]);
+    return { model, summary: summarize(model), description: describe(model), renders: r, history: h, animationPreviews: animations, exportFile: exported };
   });
   ipcMain.handle('3d:restore', (_e, id: string, file: string) => restoreVersion(id, file));
   ipcMain.handle('3d:cancel', (_e, id: string) => cancelProjectRun(id));
@@ -73,7 +73,7 @@ export function register3dIpc(send: Send, binaries: () => Partial<Record<Provide
     // Läuft eine Live-Ansicht, zeigt sie nach jeder Runde den neuen Stand.
     const onIteration = (file: string) => { if (hasViewer(id)) void viewerOn(id, file).catch((err: Error) => emit({ type: 'log', text: `Live-Ansicht: ${err.message}` })); };
     void runProject({ projectId: id, goal, engine, binaries: binaries(), blender, script: blenderScript(pythonDir()), maxIterations: Math.min(Math.max(1, maxIterations), 6), emit: emit as never, onIteration })
-      .catch((err: Error) => emit({ type: 'log', text: `Fehler: ${err.message}` }));
+      .catch((err: Error) => { emit({ type: 'log', text: `Fehler: ${err.message}` }); emit({ type: 'done', ok: false, iterations: 0, reason: err.message }); });
     return true;
   });
 }

@@ -1,4 +1,4 @@
-import type { ToolId, ToolStatus } from '../shared/threed';
+import type { AnimationPreview, ToolId, ToolStatus } from '../shared/threed';
 import type { ApiConnection, OllamaManagement, OllamaPull } from '../shared/connections';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { Attachment, UsageReport, FsEntry, CliCommandResult, GitStatus, ImportEntry, ImportedSession, MultiEnvelope, MultiStart, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunEnvelope, RunRequest, UpdateChannel, UpdateProgress, UpdateState } from '../shared/types';
@@ -126,7 +126,7 @@ const api = {
   threedList: (): Promise<ProjectInfo[]> => ipcRenderer.invoke('3d:list'),
   threedCreate: (name: string): Promise<ProjectInfo> => ipcRenderer.invoke('3d:create', name),
   threedDelete: (id: string): Promise<boolean> => ipcRenderer.invoke('3d:delete', id),
-  threedGet: (id: string): Promise<{ model: BbModel; summary: BbSummary; description: string; renders: string[]; history: { file: string; at: number }[] }> => ipcRenderer.invoke('3d:get', id),
+  threedGet: (id: string): Promise<{ model: BbModel; summary: BbSummary; description: string; renders: string[]; history: { file: string; at: number }[]; animationPreviews: AnimationPreview[]; exportFile?: string }> => ipcRenderer.invoke('3d:get', id),
   threedRestore: (id: string, file: string): Promise<BbModel> => ipcRenderer.invoke('3d:restore', id, file),
   threedRun: (id: string, goal: string, engine: ChatEngine, maxIterations?: number): Promise<boolean> => ipcRenderer.invoke('3d:run', id, goal, engine, maxIterations),
   threedCancel: (id: string): Promise<boolean> => ipcRenderer.invoke('3d:cancel', id),
