@@ -25,6 +25,12 @@ on:
 permissions:
   contents: write
 
+# Serialize publishing and cleanup, including manual and tag-triggered runs.
+# Do not interrupt an upload and leave the previous usable release removed.
+concurrency:
+  group: quorum-releases
+  cancel-in-progress: false
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
@@ -136,6 +142,7 @@ jobs:
             release/*.deb \
             release/SHA256SUMS.txt \
             --title "$TITLE" \
+            --target "$GITHUB_SHA" \
             --generate-notes \
             $PR_ARG || \
           gh release upload "$TAG" \
@@ -143,3 +150,13 @@ jobs:
             release/*.deb \
             release/SHA256SUMS.txt \
             --clobber
+
+      - name: Retain only the published dev release
+        if: steps.meta.outputs.channel == 'dev'
+        uses: actions/github-script@v7
+        env:
+          KEEP_DEV_TAG: ${{ steps.meta.outputs.tag }}
+        with:
+          script: |
+            const { pruneDevReleases } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/prune-dev-releases.mjs`);
+            await pruneDevReleases(github, context.repo, process.env.KEEP_DEV_TAG);

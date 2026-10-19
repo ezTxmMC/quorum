@@ -123,16 +123,17 @@ function Shell() {
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* Angeheftete Seitenleiste mit flüssiger Breiten- und Einblendanimation */}
         <div
-          className="relative shrink-0 overflow-hidden will-change-[width]"
+          className="relative shrink-0 overflow-hidden"
           style={{
             width: pinned ? 340 : 0,
             transition: 'width 280ms cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
           <div
-            className="h-full w-[340px] will-change-transform"
+            className="h-full w-[340px]"
             style={{
-              transform: pinned ? 'translateX(0)' : 'translateX(-100%)',
+              // Release the compositor layer at rest so sidebar text stays sharp.
+              transform: pinned ? 'none' : 'translateX(-100%)',
               opacity: pinned ? 1 : 0.4,
               transition: 'transform 280ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease',
             }}
@@ -165,11 +166,11 @@ function Shell() {
         {!pinned && (
           <div
             className={cx(
-              'absolute bottom-0 left-0 top-0 z-40 flex will-change-transform',
+              'absolute bottom-0 left-0 top-0 z-40 flex',
               open ? 'pointer-events-auto' : 'pointer-events-none'
             )}
             style={{
-              transform: open ? 'translateX(0)' : 'translateX(-102%)',
+              transform: open ? 'none' : 'translateX(-102%)',
               opacity: open ? 1 : 0.85,
               boxShadow: open
                 ? '12px 0 36px -4px rgba(0, 0, 0, 0.5), 4px 0 12px -2px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--c-border)'
