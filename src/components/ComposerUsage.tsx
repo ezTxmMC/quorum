@@ -29,16 +29,18 @@ export function ComposerUsage({ session }: { session: ChatSession }) {
   const active = meters.filter((m) => !m.expired && Number.isFinite(m.used));
   const used = active.length ? Math.max(0, Math.min(100, Math.max(...active.map((m) => m.used)))) : undefined;
   const remaining = used === undefined ? undefined : 100 - used;
+  const showUsed = session.provider === 'claude';
+  const percent = showUsed ? used : remaining;
   const stamp = limits?.at ?? cli?.at;
   return <Popover align="right" trigger={(open, toggle) => <button onClick={toggle} title={t('Nutzung & Limits')} className={cx('btn btn-ghost !gap-1.5 !px-2 text-subtle', open && '!bg-hover')}>
     <Icon name="lucide:chart-no-axes-column" size={13} />
-    {remaining !== undefined && <span className="h-1.5 w-7 overflow-hidden rounded-full bg-active"><span className={cx('block h-full rounded-full', remaining <= 15 ? 'bg-bad' : remaining <= 40 ? 'bg-warn' : 'bg-accent')} style={{ width: `${remaining}%` }} /></span>}
-    <span className="text-[10.5px]">{remaining !== undefined ? `${Math.round(remaining)}%` : `${compact(tokens)} tok`}</span>
+    {percent !== undefined && <span className="h-1.5 w-7 overflow-hidden rounded-full bg-active"><span className={cx('block h-full rounded-full', used! >= 85 ? 'bg-bad' : used! >= 60 ? 'bg-warn' : 'bg-accent')} style={{ width: `${percent}%` }} /></span>}
+    <span className="text-[10.5px]">{percent !== undefined ? `${Math.round(percent)}%` : `${compact(tokens)} tok`}</span>
   </button>}>
     {() => <div className="w-64 space-y-3 p-2 text-[12px]">
       <div className="font-medium">{t('Nutzung & Limits')}</div>
       <div className="text-muted">{t('Chat-Verbrauch')}: {compact(tokens)} {t('Token')}</div>
-      {meters.map((m, i) => <div key={i}><div className="flex justify-between gap-2"><span>{m.label}</span><span className="shrink-0 text-muted">{m.expired ? t('Fenster abgelaufen') : `${Math.round(Math.max(0, Math.min(100, 100 - m.used)))}% ${t('übrig')}`}</span></div>{m.reset && <div className="mt-0.5 text-[10px] text-subtle">{m.reset}</div>}</div>)}
+      {meters.map((m, i) => <div key={i}><div className="flex justify-between gap-2"><span>{m.label}</span><span className="shrink-0 text-muted">{m.expired ? t('Fenster abgelaufen') : `${Math.round(Math.max(0, Math.min(100, showUsed ? m.used : 100 - m.used)))}% ${t(showUsed ? 'verbraucht' : 'übrig')}`}</span></div>{m.reset && <div className="mt-0.5 text-[10px] text-subtle">{m.reset}</div>}</div>)}
       {!meters.length && <p className="text-subtle">{t('Keine Kontingentdaten verfügbar. Token sind der gemessene Chat-Verbrauch.')}</p>}
       {stamp && <div className="text-[10px] text-subtle">{t('Stand')}: {new Date(stamp).toLocaleString()}</div>}
     </div>}

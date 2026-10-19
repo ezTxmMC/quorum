@@ -68,6 +68,7 @@ export const en: Record<string, string> = {
   'Führt Aufgabe aus': 'Running task',
   'Zugehörigen Lauf stoppen': 'Stop owning run',
   'Abgeschlossene Aufgaben': 'Finished tasks',
+  'verbraucht': 'used',
   'Keine laufenden Hintergrundaufgaben.': 'No running background tasks.',
   'Chats durchsuchen': 'Search chats',
   'Chats durchsuchen …': 'Search chats …',
