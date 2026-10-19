@@ -67,7 +67,12 @@ function GeneratedImage({ path, engine }: { path: string; engine?: string }) {
   );
 }
 
-function fmtTok(n?: number) { return n === undefined ? '' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n); }
+function fmtTok(n?: number) {
+  if (n === undefined) return '';
+  if (n >= 1_000_000_000) return `${Math.round(n / 1_000_000_000)}B`;
+  if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M`;
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
 
 export const MessageView = memo(function MessageView({ m, live, label, onStop }: { m: Message; live?: boolean; label?: string; onStop?: () => void }) {
   if (m.role === 'user') {
