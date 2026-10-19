@@ -5,7 +5,7 @@ import { setOllamaSettings } from './providers/ollama';
 import { ollamaManagement, ollamaModelAction, ollamaPullList, pullOllama, cancelOllamaPull, startOllama, stopOllama, shutdownOllama } from './providers/ollama-management';
 import { setLlamaBinary } from './runtimes/llamacpp';
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray, type WebContents } from 'electron';
-import { existsSync, mkdirSync, promises as fsp } from 'node:fs';
+import { existsSync, promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -266,7 +266,7 @@ function registerIpc() {
     // Ohne gewählten Ordner läuft die CLI in einem leeren Arbeitsverzeichnis – kein Zugriff auf echte Projektdateien.
     if (chatMode(req.options) === 'text' || !req.cwd || !existsSync(req.cwd)) {
       req = { ...req, cwd: join(dataDir(), 'scratch') };
-      mkdirSync(req.cwd, { recursive: true });
+      await fsp.mkdir(req.cwd, { recursive: true });
     }
     if (chatMode(req.options) === 'model') {
       await runChatModeling(req, (event) => sendTo(wc, 'hub:event', { runId: req.runId, event }), binaries(), (projectId, event) => sendTo(wc, '3d:event', { projectId, event }));

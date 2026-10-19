@@ -2,11 +2,10 @@
 // Darstellung als Bildstrom über das Debug-Protokoll. Die Oberfläche zeigt den Strom in einem Panel.
 // Änderungen am Modell: Instanz neu starten (Blockbench lädt Dateien beim Start). Jede Instanz hat einen eigenen Port.
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, promises as fsp } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import { managedBlockbench, mcpPluginFile, sandboxed, toolsDir } from './tools';
-import { readFileSync } from 'node:fs';
 
 export const BLOCKBENCH_DEFAULT = '/opt/blockbench/blockbench';
 
@@ -78,7 +77,7 @@ export interface ViewerOptions {
 /** Headless-Blockbench für ein Projekt starten (ersetzt eine vorhandene Ansicht desselben Projekts). */
 export async function openViewer(opts: ViewerOptions): Promise<void> {
   await closeViewer(opts.projectId);
-  mkdirSync(opts.profileDir, { recursive: true });
+  await fsp.mkdir(opts.profileDir, { recursive: true });
   const port = await freePort();
   const proc = launch(opts.bin, ['--ozone-platform=headless', '--use-gl=angle', `--user-data-dir=${opts.profileDir}`, `--remote-debugging-port=${port}`], opts.file, opts.profileDir, false);
   let page;
@@ -109,9 +108,11 @@ export async function openViewer(opts: ViewerOptions): Promise<void> {
       ws.send(JSON.stringify({ id: i, method, params }));
     });
   // Community-MCP-Plugin in die Blockbench-Seite laden (nur wenn installiert).
-  if (existsSync(mcpPluginFile())) {
-    try { await call('Runtime.evaluate', { expression: readFileSync(mcpPluginFile(), 'utf8') }); } catch { /* Plugin optional */ }
-  }
+  try {
+    await fsp.access(mcpPluginFile());
+    const expr = await fsp.readFile(mcpPluginFile(), 'utf8');
+    await call('Runtime.evaluate', { expression: expr });
+  } catch { /* Plugin optional */ }
   await call('Emulation.setDeviceMetricsOverride', { width: 1100, height: 700, deviceScaleFactor: 1, mobile: false });
   // Nur der Vorschaubereich mit dem Modell: Position des Vorschau-Elements abfragen, dann genau diesen Ausschnitt aufnehmen.
   const rectExpr = "(()=>{const p=document.querySelector('#preview'); if(!p) return null; const r=p.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height};})()";
@@ -154,15 +155,15 @@ export async function closeViewer(projectId: string): Promise<boolean> {
 }
 
 /** Blockbench mit sichtbarem Fenster öffnen (eigenes Profil, läuft unabhängig von der Oberfläche). */
-export function openWindow(bin: string, file: string, profileDir: string): void {
-  mkdirSync(profileDir, { recursive: true });
+export async function openWindow(bin: string, file: string, profileDir: string): Promise<void> {
+  await fsp.mkdir(profileDir, { recursive: true });
   const proc = launch(bin, [`--user-data-dir=${profileDir}`], file, profileDir, true);
   proc.unref();
 }
 
 /** Blender mit sichtbarem Fenster öffnen (ggf. mit Datei, läuft unabhängig von der Oberfläche). */
-export function openBlenderWindow(bin: string, file: string | undefined, profileDir: string): void {
-  mkdirSync(profileDir, { recursive: true });
+export async function openBlenderWindow(bin: string, file: string | undefined, profileDir: string): Promise<void> {
+  await fsp.mkdir(profileDir, { recursive: true });
   const managed = resolve(bin).startsWith(resolve(toolsDir()) + '/');
   const args = file && existsSync(file) ? [file] : [];
   if (!managed) {

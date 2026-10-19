@@ -235,7 +235,7 @@ export class ModelScheduler {
 
   private async loadLlama(record: ModelRecord, backend: Backend, started: number, signal?: AbortSignal): Promise<Entry> {
     // GGUF-Version 1 ist veraltet und wird von aktuellem llama.cpp nicht mehr gelesen – klare Meldung statt kryptischem Serverfehler.
-    const version = ggufVersion(record.path);
+    const version = await ggufVersion(record.path);
     if (version !== undefined && version < 2) throw new Error(`GGUF-Version ${version} wird nicht unterstützt – bitte ein aktuelleres Modell (GGUF v2 oder v3) verwenden.`);
     if (/-\d{5}-of-\d{5}\.gguf$/.test(record.path) && !/-00001-of-/.test(record.path)) {
       throw new Error('Geteilte GGUF-Datei: der erste Teil (-00001-of-…) muss geladen werden. Modell neu importieren oder herunterladen.');

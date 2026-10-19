@@ -1,7 +1,7 @@
 import { chatMode, textOptions } from '../../shared/chat-modes';
 import { cancelAllApi, cancelApi, runApi } from './api';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { promises as fsp } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Attachment, HubEvent, ProviderId, RunRequest } from '../../shared/types';
@@ -60,7 +60,7 @@ function build(req: RunRequest): Built {
 const procs = new Map<string, ChildProcess>();
 
 /** Startet eine CLI und streamt normalisierte Events. Resolved, wenn der Prozess endet. */
-export function runCli(
+export async function runCli(
   req: RunRequest,
   emit: (e: HubEvent) => void,
   binaries: Partial<Record<ProviderId, string>>,
@@ -79,28 +79,29 @@ export function runCli(
       if (variant) req = { ...req, options: { ...req.options, model: variant, effort: undefined } };
     }
   }
+  const bin = resolveBinary(req.provider, binaries);
+  if (!bin) {
+    emit({ type: 'done', ok: false, error: `CLI für ${req.provider} nicht gefunden.` });
+    return { ok: false, text: '' };
+  }
+  // Anhänge aus dem Speicher: Claude (Live-Modus) bekommt Bilder direkt als Base64 im Nachrichtenstrom – ohne Datei.
+  // Alle anderen CLIs können nur Dateien lesen: dafür kurzlebige Temp-Dateien, die nach dem Lauf sofort wieder gelöscht werden.
+  let tmpDir: string | undefined;
+  const atts = req.attachments ?? [];
+  const inline = req.provider === 'claude' && !!req.live && req.options.liveInput !== false;
+  if (atts.length && !inline) {
+    tmpDir = await fsp.mkdtemp(join(tmpdir(), 'quorum-att-'));
+    const paths: string[] = [];
+    for (let i = 0; i < atts.length; i++) {
+      const a = atts[i];
+      const p = join(tmpDir, `${i + 1}-${a.name.replace(/[^\w.\- ]/g, '_')}`);
+      await fsp.writeFile(p, Buffer.from(a.data, 'base64'));
+      paths.push(p);
+    }
+    req = { ...req, images: [...(req.images ?? []), ...paths] };
+  }
+  const cleanup = () => { if (tmpDir) { void fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {}); tmpDir = undefined; } };
   return new Promise((resolve) => {
-    const bin = resolveBinary(req.provider, binaries);
-    if (!bin) {
-      emit({ type: 'done', ok: false, error: `CLI für ${req.provider} nicht gefunden.` });
-      resolve({ ok: false, text: '' });
-      return;
-    }
-    // Anhänge aus dem Speicher: Claude (Live-Modus) bekommt Bilder direkt als Base64 im Nachrichtenstrom – ohne Datei.
-    // Alle anderen CLIs können nur Dateien lesen: dafür kurzlebige Temp-Dateien, die nach dem Lauf sofort wieder gelöscht werden.
-    let tmpDir: string | undefined;
-    const atts = req.attachments ?? [];
-    const inline = req.provider === 'claude' && !!req.live && req.options.liveInput !== false;
-    if (atts.length && !inline) {
-      tmpDir = mkdtempSync(join(tmpdir(), 'quorum-att-'));
-      const paths = atts.map((a, i) => {
-        const p = join(tmpDir!, `${i + 1}-${a.name.replace(/[^\w.\- ]/g, '_')}`);
-        writeFileSync(p, Buffer.from(a.data, 'base64'));
-        return p;
-      });
-      req = { ...req, images: [...(req.images ?? []), ...paths] };
-    }
-    const cleanup = () => { if (tmpDir) { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* egal */ } tmpDir = undefined; } };
     const built = build(req);
     let sessionId: string | undefined;
     let text = '';
@@ -180,7 +181,7 @@ async function runImage(req: RunRequest, emit: (e: HubEvent) => void, binaries: 
   const eng = IMAGE_ENGINES.find((x) => x.id === engine);
   if (!eng) { emit({ type: 'done', ok: false, error: `Unbekannte Bild-Engine: ${engine}` }); return { ok: false, text: '' }; }
   // Eigener leerer Arbeitsordner: die Engine soll nur ein Bild erzeugen und keine Projektdateien anfassen.
-  const cwd = mkdtempSync(join(tmpdir(), 'quorum-img-'));
+  const cwd = await fsp.mkdtemp(join(tmpdir(), 'quorum-img-'));
   const refs = (req.images ?? []).length + (req.attachments ?? []).length;
   // Die Session der Engine gehört nicht zum Chat (sonst würde z. B. ein Claude-Chat mit einer Codex-ID fortgesetzt).
   const filtered = (e: HubEvent) => { if (e.type !== 'session') emit(e.type === 'image' ? { ...e, engine } : e); };
@@ -191,7 +192,7 @@ async function runImage(req: RunRequest, emit: (e: HubEvent) => void, binaries: 
       images: req.images, attachments: req.attachments,
     }, filtered, binaries);
   } finally {
-    try { rmSync(cwd, { recursive: true, force: true }); } catch { /* egal */ }
+    try { await fsp.rm(cwd, { recursive: true, force: true }); } catch { /* egal */ }
   }
 }
 

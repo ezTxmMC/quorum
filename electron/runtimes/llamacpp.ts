@@ -2,7 +2,7 @@
 // Ein Absturz des Servers betrifft nur dieses Modell – die Electron-App läuft weiter.
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, promises as fsp } from 'node:fs';
 import type { Backend, Capability, ModelDescriptor, RuntimeDetection } from '../../shared/models';
 import type { ChatHandle, LoadedHandle, LoadOptions, Memory, RuntimeAdapter } from './adapter';
 
@@ -198,7 +198,8 @@ export async function startLlama(modelPath: string, opts: LoadOptions & { memory
   if (opts.contextSize) args.push('-c', String(opts.contextSize));
   const m = new LlamaModel(modelPath, opts.memory);
   // Ladedauer abhängig von der Modellgröße: große GGUFs brauchen mehr Zeit.
-  const timeoutMs = 60000 + Math.round(statSync(modelPath).size / (50 * 1024 * 1024)) * 1000;
+  const size = (await fsp.stat(modelPath)).size;
+  const timeoutMs = 60000 + Math.round(size / (50 * 1024 * 1024)) * 1000;
   await m.start(args, timeoutMs);
   return m;
 }
@@ -229,11 +230,13 @@ export const llamaCppAdapter: RuntimeAdapter = {
   },
 
   async estimateMemory(modelRef, opts) {
-    return estimateGguf(statSync(modelRef).size, opts.gpuLayers);
+    const st = await fsp.stat(modelRef);
+    return estimateGguf(st.size, opts.gpuLayers);
   },
 
   async load(modelRef, opts): Promise<LoadedHandle> {
-    const memory = estimateGguf(statSync(modelRef).size, opts.gpuLayers);
+    const st = await fsp.stat(modelRef);
+    const memory = estimateGguf(st.size, opts.gpuLayers);
     return startLlama(modelRef, { ...opts, memory });
   },
 };

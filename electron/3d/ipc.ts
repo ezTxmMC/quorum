@@ -44,19 +44,19 @@ export function register3dIpc(send: Send, binaries: () => Partial<Record<Provide
   ipcMain.handle('3d:viewer-open', (_e, id: string) => viewerOn(id, joinPath(projectDir(id), 'model.bbmodel')).then(() => true));
   ipcMain.handle('3d:viewer-close', (_e, id: string) => closeViewer(id));
   ipcMain.handle('3d:viewer-status', (_e, id: string) => hasViewer(id));
-  ipcMain.handle('3d:open-window', (_e, id: string) => {
+  ipcMain.handle('3d:open-window', async (_e, id: string) => {
     const bin = findBlockbench();
     if (!bin) throw new Error('Blockbench nicht gefunden (unter 3D installieren oder QUORUM_BLOCKBENCH setzen).');
-    openWindow(bin, joinPath(projectDir(id), 'model.bbmodel'), joinPath(dataDir(), 'blockbench-window'));
+    await openWindow(bin, joinPath(projectDir(id), 'model.bbmodel'), joinPath(dataDir(), 'blockbench-window'));
     return true;
   });
-  ipcMain.handle('3d:open-blender', (_e, id?: string) => {
+  ipcMain.handle('3d:open-blender', async (_e, id?: string) => {
     const bin = findBlender();
     if (!bin) throw new Error('Blender nicht gefunden – unter 3D → Werkzeuge installieren (oder QUORUM_BLENDER setzen).');
     const blendFile = id ? joinPath(projectDir(id), 'model.blend') : undefined;
     const glbFile = id ? joinPath(projectDir(id), 'exports', 'model.glb') : undefined;
     const file = blendFile && existsSync(blendFile) ? blendFile : (glbFile && existsSync(glbFile) ? glbFile : undefined);
-    openBlenderWindow(bin, file, joinPath(dataDir(), 'blender-window'));
+    await openBlenderWindow(bin, file, joinPath(dataDir(), 'blender-window'));
     return true;
   });
   ipcMain.handle('3d:workfiles', (_e, id: string) => getWorkfiles(id));

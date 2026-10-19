@@ -46,9 +46,8 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
   const [skills, setSkills] = useState<{ name: string; source: string }[]>([]);
   const [sel, setSel] = useState(0);
   const ta = useRef<HTMLTextAreaElement>(null);
-  const status = useHub((s) => s.statuses);
+  const pStatus = useHub((s) => s.statuses[session.provider]);
   const patch = useHub((s) => s.patchSession);
-  const pStatus = status[session.provider];
   const mode = chatMode(session.options);
   const imageReady = mode !== 'image' || !!session.options.imageGen;
 
@@ -60,15 +59,17 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
   }, [session.id, session.provider, session.options, pStatus, patch]);
 
   const pick = (provider: ChatSession['provider'], model: string, imageGen?: string) => {
+    const currentStatuses = useHub.getState().statuses;
     const base = provider === session.provider ? session.options : { ...useHub.getState().data.settings.providerDefaults[provider], chatMode: mode };
     model = canonicalModel(provider, model)!;
-    const info = modelChoices(provider, status).find((m) => m.id === model);
+    const info = modelChoices(provider, currentStatuses).find((m) => m.id === model);
     patch(session.id, { provider, options: selectModelOptions(base, model, info, imageGen) });
   };
 
   const changeMode = (next: ChatMode) => {
     if (running) return;
-    patch(session.id, switchChatMode(session, next, imageEngines(status)));
+    const currentStatuses = useHub.getState().statuses;
+    patch(session.id, switchChatMode(session, next, imageEngines(currentStatuses)));
   };
 
   useEffect(() => { void hub.slash(session.cwd || '/nonexistent').then(setSkills); }, [session.cwd]);
@@ -81,8 +82,12 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
   useEffect(() => {
     const el = ta.current;
     if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 220) + 'px';
+    const raf = requestAnimationFrame(() => {
+      el.style.height = 'auto';
+      const targetHeight = Math.min(el.scrollHeight, 220);
+      el.style.height = `${targetHeight}px`;
+    });
+    return () => cancelAnimationFrame(raf);
   }, [text]);
 
   // Trigger-Erkennung: "/cmd" am Anfang oder "@pfad" am Wortende.
@@ -92,8 +97,10 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
   useEffect(() => {
     if (mention === undefined || !session.cwd) return;
     let alive = true;
-    void hub.files(session.cwd, mention).then((f) => { if (alive) { setFiles(f); setSel(0); } });
-    return () => { alive = false; };
+    const timer = setTimeout(() => {
+      void hub.files(session.cwd, mention).then((f) => { if (alive) { setFiles(f); setSel(0); } });
+    }, 100);
+    return () => { alive = false; clearTimeout(timer); };
   }, [mention, session.cwd]);
 
   const slashItems = useMemo(() => {

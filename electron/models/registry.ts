@@ -1,6 +1,6 @@
 // Persistente Modell-Registry (`models.json` im Datenordner). Gehört nur dem Main-Prozess, damit der Renderer
 // beim Speichern von hub.json keine veralteten Modelleinträge zurückschreibt.
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import type { ModelRecord } from '../../shared/models';
 import { dataDir } from '../store';
@@ -22,11 +22,29 @@ function all(): ModelRecord[] {
   return records;
 }
 
+let writing = false;
+let pendingData: string | null = null;
+
+async function flushPersist(): Promise<void> {
+  writing = true;
+  while (pendingData) {
+    const content = pendingData;
+    pendingData = null;
+    const target = file();
+    const tmp = `${target}.${Date.now()}.tmp`;
+    try {
+      await fsp.writeFile(tmp, content, 'utf8');
+      await fsp.rename(tmp, target);
+    } catch {
+      try { await fsp.unlink(tmp); } catch { /* ignore */ }
+    }
+  }
+  writing = false;
+}
+
 function persist(): void {
-  // Atomar schreiben: erst Temp-Datei, dann umbenennen – ein Absturz hinterlässt keine halbe Datei.
-  const tmp = file() + '.tmp';
-  writeFileSync(tmp, JSON.stringify(all(), null, 2));
-  renameSync(tmp, file());
+  pendingData = JSON.stringify(all(), null, 2);
+  if (!writing) void flushPersist();
 }
 
 export function listModels(): ModelRecord[] {

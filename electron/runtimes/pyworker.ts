@@ -2,7 +2,7 @@
 // Ein Absturz oder OOM betrifft nur dieses Modell. Entladen = Prozess beenden; das gibt den VRAM sicher frei.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import type { ChatMessage, ModelRecord, RuntimeId } from '../../shared/models';
 import type { ChatHandle, ImageHandle, ImageParams, LoadedHandle, LoadOptions, Memory, RuntimeAdapter } from './adapter';
@@ -208,12 +208,21 @@ export async function loadPy(
 }
 
 /** Gesamtgröße eines Modells (Datei oder Ordner) in Byte. */
-export function sizeOf(path: string): number {
-  if (!existsSync(path)) return 0;
-  const st = statSync(path);
+export async function sizeOf(path: string): Promise<number> {
+  let st;
+  try {
+    st = await fsp.stat(path);
+  } catch {
+    return 0;
+  }
   if (!st.isDirectory()) return st.size;
   let total = 0;
-  for (const e of readdirSync(path, { withFileTypes: true })) total += sizeOf(join(path, e.name));
+  try {
+    const entries = await fsp.readdir(path, { withFileTypes: true });
+    for (const e of entries) total += await sizeOf(join(path, e.name));
+  } catch {
+    return total;
+  }
   return total;
 }
 
@@ -229,10 +238,10 @@ function adapter(id: 'transformers' | 'diffusers', caps: RuntimeAdapter['capabil
       return m.format === 'safetensors' && (id === 'transformers' ? m.architecture === 'transformer-lm' : m.architecture === 'diffusers-pipeline');
     },
     async estimateMemory(modelRef) {
-      return estimatePy(sizeOf(modelRef));
+      return estimatePy(await sizeOf(modelRef));
     },
     async load(modelRef, o: LoadOptions): Promise<LoadedHandle> {
-      const record = { path: modelRef, sizeBytes: sizeOf(modelRef) } as ModelRecord;
+      const record = { path: modelRef, sizeBytes: await sizeOf(modelRef) } as ModelRecord;
       return loadPy(id, record, { trustRemoteCode: !!o.trustRemoteCode });
     },
   };

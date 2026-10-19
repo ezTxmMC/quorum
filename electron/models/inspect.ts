@@ -1,37 +1,37 @@
-import { openSync, readSync, closeSync, promises as fsp } from 'node:fs';
+import { promises as fsp } from 'node:fs';
 import { join, extname } from 'node:path';
 import type { Capability, ModelArchitecture, ModelDescriptor, ModelFormat } from '../../shared/models';
 
 /** Dateiformat anhand der Magic-Bytes bzw. Endung. */
-export function detectFileFormat(file: string): ModelFormat {
+export async function detectFileFormat(file: string): Promise<ModelFormat> {
   const ext = extname(file).toLowerCase();
-  if (ext === '.gguf') return readMagic(file) === 'GGUF' ? 'gguf' : 'unknown';
+  if (ext === '.gguf') return (await readMagic(file)) === 'GGUF' ? 'gguf' : 'unknown';
   if (ext === '.safetensors') return 'safetensors';
   if (ext === '.bin') return 'pytorch-bin';
   return 'unknown';
 }
 
-function readMagic(file: string): string {
-  const fd = openSync(file, 'r');
+async function readMagic(file: string): Promise<string> {
+  const fh = await fsp.open(file, 'r');
   try {
     const buf = Buffer.alloc(4);
-    readSync(fd, buf, 0, 4, 0);
+    await fh.read(buf, 0, 4, 0);
     return buf.toString('latin1');
   } finally {
-    closeSync(fd);
+    await fh.close();
   }
 }
 
 /** GGUF-Versionsnummer (Little-Endian uint32 nach der Magic). Gibt undefined zurück, wenn die Datei keine GGUF ist. */
-export function ggufVersion(file: string): number | undefined {
+export async function ggufVersion(file: string): Promise<number | undefined> {
   try {
-    const fd = openSync(file, 'r');
+    const fh = await fsp.open(file, 'r');
     try {
       const buf = Buffer.alloc(8);
-      readSync(fd, buf, 0, 8, 0);
+      await fh.read(buf, 0, 8, 0);
       return buf.toString('latin1', 0, 4) === 'GGUF' ? buf.readUInt32LE(4) : undefined;
     } finally {
-      closeSync(fd);
+      await fh.close();
     }
   } catch {
     return undefined;
@@ -39,20 +39,20 @@ export function ggufVersion(file: string): number | undefined {
 }
 
 /** Safetensors-Header prüfen: 8 Byte Länge (LE) + JSON. Gibt false zurück, wenn die Datei kaputt ist. */
-export function isValidSafetensors(file: string): boolean {
+export async function isValidSafetensors(file: string): Promise<boolean> {
   try {
-    const fd = openSync(file, 'r');
+    const fh = await fsp.open(file, 'r');
     try {
       const len = Buffer.alloc(8);
-      readSync(fd, len, 0, 8, 0);
+      await fh.read(len, 0, 8, 0);
       const n = Number(len.readBigUInt64LE(0));
       if (n <= 0 || n > 100 * 1024 * 1024) return false;
       const head = Buffer.alloc(n);
-      readSync(fd, head, 0, n, 8);
+      await fh.read(head, 0, n, 8);
       JSON.parse(head.toString('utf8'));
       return true;
     } finally {
-      closeSync(fd);
+      await fh.close();
     }
   } catch {
     return false;

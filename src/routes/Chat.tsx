@@ -1,6 +1,6 @@
 import { chatMode, CHAT_MODES } from '@shared/chat-modes';
 import { getLang, t } from '@/lib/i18n';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { PROVIDERS, isTextOnly, modelEfforts, canonicalModel, selectModelOptions, modelChoices } from '@shared/catalog';
 import type { ProviderId } from '@shared/types';
@@ -36,9 +36,14 @@ export function ChatPage() {
   const lb = session?.messages.at(-1)?.blocks.at(-1);
   const lastText = !lb ? 0 : lb.kind === 'tool' ? (lb.output?.length ?? 0) + (lb.running ? 1 : 0) : lb.kind === 'image' || lb.kind === 'model' ? 1 : lb.text.length;
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const el = scroller.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
+    if (el && stick.current) {
+      const raf = requestAnimationFrame(() => {
+        if (el && stick.current) el.scrollTop = el.scrollHeight;
+      });
+      return () => cancelAnimationFrame(raf);
+    }
   }, [session?.messages.length, lastLen, lastText]);
   useEffect(() => { stick.current = true; }, [id]);
 

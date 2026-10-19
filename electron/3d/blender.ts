@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import { spawn, execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,10 +60,10 @@ export function blenderScript(dir = pythonDir()): string {
 }
 
 /** Führt eine Folge von Operationen in `workdir` aus. Jeder Pfad muss im Arbeitsordner liegen. */
-export function runBlenderOps(opts: { bin: string; script: string; workdir: string; ops: BlenderOp[]; signal?: AbortSignal }): Promise<BlenderResult> {
-  mkdirSync(opts.workdir, { recursive: true });
+export async function runBlenderOps(opts: { bin: string; script: string; workdir: string; ops: BlenderOp[]; signal?: AbortSignal }): Promise<BlenderResult> {
+  await fsp.mkdir(opts.workdir, { recursive: true });
   const jobPath = join(opts.workdir, `.job-${Date.now()}.json`);
-  writeFileSync(jobPath, JSON.stringify({ workdir: resolve(opts.workdir), ops: opts.ops }));
+  await fsp.writeFile(jobPath, JSON.stringify({ workdir: resolve(opts.workdir), ops: opts.ops }));
   return new Promise((resolveRun) => {
     const args = ['-b', '--factory-startup', '--python', opts.script, '--', jobPath];
     // Eigeninstallation: in der Sandbox ohne Netzwerk; sie sieht nur Blender, das Skript und den Projektordner.
@@ -110,7 +110,7 @@ export function runBlenderOps(opts: { bin: string; script: string; workdir: stri
     const finish = (code: number | null) => {
       clearTimeout(timer);
       opts.signal?.removeEventListener('abort', onAbort);
-      try { unlinkSync(jobPath); } catch { /* schon weg */ }
+      void fsp.unlink(jobPath).catch(() => {});
       const ok = !error && done && code === 0;
       resolveRun({ ok, results, error: ok ? undefined : error ?? `Blender beendet (Code ${code})`, log });
     };
