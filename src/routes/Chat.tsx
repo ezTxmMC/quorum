@@ -1,7 +1,7 @@
 import { getLang, t } from '@/lib/i18n';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { PROVIDERS, isTextOnly, modelEfforts } from '@shared/catalog';
+import { PROVIDERS, isTextOnly, modelEfforts, canonicalModel, selectModelOptions, modelChoices } from '@shared/catalog';
 import type { ProviderId } from '@shared/types';
 import { Composer } from '@/components/Composer';
 import { MessageView } from '@/components/MessageView';
@@ -29,7 +29,8 @@ export function ChatPage() {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
-  const running = !!session && Object.values(runs).some((r) => r.sessionId === id);
+  const activeMessages = new Set(Object.values(runs).filter((r) => r.sessionId === id).map((r) => r.messageId));
+  const running = activeMessages.size > 0;
   const lastLen = session?.messages.at(-1)?.blocks.length ?? 0;
   const lb = session?.messages.at(-1)?.blocks.at(-1);
   const lastText = !lb ? 0 : lb.kind === 'tool' ? (lb.output?.length ?? 0) + (lb.running ? 1 : 0) : lb.kind === 'image' ? 1 : lb.text.length;
@@ -74,7 +75,12 @@ export function ChatPage() {
         patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p] } });
         return true;
       }
-      case 'model': setOpts({ model: arg.trim() || undefined, effort: undefined, speed: undefined }); return true;
+      case 'model': {
+        const model = canonicalModel(session.provider, arg.trim());
+        const info = modelChoices(session.provider, statuses, undefined, true).find((m) => m.id === model || m.imageEngine === model);
+        setOpts(selectModelOptions(session.options, info?.id ?? model ?? '', info, info?.imageEngine));
+        return true;
+      }
       case 'effort': {
         const effort = arg.trim();
         const info = status?.models.find((m) => m.id === session.options.model);
@@ -116,7 +122,7 @@ export function ChatPage() {
             </div>
           ) : (
             <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
-              {session.messages.map((m, i) => <MessageView key={m.id} m={m} live={running && i === session.messages.length - 1} onStop={() => cancel(id)} />)}
+              {session.messages.map((m) => <MessageView key={m.id} m={m} live={activeMessages.has(m.id)} onStop={() => cancel(id)} />)}
             </div>
           )}
         </div>
@@ -137,7 +143,7 @@ export function ChatPage() {
             <span className="font-medium">{meta.name} – {t('CLI-Optionen')}</span>
             <button className="icon-btn" onClick={() => useHub.getState().toggleChatOptions(false)}><Icon name="lucide:x" /></button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-3"><OptionsPanel provider={session.provider} value={session.options} onChange={setOpts} /></div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3"><OptionsPanel allowImages provider={session.provider} value={session.options} onChange={setOpts} /></div>
         </aside>
       )}
     </div>

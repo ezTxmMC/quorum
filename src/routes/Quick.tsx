@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PROVIDERS } from '@shared/catalog';
+import { PROVIDERS, canonicalModel, selectModelOptions } from '@shared/catalog';
 import type { ProviderId, ProviderOptions } from '@shared/types';
 import { Dot, EffortButton, ModelButton, defaultModel } from '@/components/ModelPicker';
 import { hub } from '@/lib/api';
@@ -38,9 +38,10 @@ export function QuickPage() {
 
   // Standardmodell ergänzen und Projekt vorbelegen
   useEffect(() => {
+    if (choice.options.imageGen) return;
     const m = choice.options.model ?? defaultModel(choice.provider, statuses[choice.provider]);
     if (m && m !== choice.options.model) setChoice((c) => ({ ...c, options: { ...c.options, model: m } }));
-  }, [choice.provider, choice.options.model, statuses]);
+  }, [choice.provider, choice.options.model, choice.options.imageGen, statuses]);
   const cwd = choice.cwd || recent0;
 
   const recents = useMemo(() => sessions.filter((s) => s.messages.length && !hidden.includes(s.cwd)).slice(0, 5), [sessions, hidden]);
@@ -73,9 +74,12 @@ export function QuickPage() {
             placeholder={t('Frag etwas oder gib eine Aufgabe …')} className="max-h-[150px] w-full resize-none bg-transparent text-[20px] leading-snug outline-none placeholder:text-subtle" />
         </div>
         <div className="flex items-center gap-1 px-3 pb-3">
-          <ModelButton down compact provider={choice.provider} model={choice.options.model}
-            onPick={(provider, model) => setChoice((c) => ({ ...c, provider, options: provider === c.provider ? { ...c.options, model } : { ...settings.providerDefaults[provider], model } }))} />
-          <EffortButton down provider={choice.provider} model={choice.options.model} value={choice.options.effort} onChange={(effort) => setChoice((c) => ({ ...c, options: { ...c.options, effort } }))} />
+          <ModelButton down compact includeImages provider={choice.provider} model={choice.options.model} imageGen={choice.options.imageGen}
+            onPick={(provider, model, imageGen) => setChoice((c) => {
+              const id = canonicalModel(provider, model)!;
+              return { ...c, provider, options: selectModelOptions(provider === c.provider ? c.options : settings.providerDefaults[provider], id, statuses[provider]?.models.find((m) => m.id === id), imageGen) };
+            })} />
+          {!choice.options.imageGen && <EffortButton down provider={choice.provider} model={choice.options.model} value={choice.options.effort} onChange={(effort) => setChoice((c) => ({ ...c, options: { ...c.options, effort } }))} />}
           <button className="btn btn-ghost !px-2 text-muted" title={cwd || t('Ordner wählen')} onClick={async () => { const d = await hub.pickFolder(); if (d) setChoice((c) => ({ ...c, cwd: d })); }}>
             <Icon name="lucide:folder-open" size={14} /><span className="max-w-36 truncate text-[12px]">{cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() : t('Ordner wählen')}</span>
           </button>

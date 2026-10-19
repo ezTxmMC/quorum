@@ -154,19 +154,40 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
   },
 };
 
-export const CLAUDE_MODELS = [
-  { id: 'fable', label: 'Claude Fable · Latest' },
-  { id: 'opus', label: 'Claude Opus · Latest' },
-  { id: 'sonnet', label: 'Claude Sonnet · Latest' },
-  { id: 'haiku', label: 'Claude Haiku · Latest' },
+// Versioned IDs keep an explicit selection stable when CLI aliases move to a newer release.
+// Sources: https://platform.claude.com/docs/en/models/overview and its legacy model pages.
+export const CLAUDE_MODELS: ModelInfo[] = [
+  { id: 'claude-fable-5-1', label: 'Claude Fable 5.1' },
+  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5' },
+  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5' },
+  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
+  { id: 'claude-fable-5', label: 'Claude Fable 5', legacy: true },
+  { id: 'claude-opus-5', label: 'Claude Opus 5', legacy: true },
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5', legacy: true },
+  { id: 'claude-opus-4-8', label: 'Claude Opus 4.8', legacy: true },
+  { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', legacy: true },
+  { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', legacy: true },
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', legacy: true },
+  { id: 'claude-opus-4-5', label: 'Claude Opus 4.5', legacy: true },
+  { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', legacy: true },
+  { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', legacy: true, efforts: [] },
 ];
+
+const CLAUDE_ALIASES: Record<string, string> = {
+  fable: 'claude-fable-5-1', opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5',
+  'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+};
+
+export function canonicalModel(provider: ProviderId, id?: string): string | undefined {
+  return provider === 'claude' && id ? CLAUDE_ALIASES[id] ?? id : id;
+}
 
 export const EFFORT_LABELS: Record<string, string> = {
   low: 'Niedrig', medium: 'Mittel', high: 'Hoch', xhigh: 'Sehr hoch', max: 'Maximal', ultra: 'Ultra',
 };
 
 export const DEFAULT_OPTIONS: Record<ProviderId, ProviderOptions> = {
-  claude: { permission: 'acceptEdits', model: 'sonnet' },
+  claude: { permission: 'acceptEdits', model: 'claude-sonnet-5-5' },
   codex: { sandbox: 'workspace-write' },
   antigravity: { permission: 'allow-commands' },
   opencode: {},
@@ -315,4 +336,37 @@ export function imageEngines(statuses: Partial<Record<ProviderId, { installed: b
 export function imageEngineLabel(id?: string): string {
   if (!id) return '';
   return IMAGE_ENGINES.find((e) => e.id === id)?.label ?? id.replace(/^ollama:/, '');
+}
+
+/** The same entries and row presentation serve chat, quick prompts and provider options. */
+export function modelChoices(
+  provider: ProviderId,
+  statuses: Partial<Record<ProviderId, { installed: boolean; models: ModelInfo[] }>>,
+  customIds: string[] = [],
+  includeImages = false,
+): ModelInfo[] {
+  const known = provider === 'claude' ? CLAUDE_MODELS : [];
+  const regular = [...known, ...(statuses[provider]?.models ?? [])]
+    .filter((m) => !m.image)
+    .map((m) => {
+      const id = canonicalModel(provider, m.id)!;
+      return { ...m, ...known.find((entry) => entry.id === id), id };
+    });
+  const custom = customIds.map((raw) => {
+    const id = canonicalModel(provider, raw)!;
+    return { id, label: id, group: 'Custom' };
+  });
+  const images = includeImages ? imageEngines(statuses).filter((e) => e.provider === provider)
+    .map((e) => ({ id: `image:${e.id}`, label: e.label, image: true, imageEngine: e.id, efforts: [] })) : [];
+  return [...new Map([...regular, ...custom.filter((m) => !regular.some((r) => r.id === m.id)), ...images]
+    .filter((m) => isChatModel(m.id)).map((m) => [m.id, m])).values()];
+}
+
+/** Clear the image route on text selection, and never leak an image engine ID into a text CLI call. */
+export function selectModelOptions(base: ProviderOptions, id: string, info?: ModelInfo, imageEngine?: string): ProviderOptions {
+  if (imageEngine) return { ...base, model: undefined, imageGen: imageEngine, effort: undefined, speed: undefined };
+  return { ...base, model: id, imageGen: undefined,
+    effort: base.effort && info?.efforts && !info.efforts.includes(base.effort) ? undefined : base.effort,
+    speed: info?.speedTiers?.some((tier) => tier.id === base.speed) ? base.speed : undefined,
+  };
 }

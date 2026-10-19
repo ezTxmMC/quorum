@@ -5,6 +5,11 @@ export const setLang = (l: Lang) => { current = l; };
 export const getLang = () => current;
 
 export const en: Record<string, string> = {
+  'Verarbeitet Ergebnis': 'Processing result',
+  'Antwortet…': 'Responding…',
+  'Ältere Modelle anzeigen': 'Show older models',
+  'Eigene Modelle': 'Custom models',
+  'Älter': 'Older',
   'Wird als Entwickleranweisung übergeben': 'Sent as developer instructions',
   'Wird als Systemnachricht übergeben': 'Sent as a system message',
   'Wird dem Prompt vorangestellt': 'Prepended to the prompt',

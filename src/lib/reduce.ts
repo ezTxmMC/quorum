@@ -18,7 +18,7 @@ export function applyEvent(m: Message, e: HubEvent): Message {
       if (m.blocks.some((b) => b.kind === 'image' && b.path === e.path)) return m;
       return { ...m, blocks: [...m.blocks, { kind: 'image', path: e.path, engine: e.engine }] };
     case 'tool_start':
-      if (m.blocks.some((b) => b.kind === 'tool' && b.id === e.id)) return m;
+      if (m.blocks.some((b) => b.kind === 'tool' && b.id === e.id)) return { ...m, blocks: m.blocks.map((b) => b.kind === 'tool' && b.id === e.id ? { ...b, name: e.name, input: e.input ?? b.input, parentId: e.parentId ?? b.parentId } : b) };
       return { ...m, blocks: [...m.blocks, { kind: 'tool', id: e.id, name: e.name, input: e.input, running: true, parentId: e.parentId }] };
     case 'tool_end':
       return { ...m, blocks: m.blocks.map((b) => (b.kind === 'tool' && b.id === e.id ? { ...b, output: e.output, isError: e.isError, running: false } : b)) };

@@ -1,3 +1,4 @@
+import { canonicalModel } from '../../shared/catalog.ts';
 import type { HubEvent, RunRequest } from '../../shared/types';
 import type { LineParser } from './runner';
 import { splitArgs } from './args.ts';
@@ -7,7 +8,7 @@ export function buildClaude(req: RunRequest): { args: string[]; stdin: string; l
   // "live": Eingabe als stream-json über stdin – dadurch kann der Hub während des Laufs weitere Nachrichten zustellen (Steuern/Queue).
   const live = o.liveInput !== false && !!req.live;
   const args = ['-p', ...(live ? ['--input-format', 'stream-json'] : []), '--output-format', 'stream-json', '--verbose', '--include-partial-messages'];
-  if (o.model) args.push('--model', o.model);
+  if (o.model) args.push('--model', canonicalModel('claude', o.model)!);
   if (o.effort) args.push('--effort', o.effort);
   if (o.fullAccess) args.push('--dangerously-skip-permissions');
   else if (o.permission) args.push('--permission-mode', o.permission);
@@ -49,6 +50,7 @@ function stringify(c: unknown): string {
 
 export class ClaudeParser implements LineParser {
   private streamed = new Set<string>();
+  private streamTools = new Map<string, { id: string; name: string; json: string }>();
   private sessionSent = false;
   private finished = false;
   /** Anzahl abgeschlossener Turns (result-Events). */
@@ -66,7 +68,24 @@ export class ClaudeParser implements LineParser {
     switch (m.type) {
       case 'stream_event': {
         const ev = m.event;
-        if (ev?.type === 'message_start') this.streamed.add(ev.message?.id ?? '');
+        const key = `${parent ?? 'main'}:${ev?.index}`;
+        if (ev?.type === 'message_start') {
+          this.streamed.add(ev.message?.id ?? '');
+          for (const k of this.streamTools.keys()) if (k.startsWith(`${parent ?? 'main'}:`)) this.streamTools.delete(k);
+        }
+        if (ev?.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
+          const b = ev.content_block;
+          this.streamTools.set(key, { id: b.id, name: b.name, json: '' });
+          out.push({ type: 'tool_start', id: b.id, name: b.name, input: b.input ?? {}, parentId: parent });
+        }
+        if (ev?.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta') {
+          const tool = this.streamTools.get(key);
+          if (tool) {
+            tool.json += ev.delta.partial_json ?? '';
+            try { out.push({ type: 'tool_start', id: tool.id, name: tool.name, input: JSON.parse(tool.json), parentId: parent }); } catch { /* arguments still streaming */ }
+          }
+        }
+        if (ev?.type === 'content_block_stop') this.streamTools.delete(key);
         if (ev?.type === 'content_block_delta' && !parent) {
           if (ev.delta?.type === 'text_delta') out.push({ type: 'text', delta: ev.delta.text });
           else if (ev.delta?.type === 'thinking_delta') out.push({ type: 'thinking', delta: ev.delta.thinking });

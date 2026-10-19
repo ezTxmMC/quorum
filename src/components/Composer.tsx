@@ -1,11 +1,11 @@
 import { getLang, t } from '@/lib/i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DIRECT_MESSAGES, PROVIDERS, isChatModel } from '@shared/catalog';
+import { DIRECT_MESSAGES, PROVIDERS, isChatModel, canonicalModel, selectModelOptions, modelChoices } from '@shared/catalog';
 import type { Attachment, ChatSession } from '@shared/types';
 import { hub, uid } from '@/lib/api';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
-import { ImageButton, ModeButton, ModelButton, TuneButton, defaultModel } from './ModelPicker';
+import { ModeButton, ModelButton, TuneButton, defaultModel } from './ModelPicker';
 import { ComposerUsage } from './ComposerUsage';
 import { cx } from './ui';
 
@@ -50,17 +50,16 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
 
   // Fehlt ein Modell, das Standardmodell eintragen, damit Anzeige und Aufruf übereinstimmen.
   useEffect(() => {
-    if (!pStatus || (session.options.model && isChatModel(session.options.model))) return;
+    if (session.options.imageGen || !pStatus || (session.options.model && isChatModel(session.options.model))) return;
     const m = defaultModel(session.provider, pStatus);
     if (m) patch(session.id, { options: { ...session.options, model: m } });
   }, [session.id, session.provider, session.options, pStatus, patch]);
 
-  const pick = (provider: ChatSession['provider'], model: string) => {
+  const pick = (provider: ChatSession['provider'], model: string, imageGen?: string) => {
     const base = provider === session.provider ? session.options : { ...useHub.getState().data.settings.providerDefaults[provider] };
-    const info = status[provider]?.models.find((m) => m.id === model);
-    const effort = base.effort && info?.efforts && !info.efforts.includes(base.effort) ? undefined : base.effort;
-    const speed = info?.speedTiers?.some((x) => x.id === base.speed) ? base.speed : undefined;
-    patch(session.id, { provider, options: { ...base, model, effort, speed } });
+    model = canonicalModel(provider, model)!;
+    const info = modelChoices(provider, status).find((m) => m.id === model);
+    patch(session.id, { provider, options: selectModelOptions(base, model, info, imageGen) });
   };
 
   useEffect(() => { void hub.slash(session.cwd || '/nonexistent').then(setSkills); }, [session.cwd]);
@@ -213,9 +212,8 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
           className="block max-h-[220px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-relaxed outline-none placeholder:text-subtle" />
         <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
           <button className="icon-btn" title={t('Bild anhängen')} onClick={async () => { const f = await hub.pickFiles('image'); if (f.length) setImages((i) => [...i, ...f]); }}><Icon name="lucide:paperclip" /></button>
-          <ImageButton value={session.options.imageGen} onChange={(imageGen) => patch(session.id, { options: { ...session.options, imageGen } })} />
-          <ModelButton provider={session.provider} model={session.options.model} onPick={pick} />
-          <ModeButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} onMore={() => useHub.getState().toggleChatOptions(true)} />
+          <ModelButton provider={session.provider} model={session.options.model} imageGen={session.options.imageGen} includeImages onPick={pick} />
+          {!session.options.imageGen && <ModeButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} onMore={() => useHub.getState().toggleChatOptions(true)} />}
           {!session.options.imageGen && <TuneButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} />}
           <div className="flex-1" />
           <ComposerUsage session={session} />

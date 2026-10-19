@@ -43,6 +43,7 @@ export function buildCodex(req: RunRequest): { args: string[]; stdin: string } {
 
 export class CodexParser implements LineParser {
   private startedItems = new Set<string>();
+  private reasoningText = new Map<string, string>();
 
   push(line: string): HubEvent[] {
     if (!line.startsWith('{')) return [];
@@ -81,9 +82,15 @@ export class CodexParser implements LineParser {
       case 'agent_message':
         if (done) out.push({ type: 'text', delta: (it.text ?? '') + '\n\n' });
         break;
-      case 'reasoning':
-        if (done && it.text) out.push({ type: 'thinking', delta: it.text + '\n\n' });
+      case 'reasoning': {
+        const text = typeof it.text === 'string' ? it.text : (Array.isArray(it.summary) ? it.summary.map((part: { text?: string }) => part.text ?? '').join('\n') : '');
+        const previous = this.reasoningText.get(id) ?? '';
+        if (text && text !== previous) {
+          out.push({ type: 'thinking', delta: text.startsWith(previous) ? text.slice(previous.length) : `\n\n${text}` });
+          this.reasoningText.set(id, text);
+        }
         break;
+      }
       case 'command_execution':
         if (!this.startedItems.has(id)) {
           this.startedItems.add(id);
@@ -92,10 +99,9 @@ export class CodexParser implements LineParser {
         if (done) out.push({ type: 'tool_end', id, output: String(it.aggregated_output ?? ''), isError: it.exit_code !== 0 && it.exit_code != null });
         break;
       case 'file_change':
-        if (done) {
-          out.push({ type: 'tool_start', id, name: 'Dateiänderung', input: { changes: it.changes } });
-          out.push({ type: 'tool_end', id, output: ((it.changes ?? []) as { kind: string; path: string }[]).map((c) => `${c.kind} ${c.path}`).join('\n'), isError: it.status === 'failed' });
-        }
+        this.startedItems.add(id);
+        out.push({ type: 'tool_start', id, name: 'Dateiänderung', input: { changes: it.changes, path: it.changes?.[0]?.path } });
+        if (done) out.push({ type: 'tool_end', id, output: ((it.changes ?? []) as { kind: string; path: string }[]).map((c) => `${c.kind} ${c.path}`).join('\n'), isError: it.status === 'failed' });
         break;
       case 'mcp_tool_call':
         if (!this.startedItems.has(id)) {
@@ -105,10 +111,9 @@ export class CodexParser implements LineParser {
         if (done) out.push({ type: 'tool_end', id, output: typeof it.result === 'string' ? it.result : JSON.stringify(it.result ?? it.error ?? ''), isError: it.status === 'failed' });
         break;
       case 'web_search':
-        if (done) {
-          out.push({ type: 'tool_start', id, name: 'Websuche', input: { query: it.query } });
-          out.push({ type: 'tool_end', id, output: '', isError: false });
-        }
+        this.startedItems.add(id);
+        out.push({ type: 'tool_start', id, name: 'Websuche', input: { query: it.query ?? it.action?.query ?? it.action?.url ?? it.action?.queries?.join(', ') } });
+        if (done) out.push({ type: 'tool_end', id, output: '', isError: it.status === 'failed' });
         break;
       case 'todo_list':
         if (done) {

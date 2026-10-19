@@ -26,3 +26,14 @@ export function activeToolActivity(blocks: Block[]) {
   const latest = active.at(-1);
   return latest ? { count: active.length, kind: toolKind(latest.name), summary: toolSummary(latest) } : null;
 }
+
+/** Keep the live row visible between short tool calls as well as during reasoning and replies. */
+export function currentActivity(blocks: Block[]) {
+  const tool = activeToolActivity(blocks);
+  if (tool) return tool;
+  const last = blocks.at(-1);
+  if (last?.kind === 'thinking') return { kind: 'thinking', summary: '', count: 1 } as const;
+  if (last?.kind === 'tool') return { kind: 'processing', summary: toolSummary(last), count: 1 } as const;
+  if (last?.kind === 'text') return { kind: 'responding', summary: '', count: 1 } as const;
+  return { kind: 'working', summary: '', count: 1 } as const;
+}

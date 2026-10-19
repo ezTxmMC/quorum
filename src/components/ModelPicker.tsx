@@ -1,5 +1,5 @@
 import { t } from '@/lib/i18n';
-import { PROVIDERS, MODES, currentMode, imageEngineLabel, imageEngines, modePatch, modesFor, modeLabel, modelLabel, modelEfforts, effortLabel, isChatModel } from '@shared/catalog';
+import { PROVIDERS, MODES, currentMode, imageEngineLabel, canonicalModel, modelChoices, modePatch, modesFor, modeLabel, modelLabel, modelEfforts, effortLabel, isChatModel } from '@shared/catalog';
 import type { ModelInfo, ProviderId, ProviderOptions } from '@shared/types';
 import { useState, type ReactNode } from 'react';
 import { Icon } from '@/lib/icons';
@@ -15,49 +15,50 @@ export function Dot({ id, size = 8 }: { id: ProviderId; size?: number }) {
 /** Anzeigename des aktuellen Modells (ohne Anbieter-Namen). */
 export function useModelLabel(provider: ProviderId, model?: string): string {
   const status = useHub((s) => s.statuses[provider]);
-  if (!model) return status?.models[0]?.label ?? '…';
-  const info = status?.models.find((m) => m.id === model);
+  model = canonicalModel(provider, model);
+  if (!model) model = defaultModel(provider, status);
+  if (!model) return '…';
+  const info = modelChoices(provider, { [provider]: status }).find((m) => m.id === model);
   return modelLabel(info ?? { id: model, label: model });
 }
 
 export function defaultModel(provider: ProviderId, status?: { models: { id: string }[] }): string | undefined {
-  return provider === 'claude' ? 'sonnet' : status?.models[0]?.id;
+  return provider === 'claude' ? 'claude-sonnet-5-5' : status?.models[0]?.id;
 }
 
-export function ModelList({ provider, model, onPick }: { provider?: ProviderId; model?: string; onPick: (p: ProviderId, model: string) => void }) {
+export function ModelList({ provider, model, imageGen, onPick, includeImages, onlyProvider }: { provider?: ProviderId; model?: string; imageGen?: string; onPick: (p: ProviderId, model: string, imageGen?: string) => void; includeImages?: boolean; onlyProvider?: ProviderId }) {
   const statuses = useHub((s) => s.statuses);
   const settings = useHub((s) => s.data.settings);
   const [query, setQuery] = useState('');
-  const [expanded, setExpanded] = useState<ProviderId | undefined>(provider);
+  const [expanded, setExpanded] = useState<ProviderId | undefined>(onlyProvider ?? provider);
   const [older, setOlder] = useState(!!settings.showOlderModels);
   const q = query.trim().toLowerCase();
-  const groups = ORDER.filter((p) => statuses[p]?.installed || p === provider).map((p) => {
-    const discovered = statuses[p]?.models ?? [];
-    const custom: ModelInfo[] = (settings.customModels?.[p] ?? []).filter((id) => !discovered.some((m) => m.id === id)).map((id) => ({ id, label: id, legacy: true, group: 'Custom' }));
-    const models = [...discovered, ...custom].filter((m) => isChatModel(m.id) && (older || !m.legacy || (p === provider && m.id === model)) && (!q || `${PROVIDERS[p].name} ${m.id} ${modelLabel(m)}`.toLowerCase().includes(q)));
+  const selected = imageGen ? `image:${imageGen}` : canonicalModel(provider ?? 'claude', model);
+  const groups = ORDER.filter((p) => (!onlyProvider || p === onlyProvider) && (statuses[p]?.installed || p === provider)).map((p) => {
+    const models = modelChoices(p, statuses, settings.customModels?.[p], includeImages).filter((m) => isChatModel(m.id) && (older || !m.legacy || (p === provider && m.id === selected)) && (!q || `${PROVIDERS[p].name} ${m.id} ${modelLabel(m)}`.toLowerCase().includes(q)));
     return { p, models };
   }).filter((g) => g.models.length || !q);
   return (
     <div className="w-80 max-w-[calc(100vw-3rem)]">
       <div className="border-b border-edge p-1.5">
         <input aria-label={t('Modelle suchen')} className="field !text-[12px]" placeholder={t('Modelle suchen …')} value={query} onChange={(e) => setQuery(e.target.value)} />
-        <label className="mt-2 flex items-center gap-2 text-[11.5px] text-muted"><input type="checkbox" checked={older} onChange={(e) => setOlder(e.target.checked)} />{t('Ältere & eigene Modelle')}</label>
+        <label className="mt-2 flex items-center gap-2 text-[11.5px] text-muted"><input type="checkbox" checked={older} onChange={(e) => setOlder(e.target.checked)} />{t('Ältere Modelle anzeigen')}</label>
       </div>
       <div className="max-h-[min(24rem,50vh)] overflow-y-auto py-1">
         {groups.map(({ p, models }) => {
-          const open = !!q || expanded === p;
+          const open = !!onlyProvider || !!q || expanded === p;
           const subgroups = new Map<string, ModelInfo[]>();
           for (const m of models) { const key = m.group ?? ''; subgroups.set(key, [...(subgroups.get(key) ?? []), m]); }
           return <div key={p}>
-            <button aria-expanded={open} className="flex w-full items-center gap-2 rounded-lumen-sm px-2.5 py-2 text-left hover:bg-hover" onClick={() => setExpanded(open ? undefined : p)}>
-              <Dot id={p} size={7} /><span className="flex-1 text-[12px] font-medium">{PROVIDERS[p].name}</span><span className="text-[10px] text-subtle">{models.length}</span><Icon name={open ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={13} />
+            <button aria-expanded={open} disabled={!!onlyProvider} className="flex w-full items-center gap-2 rounded-lumen-sm px-2.5 py-2 text-left hover:bg-hover" onClick={() => setExpanded(open ? undefined : p)}>
+              <Dot id={p} size={7} /><span className="flex-1 text-[12px] font-medium">{PROVIDERS[p].name}</span><span className="text-[10px] text-subtle">{models.length}</span>{!onlyProvider && <Icon name={open ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={13} />}
             </button>
             {open && [...subgroups].map(([group, list]) => <div key={group}>
-              {group && <div className="px-5 py-1 text-[10px] uppercase tracking-wide text-subtle">{group === 'opencode' ? 'OpenCode Zen' : group}</div>}
+              {group && <div className="px-5 py-1 text-[10px] uppercase tracking-wide text-subtle">{group === 'opencode' ? 'OpenCode Zen' : group === 'Custom' ? t('Eigene Modelle') : group}</div>}
               {list.map((m) => {
-                const active = p === provider && (model ?? defaultModel(p, statuses[p])) === m.id;
-                return <button key={m.id} title={m.id} className={cx('flex w-full items-center gap-2 rounded-lumen-sm py-1.5 pl-5 pr-2.5 text-left hover:bg-hover', active && 'bg-active')} onClick={() => onPick(p, m.id)}>
-                  <span className="min-w-0 flex-1 truncate text-[12.5px]">{modelLabel(m)}</span>{m.legacy && <span className="text-[9px] text-subtle">{t('Älter / Eigene')}</span>}{active && <Icon name="lucide:check" size={14} className="text-accent" />}
+                const active = p === provider && (selected ?? defaultModel(p, statuses[p])) === m.id;
+                return <button key={m.id} title={m.id} className={cx('flex w-full items-center gap-2 rounded-lumen-sm py-1.5 pl-5 pr-2.5 text-left hover:bg-hover', active && 'bg-active')} onClick={() => onPick(p, m.id, m.imageEngine)}>
+                  <Icon name={m.image ? 'lucide:image' : 'lucide:message-square'} size={13} className="shrink-0 text-subtle" /><span className="min-w-0 flex-1 truncate text-[12.5px]">{modelLabel(m)}</span>{m.legacy && <span className="text-[10px] text-subtle">{t('Älter')}</span>}{active && <Icon name="lucide:check" size={14} className="text-accent" />}
                 </button>;
               })}
               {!list.length && <div className="px-5 py-2 text-[12px] text-subtle">{t('Keine Modelle verfügbar')}</div>}
@@ -70,23 +71,37 @@ export function ModelList({ provider, model, onPick }: { provider?: ProviderId; 
   );
 }
 
-export function ModelButton({ provider, model, onPick, down, compact }: { provider: ProviderId; model?: string; onPick: (p: ProviderId, model: string) => void; down?: boolean; compact?: boolean }) {
-  const label = useModelLabel(provider, model);
+interface ModelButtonProps {
+  provider: ProviderId;
+  model?: string;
+  imageGen?: string;
+  includeImages?: boolean;
+  onlyProvider?: ProviderId;
+  field?: boolean;
+  down?: boolean;
+  compact?: boolean;
+  onPick: (provider: ProviderId, model: string, imageGen?: string) => void;
+}
+
+export function ModelButton({ provider, model, imageGen, onPick, down, compact, includeImages, onlyProvider, field }: ModelButtonProps) {
+  const textLabel = useModelLabel(provider, model);
+  const label = imageGen ? imageEngineLabel(imageGen) : textLabel;
   return (
-    <Popover down={down} trigger={(open, tg) => (
-      <button className={cx('btn btn-ghost !gap-2 !px-2 text-fg', open && '!bg-hover', compact && '!py-1')} onClick={tg}>
-        <Dot id={provider} /> <span className="max-w-48 truncate text-[12.5px]">{label}</span>
-        <Icon name="lucide:chevron-down" size={12} className={cx('text-subtle transition-transform', open && 'rotate-180')} />
+    <Popover down={down} trigger={(open, toggle) => (
+      <button className={cx(field ? 'field flex w-full items-center gap-2 text-left' : 'btn btn-ghost !gap-2 !px-2 text-muted', open && '!bg-hover', !field && compact && '!py-1')} onClick={toggle} aria-expanded={open} aria-label={`${t('Modell')}: ${label}`}>
+        <Dot id={provider} size={7} /><span className={cx('min-w-0 truncate text-[12.5px]', field ? 'flex-1' : 'max-w-48')}>{label}</span>
+        {imageGen && <Icon name="lucide:image" size={13} className="shrink-0 text-subtle" />}
+        <Icon name="lucide:chevron-down" size={12} className={cx('shrink-0 text-subtle transition-transform', open && 'rotate-180')} />
       </button>
     )}>
-      {(close) => <ModelList provider={provider} model={model} onPick={(p, m) => { onPick(p, m); close(); }} />}
+      {(close) => <ModelList provider={provider} model={model} imageGen={imageGen} includeImages={includeImages} onlyProvider={onlyProvider} onPick={(p, id, engine) => { onPick(p, id, engine); close(); }} />}
     </Popover>
   );
 }
 
 export function EffortButton({ provider, model, value, onChange, down }: { provider: ProviderId; model?: string; value?: string; onChange: (v: string | undefined) => void; down?: boolean }) {
   const status = useHub((s) => s.statuses[provider]);
-  const info = status?.models.find((m) => m.id === (model ?? defaultModel(provider, status)));
+  const info = modelChoices(provider, { [provider]: status }).find((m) => m.id === (canonicalModel(provider, model) ?? defaultModel(provider, status)));
   const efforts = modelEfforts(provider, info);
   return (
     <Popover down={down} trigger={(open, tg) => (
@@ -112,7 +127,7 @@ export function EffortButton({ provider, model, value, onChange, down }: { provi
 
 export function SpeedButton({ provider, model, value, onChange, down }: { provider: ProviderId; model?: string; value?: string; onChange: (v: string | undefined) => void; down?: boolean }) {
   const status = useHub((s) => s.statuses[provider]);
-  const info = status?.models.find((m) => m.id === (model ?? defaultModel(provider, status)));
+  const info = modelChoices(provider, { [provider]: status }).find((m) => m.id === (canonicalModel(provider, model) ?? defaultModel(provider, status)));
   const tiers = info?.speedTiers;
   if (!tiers?.length) return null;
   const cur = tiers.find((x) => x.id === value);
@@ -179,7 +194,7 @@ export function UltracodeButton({ value, onChange }: { value?: boolean; onChange
 /** Denktiefe, Geschwindigkeit und Ultracode in einem Regler – nur die Abschnitte, die Anbieter/Modell unterstützen. */
 export function TuneButton({ provider, options, onChange }: { provider: ProviderId; options: ProviderOptions; onChange: (patch: ProviderOptions) => void }) {
   const status = useHub((s) => s.statuses[provider]);
-  const info = status?.models.find((m) => m.id === (options.model ?? defaultModel(provider, status)));
+  const info = modelChoices(provider, { [provider]: status }).find((m) => m.id === (canonicalModel(provider, options.model) ?? defaultModel(provider, status)));
   const efforts = modelEfforts(provider, info);
   const tiers = info?.speedTiers ?? [];
   const ultra = provider === 'claude';
@@ -221,36 +236,6 @@ export function TuneButton({ provider, options, onChange }: { provider: Provider
               </span>
             </button>
           </>)}
-        </div>
-      )}
-    </Popover>
-  );
-}
-
-/** Bildmodus wie im ChatGPT-/Gemini-Chat: Nachrichten erzeugen Bilder mit der gewählten Engine – in jedem Chat, egal welches Modell. */
-export function ImageButton({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
-  const statuses = useHub((s) => s.statuses);
-  const engines = imageEngines(statuses);
-
-  return (
-    <Popover trigger={(open, tg) => (
-      <button className={cx('btn btn-ghost !gap-1.5 !px-2 transition-colors', value ? '!bg-accent/15 text-accent' : 'text-muted', open && !value && '!bg-hover')} onClick={tg} title={t('Bild erzeugen')}>
-        <Icon name="lucide:image-plus" size={14} /> {value ? <span className="text-[12px]">{imageEngineLabel(value)}</span> : <span className="text-[12px]">{t('Bildmodell')}</span>}
-      </button>
-    )}>
-      {(close) => (
-        <div className="w-72">
-          <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-subtle">{t('Bild erzeugen')}</div>
-          {!engines.length && <div className="px-2.5 py-2 text-[12px] text-subtle">{t('Verbinde Codex, Antigravity oder ein lokales Bildmodell in den Einstellungen.')}</div>}
-          {engines.length > 0 && <p className="px-2.5 pb-2 text-[11px] text-subtle">{t('Die CLI muss die gewählte Bildversion unterstützen. Zugriff wird bei der Generierung geprüft.')}</p>}
-          {engines.map((e) => (
-            <button key={e.id} className={cx('flex w-full items-start gap-2.5 rounded-lumen-sm px-2.5 py-1.5 text-left transition-colors hover:bg-hover', value === e.id && 'bg-active')} onClick={() => { onChange(e.id); close(); }}>
-              <Dot id={e.provider} size={7} />
-              <span className="-mt-1 min-w-0 flex-1"><span className="block text-[12.5px]">{e.label} <span className="text-[11px] text-subtle">· {e.via}</span></span><span className="block text-[11px] text-subtle">{t(e.hint)}</span></span>
-              {value === e.id && <Icon name="lucide:check" size={14} className="shrink-0 text-accent" />}
-            </button>
-          ))}
-          {value && (<><div className="my-1 border-t border-edge" /><button className="flex w-full items-center gap-2 rounded-lumen-sm px-2.5 py-1.5 text-left text-[12.5px] text-muted hover:bg-hover hover:text-fg" onClick={() => { onChange(undefined); close(); }}><Icon name="lucide:message-square" size={14} /> {t('Zurück zum Chat (Bildmodus aus)')}</button></>)}
         </div>
       )}
     </Popover>

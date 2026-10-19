@@ -1,5 +1,5 @@
 import { t } from '@/lib/i18n';
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PROVIDERS, imageEngineLabel } from '@shared/catalog';
 import { hub } from '@/lib/api';
@@ -10,14 +10,17 @@ import { Markdown } from './Markdown';
 import { Collapse, CopyButton, ProviderMark, cx } from './ui';
 
 function Thinking({ text, live }: { text: string; live: boolean }) {
-  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<boolean | null>(null);
+  const open = expanded ?? live;
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (live && open && body.current) body.current.scrollTop = body.current.scrollHeight; }, [text, live, open]);
   return (
     <div className="text-[12.5px] text-subtle">
-      <button className="flex items-center gap-1.5 hover:text-muted" onClick={() => setOpen((o) => !o)}>
+      <button className="flex items-center gap-1.5 hover:text-muted" aria-expanded={open} onClick={() => setExpanded(!open)}>
         <Icon name="lucide:brain" size={14} className={live ? 'pulse-dot' : ''} /> {live ? t('Denkt nach…') : t('Gedankengang')}
         <Icon name={open ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={12} />
       </button>
-      <Collapse open={open}><div className="mt-1.5 whitespace-pre-wrap border-l-2 border-edge pl-3 italic">{text}</div></Collapse>
+      <Collapse open={open}><div ref={body} className="mt-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap border-l-2 border-edge pl-3 italic">{text}</div></Collapse>
     </div>
   );
 }
@@ -81,14 +84,12 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop }:
   }
   const lastIdx = m.blocks.length - 1;
   const empty = !m.blocks.some((b) => b.kind !== 'tool');
-  const activeTools = m.blocks.some((b) => b.kind === 'tool' && b.running);
   if (!live && empty && !m.error) return null;
   return (
     <div className="fade-in group/asst">
       {/* Volle Breite wie das Eingabefeld: Anbieter-Icon steht in der Kopfzeile statt in einer eigenen Spalte. */}
       <div className="min-w-0 space-y-2.5 [overflow-wrap:anywhere]">
         {(label || m.provider) && <div className="flex items-center gap-2 text-[11.5px] font-medium text-subtle">{m.provider && <ProviderMark id={m.provider} size={12} />}{label ?? PROVIDERS[m.provider!].name}</div>}
-        {empty && live && !activeTools && <div className="flex items-center gap-2 text-muted"><span className="pulse-dot size-2 rounded-full bg-accent" /> {t('arbeitet…')}</div>}
         {m.blocks.map((b, i) => {
           if (b.kind === 'text') return <Markdown key={i} text={b.text} />;
           if (b.kind === 'inject') return <div key={i} className="chip-in ml-auto w-fit max-w-[85%] select-text whitespace-pre-wrap [overflow-wrap:anywhere] rounded-lumen border border-accent/30 bg-accent/10 px-3 py-1.5 text-[13px]"><span className="mr-2 text-[10.5px] font-medium uppercase tracking-wide text-accent">{t('Direkt')}</span>{b.text}</div>;
@@ -96,7 +97,7 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop }:
           if (b.kind === 'image') return <GeneratedImage key={b.path} path={b.path} engine={b.engine} />;
           return null;
         })}
-        {live && <ToolActivity blocks={m.blocks} onStop={onStop} />}
+        {live && <ToolActivity live blocks={m.blocks} onStop={onStop} />}
         {m.error && <div className="flex gap-2 whitespace-pre-wrap rounded-lumen border border-bad/30 bg-bad/10 px-3 py-2 text-[12.5px] text-bad"><Icon name="lucide:triangle-alert" size={14} className="mt-0.5 shrink-0" /><span>{m.error}</span></div>}
         {!live && m.blocks.some((b) => b.kind === 'text') && (
           <div className="-mb-1 flex opacity-0 transition-opacity group-hover/asst:opacity-100">

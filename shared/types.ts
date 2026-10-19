@@ -168,6 +168,8 @@ export interface ModelInfo {
   group?: string;
   /** Modell erzeugt Bilder (z. B. Ollama-Bildmodelle). */
   image?: boolean;
+  /** Image route shown in the common model picker; never sent as a text-model ID. */
+  imageEngine?: string;
 }
 
 export interface ProviderStatus {

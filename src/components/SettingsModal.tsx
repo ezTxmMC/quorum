@@ -103,9 +103,7 @@ function OllamaTab() {
         <button className="icon-btn" title={t('Aktualisieren')} onClick={() => void useHub.getState().refreshStatus('ollama', true)}><Icon name="lucide:refresh-cw" size={14} /></button></div>
       <p className="text-muted">{t('Lokale Modelle über die Ollama-API (Standard: http://127.0.0.1:11434, änderbar über die Umgebungsvariable OLLAMA_HOST). Reiner Chat – ohne Tools, ohne Konto, ohne Limits.')}</p>
       {!st?.installed && <div className="rounded-lumen border border-warn/30 bg-warn/10 px-3 py-2 text-warn">{t('Ollama ist nicht erreichbar. Starte es mit „ollama serve“ und lade ein Modell (ollama pull …).')}</div>}
-      {st?.models.length ? (
-        <div className="flex flex-wrap gap-1.5">{st.models.map((m) => <button key={m.id} className={cx('rounded-full border px-2.5 py-0.5 text-[12px] hover:bg-hover', defaults.model === m.id ? 'border-accent text-accent' : 'border-edge')} onClick={() => useHub.getState().setProviderDefaults('ollama', { model: m.id })}>{m.label}</button>)}</div>
-      ) : null}
+
       <div>
         <div className="mb-2 text-[12px] font-medium text-muted">{t('Standardwerte für neue Chats & Agenten')}</div>
         <OptionsPanel provider="ollama" value={defaults} onChange={(patch) => useHub.getState().setProviderDefaults('ollama', patch)} />

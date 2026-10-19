@@ -1,10 +1,11 @@
 import { t } from '@/lib/i18n';
 import { useState } from 'react';
-import { PROVIDERS, isTextOnly, modelEfforts, modesFor, modeLabel, currentMode, modePatch, effortLabel, isChatModel } from '@shared/catalog';
+import { PROVIDERS, isTextOnly, modelEfforts, modesFor, modeLabel, currentMode, modePatch, effortLabel, canonicalModel, modelChoices, selectModelOptions } from '@shared/catalog';
 import type { ProviderId, ProviderOptions } from '@shared/types';
 import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
+import { ModelButton } from './ModelPicker';
 import { Collapse, Label, Select, Toggle } from './ui';
 
 interface Props {
@@ -13,21 +14,22 @@ interface Props {
   onChange: (patch: ProviderOptions) => void;
   /** Reduziert auf die wichtigsten Felder (für Agenten-Karten). */
   basic?: boolean;
+  allowImages?: boolean;
 }
 
 function Lines({ value, onChange, placeholder }: { value: string[] | undefined; onChange: (v: string[]) => void; placeholder: string }) {
   return <textarea className="field min-h-14 resize-y font-mono text-[12px]" placeholder={placeholder} value={(value ?? []).join('\n')} onChange={(e) => onChange(e.target.value.split('\n').filter((l) => l.trim() !== '' || e.target.value.endsWith('\n')))} />;
 }
 
-export function OptionsPanel({ provider, value, onChange, basic }: Props) {
+export function OptionsPanel({ provider, value, onChange, basic, allowImages }: Props) {
   const meta = PROVIDERS[provider];
-  const status = useHub((s) => s.statuses[provider]);
+  const statuses = useHub((s) => s.statuses);
   const [more, setMore] = useState(false);
   const custom = useHub((s) => s.data.settings.customModels?.[provider]);
-  const models = [...(status?.models ?? []), ...(custom ?? []).filter((id) => !status?.models.some((m) => m.id === id)).map((id) => ({ id, label: id }))].filter((m) => isChatModel(m.id));
-  const available = value.model && !models.some((m) => m.id === value.model) ? [{ id: value.model, label: value.model }, ...models] : models;
-  const model = models.find((m) => m.id === value.model) ?? models[0];
-  const efforts = modelEfforts(provider, model).map((v) => ({ value: v, label: t(effortLabel(provider, v)) }));
+  const models = modelChoices(provider, statuses, custom, allowImages);
+  const id = canonicalModel(provider, value.model);
+  const model = models.find((m) => m.id === id) ?? models[0];
+  const efforts = value.imageGen ? [] : modelEfforts(provider, model).map((v) => ({ value: v, label: t(effortLabel(provider, v)) }));
 
   const pickFile = async (key: 'mcpConfig' | 'jsonSchema') => {
     const [f] = await hub.pickFiles('json');
@@ -43,21 +45,21 @@ export function OptionsPanel({ provider, value, onChange, basic }: Props) {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label>{t('Modell')}</Label>
-          {provider === 'ollama' ? <Select value={value.model} onChange={(model) => onChange({ model: model || undefined, effort: undefined, speed: undefined })} options={available.map((m) => ({ value: m.id, label: m.label }))} placeholder={t('Standard')} /> : <><input className="field" list={`models-${provider}`} placeholder={t('Standard')} value={value.model ?? ''} onChange={(e) => onChange({ model: e.target.value || undefined, effort: undefined, speed: undefined })} />
-          <datalist id={`models-${provider}`}>{models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</datalist></>}
+          <ModelButton field down onlyProvider={provider} provider={provider} model={value.model} imageGen={value.imageGen} includeImages={allowImages}
+            onPick={(_provider, selected, imageGen) => onChange(selectModelOptions(value, selected, models.find((m) => m.id === selected), imageGen))} />
         </div>
         {efforts.length > 0 && <div>
           <Label>{t('Effort')}</Label>
           <Select value={value.effort} onChange={(v) => onChange({ effort: v || undefined })} options={efforts} placeholder={t('Standard')} />
         </div>}
       </div>
-      {modesFor(provider).length > 0 && <div>
+      {!value.imageGen && modesFor(provider).length > 0 && <div>
         <Label>{t('Berechtigungen')}</Label>
         <Select value={currentMode(provider, value)} onChange={(mode) => onChange(modePatch(provider, mode))} options={[...new Set([currentMode(provider, value), ...modesFor(provider)])].map((id) => ({ value: id, label: t(modeLabel(provider, id)) }))} />
         <p className="mt-1 text-[11px] text-subtle">{t('Ask-Modi: Rückfragen werden im Headless-Betrieb abgelehnt. Für Änderungen einen passenden Modus wählen.')}</p>
       </div>}
 
-      {!basic && (
+      {!basic && !value.imageGen && (
         <>
           <div>
             <Label>{t('System-Prompt / Zusatzanweisungen')}</Label>
@@ -78,12 +80,12 @@ export function OptionsPanel({ provider, value, onChange, basic }: Props) {
         </>
       )}
 
-      {!basic && !isTextOnly(provider) && (
+      {!basic && !value.imageGen && !isTextOnly(provider) && (
         <button className="flex items-center gap-1.5 text-[12px] text-muted hover:text-fg" onClick={() => setMore((m) => !m)}>
           <Icon name={more ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={14} /> {t('Erweiterte')} {meta.name} {t('Optionen')}
         </button>
       )}
-      {!basic && !isTextOnly(provider) && (
+      {!basic && !value.imageGen && !isTextOnly(provider) && (
         <Collapse open={more}>
         <div className="space-y-3.5 border-l-2 border-edge py-1 pl-3">
           {provider === 'claude' && (
