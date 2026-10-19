@@ -7,6 +7,8 @@ import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { Dot } from './ModelPicker';
 import { OptionsPanel } from './OptionsPanel';
+import { ApiProviderSettings } from './ApiProviderSettings';
+import { OllamaProviderSettings } from './OllamaProviderSettings';
 import { LocalProviderSettings } from './LocalProviderSettings';
 import { UsageView } from './UsageView';
 import { Markdown } from './Markdown';
@@ -93,25 +95,6 @@ function General() {
   );
 }
 
-function OllamaTab() {
-  const st = useHub((s) => s.statuses.ollama);
-  const defaults = useHub((s) => s.data.settings.providerDefaults.ollama);
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3"><Dot id="ollama" size={10} /><h2 className="flex-1 text-[16px] font-semibold">Ollama</h2>
-        <span className={cx('text-[12px]', st?.installed ? 'text-ok' : 'text-bad')}>{st?.installed ? `${st.version} · ${st.models.length} ${t('Modelle')}` : t('läuft nicht')}</span>
-        <button className="icon-btn" title={t('Aktualisieren')} onClick={() => void useHub.getState().refreshStatus('ollama', true)}><Icon name="lucide:refresh-cw" size={14} /></button></div>
-      <p className="text-muted">{t('Lokale Modelle über die Ollama-API (Standard: http://127.0.0.1:11434, änderbar über die Umgebungsvariable OLLAMA_HOST). Reiner Chat – ohne Tools, ohne Konto, ohne Limits.')}</p>
-      {!st?.installed && <div className="rounded-lumen border border-warn/30 bg-warn/10 px-3 py-2 text-warn">{t('Ollama ist nicht erreichbar. Starte es mit „ollama serve“ und lade ein Modell (ollama pull …).')}</div>}
-
-      <div>
-        <div className="mb-2 text-[12px] font-medium text-muted">{t('Standardwerte für neue Chats & Agenten')}</div>
-        <OptionsPanel provider="ollama" value={defaults} onChange={(patch) => useHub.getState().setProviderDefaults('ollama', patch)} />
-      </div>
-    </div>
-  );
-}
-
 function ProviderTab({ p }: { p: ProviderId }) {
   const settings = useHub((s) => s.data.settings);
   const st = useHub((s) => s.statuses[p]);
@@ -160,7 +143,7 @@ function ProvidersTab() {
         })}
       </div>
       <div key={sel} className="fade-in rounded-lumen-lg border border-edge p-5">
-        {sel === 'local' ? <LocalProviderSettings /> : sel === 'ollama' ? <OllamaTab /> : <ProviderTab p={sel} />}
+        {sel === 'api' ? <ApiProviderSettings /> : sel === 'local' ? <LocalProviderSettings onApi={() => setSel('api')} /> : sel === 'ollama' ? <OllamaProviderSettings /> : <ProviderTab p={sel} />}
         <ProviderCatalog p={sel} />
       </div>
     </div>
@@ -182,7 +165,7 @@ function ProviderCatalog({ p }: { p: ProviderId }) {
       {!status?.models.length && <p className="p-3 text-muted">{t('Keine Modelle verfügbar')}</p>}
     </div>
     {error && <p className="text-bad">{error}</p>}
-    {!['local', 'ollama'].includes(p) && <>
+    {!['local', 'ollama', 'api'].includes(p) && <>
       <Label hint={t('Eine Modell-ID pro Zeile')}>{t('Eigene / ältere Modell-IDs')}</Label>
       <textarea className="field min-h-20 resize-y font-mono text-[12px]" value={draft} onChange={(e) => setDraft(e.target.value)} />
       <p className="text-[11px] text-subtle">{t('Nur IDs eintragen, auf die dein Konto Zugriff hat. Diese Einträge sind manuell konfiguriert; die Verfügbarkeit wird nicht geprüft.')}</p>

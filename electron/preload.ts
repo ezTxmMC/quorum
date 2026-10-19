@@ -1,3 +1,4 @@
+import type { ApiConnection, OllamaManagement, OllamaPull } from '../shared/connections';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { Attachment, UsageReport, FsEntry, CliCommandResult, GitStatus, ImportEntry, ImportedSession, MultiEnvelope, MultiStart, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunEnvelope, RunRequest, UpdateChannel, UpdateProgress, UpdateState } from '../shared/types';
 import type { ChatMessage, ModelRecord, RuntimeDetection } from '../shared/models';
@@ -23,6 +24,17 @@ const sub = <T>(channel: string, cb: (p: T) => void) => {
 };
 
 const api = {
+  apiSetKey: (id: string, key: string): Promise<{ persistent: boolean }> => ipcRenderer.invoke('api:key', id, key),
+  apiHasKey: (id: string): Promise<boolean> => ipcRenderer.invoke('api:has-key', id),
+  apiInspect: (connection: ApiConnection): Promise<string[]> => ipcRenderer.invoke('api:inspect', connection),
+  ollamaManage: (): Promise<OllamaManagement> => ipcRenderer.invoke('ollama:manage'),
+  ollamaAction: (action: 'load' | 'unload' | 'delete', model: string): Promise<void> => ipcRenderer.invoke('ollama:action', action, model),
+  ollamaPull: (model: string): Promise<string> => ipcRenderer.invoke('ollama:pull', model),
+  ollamaPulls: (): Promise<OllamaPull[]> => ipcRenderer.invoke('ollama:pulls'),
+  ollamaCancelPull: (id: string): Promise<void> => ipcRenderer.invoke('ollama:cancel-pull', id),
+  ollamaStart: (): Promise<void> => ipcRenderer.invoke('ollama:start'),
+  ollamaStop: (): Promise<void> => ipcRenderer.invoke('ollama:stop'),
+  onOllamaProgress: (callback: (state: OllamaPull) => void) => sub('ollama:progress', callback),
   load: (): Promise<Persisted> => ipcRenderer.invoke('store:load'),
   save: (d: Persisted): Promise<void> => ipcRenderer.invoke('store:save', d),
   run: (r: RunRequest): Promise<void> => ipcRenderer.invoke('hub:run', r),
@@ -88,6 +100,7 @@ const api = {
   modelRemove: (id: string): Promise<boolean> => ipcRenderer.invoke('models:remove', id),
   modelConfig: (id: string, load: ModelRecord['load']): Promise<ModelRecord | undefined> => ipcRenderer.invoke('models:config', id, load),
   modelLoad: (id: string, priority?: number): Promise<boolean> => ipcRenderer.invoke('models:load', id, priority),
+  modelForget: (id: string): Promise<void> => ipcRenderer.invoke('models:forget', id),
   modelUnload: (id: string): Promise<boolean> => ipcRenderer.invoke('models:unload', id),
   modelLoaded: (): Promise<LoadedInfo[]> => ipcRenderer.invoke('models:loaded'),
   modelRuntime: (): Promise<RuntimeDetection> => ipcRenderer.invoke('models:runtime'),

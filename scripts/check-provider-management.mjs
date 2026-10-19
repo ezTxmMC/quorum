@@ -1,0 +1,137 @@
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { apiBaseUrl, apiModelId, resolveApiModel } from '../shared/connections.ts';
+import { configureApi, inspectApi, apiStatus, runApi, cancelApi } from '../electron/providers/api.ts';
+import { setOllamaSettings, host } from '../electron/providers/ollama.ts';
+import { ollamaManagement, ollamaModelAction, pullOllama, cancelOllamaPull, ollamaPullList, startOllama, stopOllama } from '../electron/providers/ollama-management.ts';
+
+assert.equal(apiBaseUrl('http://localhost:8080/v1/'), 'http://localhost:8080/v1');
+assert.throws(() => apiBaseUrl('file:///etc/passwd'));
+assert.throws(() => apiBaseUrl('http://user:password@example.com'));
+assert.throws(() => apiBaseUrl('http://localhost:8080/v1?key=secret'));
+const connection = { id: 'one', name: 'Test API', enabled: true, baseUrl: 'http://localhost:8080/v1/', models: ['manual:Q4'] };
+const disabled = { ...connection, id: 'disabled', enabled: false };
+assert.equal(resolveApiModel(apiModelId('one', 'org/model:Q4'), [connection]).model, 'org/model:Q4');
+assert.throws(() => resolveApiModel('disabled::m', [disabled]));
+assert.throws(() => resolveApiModel('missing::m', [connection]));
+const originalFetch = globalThis.fetch;
+let cancelledReader = false;
+const req = { runId: 'api-test', provider: 'api', cwd: '', prompt: 'Current question', options: { model: 'one::org/model:Q4', systemPrompt: 'Keep these instructions' }, history: [{ role: 'user', content: 'Earlier question' }] };
+try {
+  configureApi(() => [connection, disabled], async (id) => id === 'one' ? 'test-secret' : undefined);
+  globalThis.fetch = async (url, init) => {
+    assert.equal(init.headers.Authorization, 'Bearer test-secret');
+    assert.equal(init.redirect, 'error');
+    if (String(url).endsWith('/models')) return Response.json({ data: [{ id: 'org/model:Q4' }] });
+    assert.equal(url, 'http://localhost:8080/v1/chat/completions');
+    const body = JSON.parse(init.body);
+    assert.equal(body.model, 'org/model:Q4');
+    assert.deepEqual(body.messages, [{ role: 'system', content: 'Keep these instructions' }, { role: 'user', content: 'Earlier question' }, { role: 'user', content: 'Current question' }]);
+    const wire = ': ping\r\n\r\ndata: {"choices":[{"delta":{"reasoning_content":"Thinking"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"Grüße"}}]}\n\ndata: {"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":3}}\n\ndata: [DONE]\n\n';
+    const bytes = new TextEncoder().encode(wire);
+    return new Response(new ReadableStream({ start(controller) { for (let i = 0; i < bytes.length; i += 7) controller.enqueue(bytes.slice(i, i + 7)); }, cancel() { cancelledReader = true; } }), { headers: { 'Content-Type': 'text/event-stream' } });
+  };
+  assert.deepEqual(await inspectApi(connection), ['org/model:Q4']);
+  const status = await apiStatus();
+  assert(status.installed);
+  assert.equal(status.models.length, 2);
+  assert.equal(status.models[0].group, 'Test API');
+  const events = [];
+  assert.deepEqual(await runApi(req, (e) => events.push(e)), { ok: true, text: 'Grüße' });
+  assert(events.some((e) => e.type === 'thinking' && e.delta === 'Thinking'));
+  assert(events.some((e) => e.type === 'usage' && e.inputTokens === 4));
+  assert.equal(events.at(-1).type, 'done');
+  assert(cancelledReader, '[DONE] closes the reader even if a server keeps the HTTP connection open');
+  globalThis.fetch = async () => Response.json({ choices: [{ message: { content: 'Non-streaming fallback' } }] });
+  assert.equal((await runApi(req, () => {})).text, 'Non-streaming fallback');
+  globalThis.fetch = async () => new Response('not a chat protocol');
+  assert.equal((await runApi(req, () => {})).ok, false);
+  globalThis.fetch = async () => Response.json({ error: { message: 'Authentication rejected' } }, { status: 401 });
+  const errors = [];
+  assert.equal((await runApi(req, (e) => errors.push(e))).ok, false);
+  assert.equal(errors.at(-1).error, 'Authentication rejected');
+  let ready;
+  const started = new Promise((resolve) => { ready = resolve; });
+  globalThis.fetch = async (_url, init) => new Promise((_resolve, reject) => { ready(); if (init.signal.aborted) reject(new Error('aborted')); else init.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }); });
+  const stopping = [];
+  const pending = runApi({ ...req, runId: 'cancel-api' }, (e) => stopping.push(e));
+  await started;
+  assert(cancelApi('cancel-api'));
+  assert.equal((await pending).ok, false);
+  assert.equal(stopping.at(-1).error, 'Abgebrochen');
+  assert.equal(cancelApi('cancel-api'), false);
+
+  setOllamaSettings(() => ({ host: 'http://localhost:11435', mode: 'api' }));
+  assert.equal(host(), 'http://localhost:11435');
+  const actions = [];
+  globalThis.fetch = async (url, init) => {
+    assert(String(url).startsWith('http://localhost:11435/api/'));
+    if (String(url).endsWith('/tags')) return Response.json({ models: [{ name: 'team/model:Q4_K_M', size: 123 }] });
+    if (String(url).endsWith('/ps')) return Response.json({ models: [{ name: 'team/model:Q4_K_M', size_vram: 100 }] });
+    const body = JSON.parse(init.body);
+    actions.push({ url: String(url), method: init.method, body });
+    if (String(url).endsWith('/pull')) return new Response('{"status":"pulling","completed":10,"total":20}\n{"status":"success"}');
+    return Response.json({});
+  };
+  const managed = await ollamaManagement();
+  assert.equal(managed.owned, false);
+  assert.deepEqual(managed.models[0], { name: 'team/model:Q4_K_M', size: 123, loaded: true, vram: 100 });
+  await ollamaModelAction('load', 'team/model:Q4_K_M');
+  await ollamaModelAction('unload', 'team/model:Q4_K_M');
+  await ollamaModelAction('delete', 'team/model:Q4_K_M');
+  assert.equal(actions[0].body.keep_alive, '10m');
+  assert.equal(actions[1].body.keep_alive, 0);
+  assert.equal(actions[2].method, 'DELETE');
+  assert.equal(actions[2].body.model, 'team/model:Q4_K_M');
+  const updates = [];
+  await new Promise((resolve) => pullOllama('team/model:Q4_K_M', (state) => { updates.push(state); if (state.status !== 'running') resolve(); }));
+  assert.equal(updates.at(-1).status, 'done');
+  assert(updates.some((s) => s.completed === 10 && s.total === 20));
+  globalThis.fetch = async (_url, init) => new Promise((_resolve, reject) => { init.signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }); });
+  let cancelled;
+  const cancelledDone = new Promise((resolve) => { cancelled = resolve; });
+  const id = pullOllama('another:tag', (state) => { if (state.status !== 'running') cancelled(state); });
+  assert.throws(() => pullOllama('another:tag', () => {}), /bereits/);
+  cancelOllamaPull(id);
+  assert.equal((await cancelledDone).status, 'cancelled');
+  assert.equal(ollamaPullList().at(-1).status, 'cancelled');
+} finally { globalThis.fetch = originalFetch; setOllamaSettings(() => ({})); configureApi(() => [], async () => undefined); }
+if (process.platform !== 'win32') {
+  const outside = createServer((_request, response) => { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ version: 'fixture', models: [] })); });
+  let directory;
+  try {
+    await new Promise((resolve) => outside.listen(0, '127.0.0.1', resolve));
+    const port = outside.address().port;
+    setOllamaSettings(() => ({ host: `http://127.0.0.1:${port}`, binary: '/does-not-exist', mode: 'api' }));
+    await assert.rejects(() => startOllama(), /API-Modus/);
+    setOllamaSettings(() => ({ host: `http://127.0.0.1:${port}`, binary: '/does-not-exist', mode: 'local' }));
+    await startOllama();
+    assert.equal((await ollamaManagement()).owned, false);
+    await assert.rejects(() => stopOllama(), /nicht von Quorum/);
+    assert((await fetch(`http://127.0.0.1:${port}/api/version`)).ok);
+    await new Promise((resolve) => outside.close(resolve));
+    directory = await mkdtemp(join(tmpdir(), 'quorum-ollama-test-'));
+    const binary = join(directory, 'fake-ollama.mjs');
+    await writeFile(binary, `#!/usr/bin/env node
+import { createServer } from 'node:http';
+const endpoint = new URL('http://' + process.env.OLLAMA_HOST);
+const server = createServer((_request, response) => { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({version:'fixture',models:[]})); });
+server.listen(Number(endpoint.port), endpoint.hostname);
+process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
+`, { mode: 0o700 });
+    setOllamaSettings(() => ({ host: `http://127.0.0.1:${port}`, binary, mode: 'local' }));
+    await startOllama();
+    assert.equal((await ollamaManagement()).owned, true);
+    await stopOllama();
+    await assert.rejects(() => fetch(`http://127.0.0.1:${port}/api/version`));
+  } finally {
+    await stopOllama().catch(() => {});
+    if (outside.listening) await new Promise((resolve) => outside.close(resolve));
+    if (directory) await rm(directory, { recursive: true, force: true });
+    setOllamaSettings(() => ({}));
+  }
+}
+console.log('Provider management checks passed: API model discovery, keys, streaming, errors, cancellation and Ollama lifecycle requests.');

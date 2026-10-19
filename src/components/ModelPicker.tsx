@@ -6,7 +6,7 @@ import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { Popover, cx } from './ui';
 
-const ORDER: ProviderId[] = ['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local'];
+const ORDER: ProviderId[] = ['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'];
 
 export function Dot({ id, size = 8 }: { id: ProviderId; size?: number }) {
   return <span className="inline-block shrink-0 rounded-full" style={{ width: size, height: size, background: PROVIDERS[id].color, boxShadow: `0 0 0 3px color-mix(in srgb, ${PROVIDERS[id].color} 22%, transparent)` }} />;

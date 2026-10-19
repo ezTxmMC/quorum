@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
+    "test:providers": "node --experimental-strip-types scripts/check-provider-management.mjs",
     "test:chat-controls": "node --experimental-strip-types scripts/check-chat-controls.mjs",
     "start": "electron . --no-sandbox",
     "dist": "vite build && electron-builder --publish never",

@@ -46,7 +46,7 @@ export function ChatPage() {
   useEffect(() => {
     if (!session || !providerGone) return;
     const st = useHub.getState();
-    const next = (['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local'] as ProviderId[]).find((p) => st.statuses[p]?.installed);
+    const next = (['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'] as ProviderId[]).find((p) => st.statuses[p]?.installed);
     if (next) patchSession(session.id, { provider: next, options: { ...st.data.settings.providerDefaults[next] } });
   }, [providerGone, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 

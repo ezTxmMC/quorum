@@ -6,6 +6,7 @@ import { useHub } from '@/lib/store';
 import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
 import { Label, Toggle, cx } from './ui';
+import { LocalModelManagement } from './LocalModelManagement';
 import { OptionsPanel } from './OptionsPanel';
 const gb = (bytes: number) => (bytes / 1024 ** 3).toFixed(1);
 const pct = (a: number, b: number) => b > 0 ? Math.min(100, a / b * 100) : 0;
@@ -48,7 +49,7 @@ function RuntimeCard({ rt, res }: { rt?: RuntimeDetection; res?: ResourceSnapsho
 }
 
 
-export function LocalProviderSettings() {
+export function LocalProviderSettings({ onApi }: { onApi?: () => void }) {
   const settings = useHub((s) => s.data.settings);
   const [rt, setRt] = useState<RuntimeDetection>();
   const [res, setRes] = useState<ResourceSnapshot>();
@@ -67,6 +68,7 @@ export function LocalProviderSettings() {
   const configure = (patch: Partial<typeof runtime>) => set({ localRuntime: { ...runtime, ...patch } });
   return <div className="space-y-4">
     <RuntimeCard rt={rt} res={res} />
+    {onApi && <button className="btn" onClick={onApi}><Icon name="lucide:cloud" size={14} />{t('Bestehenden Server nur per API verbinden')}</button>}
     <Label hint={t('Gilt für neu gestartete Modelle')}>{t('Pfad zu llama-server')}</Label>
     <div className="flex gap-2"><input className="field font-mono text-[12px]" value={settings.llamaBinary ?? ''} placeholder="llama-server" onChange={(e) => set({ llamaBinary: e.target.value || undefined })} /><button className="btn" onClick={async () => { const [f] = await hub.pickFiles('any'); if (f) set({ llamaBinary: f }); }}><Icon name="lucide:file-search" size={14} /></button><button className="btn" disabled={busy} onClick={() => void refresh()}><Icon name="lucide:refresh-cw" size={14} /></button></div>
     <div className="grid grid-cols-2 gap-3">
@@ -74,8 +76,9 @@ export function LocalProviderSettings() {
       <div><Label>{t('Freier GPU-Speicher (MiB)')}</Label><input className="field" type="number" min={0} max={65536} step={128} value={runtime.vramReserveMb ?? 512} onChange={(e) => configure({ vramReserveMb: Math.max(0, Math.min(65536, Number(e.target.value))) })} /></div>
     </div>
     <Toggle checked={runtime.cpuFallback !== false} onChange={(cpuFallback) => configure({ cpuFallback })} label={t('CPU-Fallback bei GPU-Speichermangel')} />
-    <p className="text-[11px] text-subtle">{t('Backend, GPU-Schichten und Kontextgröße werden pro Modell unter Modelle eingestellt.')}</p>
+    <p className="text-[11px] text-subtle">{t('Backend, GPU-Schichten und Kontextgröße lassen sich unten pro Modell einstellen.')}</p>
     {error && <p className="text-bad">{error}</p>}
+    <LocalModelManagement runtime={rt} />
     <OptionsPanel provider="local" value={settings.providerDefaults.local} onChange={(patch) => useHub.getState().setProviderDefaults('local', patch)} />
   </div>;
 }

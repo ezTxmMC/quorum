@@ -1,15 +1,20 @@
+import { apiBaseUrl } from '../../shared/connections.ts';
 import type { HubEvent, ModelInfo, RunRequest } from '../../shared/types';
 
 // Ollama: lokale Modelle über die HTTP-API (Standard http://127.0.0.1:11434, überschreibbar mit OLLAMA_HOST).
 // Reiner Textchat – der Verlauf kommt aus dem Hub, es gibt keine Tools.
-function host(): string {
-  const h = (process.env.OLLAMA_HOST ?? '').trim();
+let settings = (): { host?: string; binary?: string; mode?: 'local' | 'api' } => ({});
+export function setOllamaSettings(get: typeof settings) { settings = get; }
+export const ollamaSettings = () => settings();
+export function host(): string {
+  const h = (settings().host ?? process.env.OLLAMA_HOST ?? '').trim();
   if (!h) return 'http://127.0.0.1:11434';
   const withScheme = /^https?:\/\//.test(h) ? h : `http://${h}`;
-  return withScheme.replace(/\/+$/, '').replace('://0.0.0.0', '://127.0.0.1');
+  return apiBaseUrl(withScheme.replace('://0.0.0.0', '://127.0.0.1'));
 }
 
 const aborts = new Map<string, AbortController>();
+export function cancelAllOllama(): void { for (const controller of aborts.values()) controller.abort(); }
 export function cancelOllama(runId: string): boolean {
   const a = aborts.get(runId);
   if (!a) return false;

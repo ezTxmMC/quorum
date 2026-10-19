@@ -101,6 +101,7 @@ export class ModelScheduler {
   private loaded = new Map<string, Entry>();
   private queue: Task[] = [];
   private busy = false;
+  private loadingModel: string | undefined;
   private seq = 0;
   private timer: ReturnType<typeof setInterval>;
 
@@ -169,6 +170,10 @@ export class ModelScheduler {
     this.opts.onEvent = fn;
   }
 
+  isBusy(modelId: string): boolean {
+    return !!this.loaded.get(modelId)?.inUse || this.loadingModel === modelId || this.queue.some((task) => task.modelId === modelId);
+  }
+
   async unload(modelId: string): Promise<boolean> {
     const e = this.loaded.get(modelId);
     if (!e || e.inUse > 0) return false;
@@ -202,6 +207,7 @@ export class ModelScheduler {
     const next = this.queue.sort((a, b) => b.priority - a.priority || a.seq - b.seq).shift();
     if (!next) return;
     this.busy = true;
+    this.loadingModel = next.modelId;
     try {
       // Während der Wartezeit kann dasselbe Modell schon geladen worden sein.
       const ready = this.loaded.get(next.modelId);
@@ -213,6 +219,7 @@ export class ModelScheduler {
       next.reject(err);
     } finally {
       this.busy = false;
+      this.loadingModel = undefined;
       void this.pump();
     }
   }

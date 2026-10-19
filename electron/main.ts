@@ -1,3 +1,7 @@
+import { configureApi, inspectApi } from './providers/api';
+import { apiKey, setApiKey } from './api-keys';
+import { setOllamaSettings } from './providers/ollama';
+import { ollamaManagement, ollamaModelAction, ollamaPullList, pullOllama, cancelOllamaPull, startOllama, stopOllama, shutdownOllama } from './providers/ollama-management';
 import { setLlamaBinary } from './runtimes/llamacpp';
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray, type WebContents } from 'electron';
 import { existsSync, mkdirSync, promises as fsp } from 'node:fs';
@@ -229,6 +233,21 @@ function refreshUsage(): Promise<UsageReport> {
 }
 
 function registerIpc() {
+  configureApi(() => data.settings.apiConnections ?? [], apiKey);
+  setOllamaSettings(() => data.settings.ollama ?? {});
+  ipcMain.handle('api:key', (_e, id: string, key: string) => setApiKey(id, key));
+  ipcMain.handle('api:has-key', async (_e, id: string) => !!await apiKey(id));
+  ipcMain.handle('api:inspect', (_e, connection: import('../shared/connections').ApiConnection) => inspectApi(connection));
+  ipcMain.handle('ollama:manage', () => ollamaManagement());
+  ipcMain.handle('ollama:action', (_e, action: 'load' | 'unload' | 'delete', model: string) => {
+    if (!['load', 'unload', 'delete'].includes(action)) throw new Error('Unbekannte Ollama-Aktion');
+    return ollamaModelAction(action, model);
+  });
+  ipcMain.handle('ollama:pull', (_e, model: string) => pullOllama(model, (state) => { for (const w of allWindows()) sendTo(w.webContents, 'ollama:progress', state); }));
+  ipcMain.handle('ollama:pulls', () => ollamaPullList());
+  ipcMain.handle('ollama:cancel-pull', (_e, id: string) => cancelOllamaPull(id));
+  ipcMain.handle('ollama:start', () => startOllama());
+  ipcMain.handle('ollama:stop', () => stopOllama());
   setLlamaBinary(() => data.settings.llamaBinary);
   scheduler.configure(data.settings.localRuntime);
   ipcMain.handle('store:load', () => data);
@@ -404,11 +423,19 @@ app.whenReady().then(() => {
   }, 4000);
   app.on('activate', () => { if (allWindows().length === 0) createWindow(); });
 });
-app.on('before-quit', () => { quitting = true; cancelAll(); void scheduler.shutdown(); });
-// Beenden per Signal (z. B. SIGTERM vom Systemdienst) stoppt ebenfalls alle Läufe und Runtimes, bevor die App endet.
-for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
-  process.on(sig, () => { cancelAll(); void scheduler.shutdown().finally(() => app.quit()); });
-}
+let shutdownStarted = false;
+let shutdownComplete = false;
+app.on('before-quit', (event) => {
+  quitting = true;
+  if (shutdownComplete) return;
+  event.preventDefault();
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  cancelAll();
+  void Promise.allSettled([shutdownOllama(), scheduler.shutdown()]).then(() => { shutdownComplete = true; app.quit(); });
+});
+// Signals use the same cleanup path as a normal quit, including owned local servers.
+for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(sig, () => app.quit());
 // Kontextmenü (Kopieren/Einfügen …) – randlose Fenster haben standardmäßig keines.
 app.on('web-contents-created', (_e, wc) => {
   wc.on('context-menu', (_ev, p) => {

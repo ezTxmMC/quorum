@@ -1,3 +1,4 @@
+import { cancelAllApi, cancelApi, runApi } from './api';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,7 +8,7 @@ import { buildClaude, ClaudeParser } from './claude';
 import { buildCodex, CodexParser } from './codex';
 import { buildAntigravity, AntigravityParser } from './antigravity';
 import { detectedModel, resolveBinary } from './detect';
-import { cancelOllama, runOllama } from './ollama';
+import { cancelAllOllama, cancelOllama, runOllama } from './ollama';
 import { buildOpenCode, OpenCodeParser } from './opencode';
 import { IMAGE_ENGINES } from '../../shared/catalog';
 import { ImageCollector, collectsImages, imagePrompt } from '../images';
@@ -45,6 +46,7 @@ export function injectMessage(runId: string, text: string, attachments: Attachme
 
 function build(req: RunRequest): Built {
   switch (req.provider) {
+    case 'api':
     case 'ollama': throw new Error(`${req.provider} läuft ohne CLI`);
     case 'local': throw new Error('Lokale Modelle laufen ohne CLI');
     case 'opencode': return { ...buildOpenCode(req), parser: new OpenCodeParser() };
@@ -63,6 +65,7 @@ export function runCli(
   binaries: Partial<Record<ProviderId, string>>,
 ): Promise<{ ok: boolean; sessionId?: string; text: string }> {
   if (req.imageGen) return runImage(req, emit, binaries);
+  if (req.provider === 'api') return runApi(req, emit);
   if (req.provider === 'ollama') return runOllama(req, emit);
   if (req.provider === 'local') return runLocalText(req, emit);
   if (req.provider === 'antigravity' && req.options.model) {
@@ -196,7 +199,7 @@ function tail(s: string): string {
 }
 
 export function cancelRun(runId: string): void {
-  if (cancelOllama(runId) || cancelLocalChat(runId)) return;
+  if (cancelApi(runId) || cancelOllama(runId) || cancelLocalChat(runId)) return;
   const p = procs.get(runId);
   if (!p || p.pid === undefined) return;
   try {
@@ -216,6 +219,8 @@ export function cancelRun(runId: string): void {
 }
 
 export function cancelAll(): void {
+  cancelAllApi();
+  cancelAllOllama();
   for (const id of [...procs.keys()]) cancelRun(id);
 }
 

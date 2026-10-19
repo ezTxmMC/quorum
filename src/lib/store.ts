@@ -76,7 +76,7 @@ const emptyData = (): Persisted => ({
   version: 1,
   settings: {
     theme: 'dark', language: navigator.language.startsWith('de') ? 'de' : 'en', autoImport: true, sidebarPinned: true, quickHotkey: 'CommandOrControl+Shift+Space', dock: defaultDock(), terminal: defaultTerminal(), accent: '#7c8cff', defaultProvider: 'claude', defaultCwd: '', binaries: {},
-    providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {} },
+    providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {}, api: {} },
     updateChannel: 'release', autoCheckUpdate: true,
   },
   recentProjects: [], projects: [], hidden: [], dismissed: [], sessions: [], multiRuns: [], presets: [],
@@ -147,7 +147,7 @@ export const useHub = create<State>((set, get) => {
       data.sessions = data.sessions.filter((x) => x.messages.length > 0);
       data.multiRuns = data.multiRuns.map((r) => (r.status === 'running' ? { ...r, status: 'stopped', turns: r.turns.map((t) => ({ ...t, running: false })) } : r));
       set({ data, ready: true });
-      (['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local'] as ProviderId[]).forEach((id) => void get().refreshStatus(id));
+      (['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'] as ProviderId[]).forEach((id) => void get().refreshStatus(id));
     },
 
     async refreshStatus(id, force) {

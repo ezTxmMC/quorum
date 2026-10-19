@@ -4,10 +4,10 @@ import type { DockState, ModelInfo, TerminalStyle, ProviderId, ProviderOptions }
 export interface Choice { value: string; label: string; hint?: string }
 
 /** Anbieter, die Nachrichten mitten im Lauf annehmen (Steuern). Alle anderen: nur einreihen (Queue). */
-export const DIRECT_MESSAGES: Record<ProviderId, boolean> = { claude: true, codex: false, antigravity: false, opencode: false, ollama: false, local: false };
+export const DIRECT_MESSAGES: Record<ProviderId, boolean> = { claude: true, codex: false, antigravity: false, opencode: false, ollama: false, local: false, api: false };
 
 /** Reine Text-Chats über eine HTTP-API: kein Projektordner, keine Tools, der Verlauf kommt aus dem Hub. */
-export const TEXT_ONLY: ProviderId[] = ['ollama', 'local'];
+export const TEXT_ONLY: ProviderId[] = ['ollama', 'local', 'api'];
 export const isTextOnly = (p: ProviderId) => TEXT_ONLY.includes(p);
 
 export interface ProviderMeta {
@@ -27,6 +27,11 @@ export interface ProviderMeta {
 }
 
 export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
+  api: {
+    id: 'api', name: 'API', vendor: 'Externe API', bin: '', color: '#a78bfa', icon: 'lucide:cloud',
+    permissionLabel: 'Modus', permissions: [], efforts: [], commands: [],
+    features: ['OpenAI-kompatible Chat-API', 'Streaming', 'Eigene Endpunkte & Modelle', 'System-Prompt', 'Ohne lokale Runtime'],
+  },
   opencode: {
     id: 'opencode',
     name: 'OpenCode',
@@ -193,6 +198,7 @@ export const DEFAULT_OPTIONS: Record<ProviderId, ProviderOptions> = {
   opencode: {},
   ollama: {},
   local: {},
+  api: {},
 };
 
 // ---- Berechtigungsmodi (pro Chat wählbar) ---------------------------------------------------------------------------------

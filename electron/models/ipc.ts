@@ -65,6 +65,13 @@ export function registerModelIpc(send: Send): void {
     return !!record;
   });
 
+  ipcMain.handle('models:forget', async (_e, id: string) => {
+    if (scheduler.isBusy(id)) throw new Error('Modell wird gerade verwendet. Zuerst den Chat stoppen.');
+    await scheduler.unload(id);
+    removeModel(id);
+    send('models:registry', null);
+  });
+
   ipcMain.handle('models:config', (_e, id: string, load: ModelRecord['load']) => patchModel(id, { load }));
 
   ipcMain.handle('models:load', async (_e, id: string, priority = 0) => {

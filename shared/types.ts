@@ -2,7 +2,7 @@ import type { Capability } from './models';
 // Gemeinsame Typen für Main-Prozess und Renderer.
 
 /** `local`: Modelle aus der Modell-Verwaltung (GGUF/Transformers), ohne Werkzeuge, nur Text. */
-export type ProviderId = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'ollama' | 'local';
+export type ProviderId = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'ollama' | 'local' | 'api';
 
 export interface ProviderOptions {
   model?: string;
@@ -178,6 +178,7 @@ export interface ProviderStatus {
   path?: string;
   version?: string;
   models: ModelInfo[];
+  error?: string;
 }
 
 export interface CliCommandResult {
@@ -287,6 +288,8 @@ export interface Settings {
   showUsageInComposer?: boolean;
   customModels?: Partial<Record<ProviderId, string[]>>;
   llamaBinary?: string;
+  ollama?: { host?: string; binary?: string; mode?: 'local' | 'api' };
+  apiConnections?: import('./connections').ApiConnection[];
   localRuntime?: { idleMinutes?: number; cpuFallback?: boolean; vramReserveMb?: number };
   terminal: TerminalStyle;
   /** Globaler Hotkey für das Schnell-Prompt-Fenster (Electron-Accelerator). */

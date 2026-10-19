@@ -84,7 +84,7 @@ function CliLimits({ provider }: { provider: 'claude' | 'antigravity' }) {
 
 type Stats = Record<ProviderId, { msgs: number; input: number; output: number; cost: number }>;
 function computeStats(d: Persisted): Stats {
-  const acc = Object.fromEntries((['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local'] as ProviderId[]).map((p) => [p, { msgs: 0, input: 0, output: 0, cost: 0 }])) as Stats;
+  const acc = Object.fromEntries((['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'] as ProviderId[]).map((p) => [p, { msgs: 0, input: 0, output: 0, cost: 0 }])) as Stats;
   const add = (p: ProviderId | undefined, u: { inputTokens?: number; outputTokens?: number; costUsd?: number } | undefined) => { if (!p || !u) return; const a = acc[p]; a.msgs++; a.input += u.inputTokens ?? 0; a.output += u.outputTokens ?? 0; a.cost += u.costUsd ?? 0; };
   for (const s of d.sessions) for (const m of s.messages) if (m.role === 'assistant') add(m.provider, m.usage);
   for (const r of d.multiRuns) for (const tn of r.turns) add(tn.message.provider, tn.message.usage);
@@ -187,7 +187,7 @@ export function UsageView() {
           <table className="w-full text-left">
             <thead className="bg-surface text-[11.5px] text-muted"><tr><th className="px-3 py-2 font-medium">{t('Anbieter')}</th><th className="px-3 py-2 font-medium">{t('Antworten')}</th><th className="px-3 py-2 font-medium">↑ {t('Eingabe')}</th><th className="px-3 py-2 font-medium">↓ {t('Ausgabe')}</th><th className="px-3 py-2 font-medium">{t('Kosten')}</th></tr></thead>
             <tbody>
-              {(['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local'] as ProviderId[]).map((p) => (
+              {(['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'] as ProviderId[]).map((p) => (
                 <tr key={p} className="border-t border-edge"><td className="px-3 py-2"><span className="flex items-center gap-2"><Dot id={p} />{PROVIDERS[p].name}</span></td><td className="px-3 py-2">{hubStats ? hubStats[p].msgs : '…'}</td><td className="px-3 py-2">{hubStats ? fmt(hubStats[p].input) : '…'}</td><td className="px-3 py-2">{hubStats ? fmt(hubStats[p].output) : '…'}</td><td className="px-3 py-2">{hubStats?.[p].cost ? `$${hubStats[p].cost.toFixed(2)}` : '–'}</td></tr>
               ))}
             </tbody>

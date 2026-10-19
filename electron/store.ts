@@ -27,7 +27,7 @@ export function defaults(): Persisted {
       defaultProvider: 'claude',
       defaultCwd: homedir(),
       binaries: {},
-      providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {} },
+      providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {}, api: {} },
       updateChannel: 'release',
       autoCheckUpdate: true,
     },

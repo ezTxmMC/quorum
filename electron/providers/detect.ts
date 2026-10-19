@@ -1,3 +1,4 @@
+import { apiStatus } from './api';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -11,7 +12,7 @@ import type { CliCommandResult, ModelInfo, ProviderId, ProviderStatus } from '..
 const EXTRA_DIRS = [join(homedir(), '.opencode', 'bin'), join(homedir(), '.local', 'bin'), join(homedir(), '.npm-global', 'bin'), '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin'];
 
 export function resolveBinary(id: ProviderId, overrides: Partial<Record<ProviderId, string>> = {}): string | undefined {
-  if (id === 'ollama') return undefined; // laufen über HTTP-APIs, keine CLI
+  if (id === 'ollama' || id === 'local' || id === 'api') return undefined; // laufen über HTTP-APIs, keine CLI
   const custom = overrides[id];
   if (custom && existsSync(custom)) return custom;
   const name = PROVIDERS[id].bin + (process.platform === 'win32' ? '.cmd' : '');
@@ -92,6 +93,7 @@ export async function providerStatus(id: ProviderId, overrides: Partial<Record<P
     return { id, installed: s.up, version: s.up ? `Ollama ${s.version ?? ''}`.trim() : undefined, models: s.models };
   }
   if (id === 'local') return localStatus();
+  if (id === 'api') return apiStatus();
   const hit = cache.get(id);
   if (hit && !refresh) return hit;
   const bin = resolveBinary(id, overrides);
