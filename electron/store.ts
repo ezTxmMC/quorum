@@ -30,6 +30,7 @@ export function defaults(): Persisted {
       providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {}, api: {} },
       updateChannel: 'release',
       autoCheckUpdate: true,
+      chatList: { groupBy: 'project', sortBy: 'updated', sortOrder: 'desc' },
     },
     recentProjects: [],
     projects: [],

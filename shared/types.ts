@@ -295,6 +295,16 @@ export interface ThreeDSettings {
   autoExport?: boolean;
 }
 
+export type ChatGroupBy = 'project' | 'date' | 'provider' | 'mode' | 'none';
+export type ChatSortBy = 'updated' | 'created' | 'title' | 'messages';
+export type ChatSortOrder = 'desc' | 'asc';
+
+export interface ChatListSettings {
+  groupBy?: ChatGroupBy;
+  sortBy?: ChatSortBy;
+  sortOrder?: ChatSortOrder;
+}
+
 export interface Settings {
   sidebarPinned: boolean;
   showOlderModels?: boolean;
@@ -319,6 +329,7 @@ export interface Settings {
   updateChannel: UpdateChannel;
   autoCheckUpdate: boolean;
   threed?: ThreeDSettings;
+  chatList?: ChatListSettings;
 }
 
 export interface Persisted {

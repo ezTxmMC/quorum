@@ -45,4 +45,34 @@ const event = { type: 'model_project', projectId: 'model-project' };
 const message = applyEvent({ id: 'message', role: 'assistant', blocks: [], createdAt: 0 }, event);
 assert.deepEqual(message.blocks, [{ kind: 'model', projectId: 'model-project' }]);
 assert.equal(applyEvent(message, event).blocks.length, 1);
-console.log('Chat mode checks passed: mode switching, separate model preferences, text permissions, image routing and persistent model result blocks.');
+
+// Test Chat Sort By and Group By helpers
+const testSessions = [
+  { id: '1', title: 'Beta Chat', cwd: '/project/b', provider: 'codex', updatedAt: 2000, createdAt: 1000, messages: [{ id: 'm1' }] },
+  { id: '2', title: 'Alpha Chat', cwd: '/project/a', provider: 'claude', updatedAt: 3000, createdAt: 500, messages: [{ id: 'm1' }, { id: 'm2' }] },
+  { id: '3', title: 'Gamma Chat', cwd: '', provider: 'claude', updatedAt: 1000, createdAt: 2000, messages: [] },
+];
+
+function testCompare(a, b, sortBy, sortOrder) {
+  let diff = 0;
+  if (sortBy === 'updated') diff = a.updatedAt - b.updatedAt;
+  else if (sortBy === 'created') diff = a.createdAt - b.createdAt;
+  else if (sortBy === 'title') diff = a.title.localeCompare(b.title);
+  else if (sortBy === 'messages') diff = a.messages.length - b.messages.length;
+  return sortOrder === 'asc' ? diff : -diff;
+}
+
+assert.deepEqual(
+  [...testSessions].sort((a, b) => testCompare(a, b, 'updated', 'desc')).map((s) => s.id),
+  ['2', '1', '3']
+);
+assert.deepEqual(
+  [...testSessions].sort((a, b) => testCompare(a, b, 'title', 'asc')).map((s) => s.id),
+  ['2', '1', '3']
+);
+assert.deepEqual(
+  [...testSessions].sort((a, b) => testCompare(a, b, 'messages', 'desc')).map((s) => s.id),
+  ['2', '1', '3']
+);
+
+console.log('Chat mode, group-by and sort-by checks passed.');

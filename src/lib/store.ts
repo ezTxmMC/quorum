@@ -3,7 +3,7 @@ import { useRef } from 'react';
 import { create } from 'zustand';
 import { DEFAULT_OPTIONS, DIRECT_MESSAGES, PROVIDERS, defaultDock, defaultTerminal, isTextOnly } from '@shared/catalog';
 import type {
-  Attachment, CliUsage, DockPos, ImportedSession, ChatSession, HubEvent, PanelId, Message, MultiConfig, MultiEvent, MultiRunRecord, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunRequest, UpdateChannel, UpdateState,
+  Attachment, ChatListSettings, CliUsage, DockPos, ImportedSession, ChatSession, HubEvent, PanelId, Message, MultiConfig, MultiEvent, MultiRunRecord, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunRequest, UpdateChannel, UpdateState,
 } from '@shared/types';
 import { hub, uid } from './api';
 import { queryCliUsage } from './cliUsage';
@@ -71,6 +71,7 @@ interface State {
   checkUpdate: (channel?: UpdateChannel) => Promise<UpdateState>;
   downloadUpdate: () => Promise<boolean>;
   installUpdate: () => Promise<boolean>;
+  setChatListSettings: (patch: Partial<ChatListSettings>) => void;
 }
 
 const emptyData = (): Persisted => ({
@@ -80,6 +81,7 @@ const emptyData = (): Persisted => ({
     providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {}, api: {} },
     updateChannel: 'release', autoCheckUpdate: true,
     threed: { preferredTool: 'blockbench', defaultExportFormat: 'glb', autoExport: true },
+    chatList: { groupBy: 'project', sortBy: 'updated', sortOrder: 'desc' },
   },
   recentProjects: [], projects: [], hidden: [], dismissed: [], sessions: [], multiRuns: [], presets: [],
 });
@@ -380,6 +382,15 @@ export const useHub = create<State>((set, get) => {
     },
     async installUpdate() {
       return hub.updaterInstall();
+    },
+    setChatListSettings(patch) {
+      mutData((d) => ({
+        ...d,
+        settings: {
+          ...d.settings,
+          chatList: { ...d.settings.chatList, ...patch },
+        },
+      }));
     },
   };
 });
