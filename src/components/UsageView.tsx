@@ -4,6 +4,7 @@ import type { Persisted, ProviderId, RateWindow, UsageReport } from '@shared/typ
 import { hub } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
+import { quotaMeters } from '@/lib/usageMeters';
 import { useHub } from '@/lib/store';
 import { Dot } from './ModelPicker';
 import { cx } from './ui';
@@ -37,9 +38,9 @@ function CliLimits({ provider }: { provider: 'claude' | 'antigravity' }) {
   const [showRaw, setShowRaw] = useState(false);
   const groups = useMemo(() => {
     const g = new Map<string, NonNullable<typeof res>['meters']>();
-    for (const m of res?.meters ?? []) g.set(m.group ?? '', [...(g.get(m.group ?? '') ?? []), m]);
+    for (const m of quotaMeters(provider, res?.meters ?? [])) g.set(m.group ?? '', [...(g.get(m.group ?? '') ?? []), m]);
     return [...g.entries()];
-  }, [res]);
+  }, [res, provider]);
   return (
     <section className="rounded-lumen-lg border border-edge bg-surface p-4">
       <div className="mb-3 flex items-center gap-2">
@@ -71,7 +72,7 @@ function CliLimits({ provider }: { provider: 'claude' | 'antigravity' }) {
           </div>
         </div>
       ))}
-      {res && !res.meters.length && <div className="text-warn">{res.error ?? t('Keine Prozentwerte gefunden.')}</div>}
+      {res && !groups.length && <div className="text-warn">{res.error ?? t('Keine Prozentwerte gefunden.')}</div>}
       {res?.raw && (
         <div className="mt-3">
           <button className="text-[11.5px] text-subtle hover:text-fg" onClick={() => setShowRaw((r) => !r)}>{showRaw ? t('Rohausgabe ausblenden') : t('Rohausgabe anzeigen')}</button>

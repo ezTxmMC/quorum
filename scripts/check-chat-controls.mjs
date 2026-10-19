@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { applyEvent } from '../src/lib/reduce.ts';
 import { activeToolActivity, currentActivity, toolKind } from '../src/lib/toolActivity.ts';
+import { quotaMeters } from '../src/lib/usageMeters.ts';
 import { currentMode, modePatch, modesFor, modelLabel, modelEfforts, IMAGE_ENGINES, isChatModel, CLAUDE_MODELS, canonicalModel, modelChoices, selectModelOptions } from '../shared/catalog.ts';
 import { buildClaude, ClaudeParser } from '../electron/providers/claude.ts';
 import { buildCodex, CodexParser } from '../electron/providers/codex.ts';
@@ -9,6 +10,16 @@ import { runOllama, ollamaStatus } from '../electron/providers/ollama.ts';
 import { buildAntigravity } from '../electron/providers/antigravity.ts';
 
 const req = (provider, options) => ({ runId: 'check', provider, cwd: '/tmp', prompt: 'Hello', options });
+const quotaFixture = [
+  'Current session', 'Current week (all models)', 'Current week (Fable only)',
+  'Last 24h · these are independent characteristics of your usage, not a breakdown',
+  'Last 24 hours', 'Daily usage', 'Current week (Sonnet only)', 'Unknown statistic',
+].map((label, i) => ({ label, percent: i < 3 ? 20 : 99, kind: 'used' }));
+assert.deepEqual(quotaMeters('claude', quotaFixture), quotaFixture.slice(0, 3));
+assert.equal(Math.max(...quotaMeters('claude', quotaFixture).map((m) => m.percent)), 20);
+assert.equal(quotaMeters('antigravity', quotaFixture), quotaFixture);
+assert.equal(quotaMeters('codex', quotaFixture), quotaFixture);
+assert.equal(quotaMeters('claude', [{ label: 'Fable', group: 'Current week', percent: 10, kind: 'used' }]).length, 1);
 const builders = { claude: buildClaude, codex: buildCodex, antigravity: buildAntigravity };
 for (const provider of Object.keys(builders)) {
   for (const mode of modesFor(provider)) {
