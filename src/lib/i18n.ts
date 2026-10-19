@@ -139,7 +139,7 @@ export const en: Record<string, string> = {
   'Verlauf (Scrollback)': 'Scrollback',
   'Blinkender Cursor': 'Blinking cursor',
   'Zurücksetzen': 'Reset',
-  'Werkzeuge': 'Tools', 'Community-MCP-Plugin': 'Community MCP plugin', 'Sandboxed installieren': 'Install sandboxed', 'Noch keine Vorschauen.': 'No previews yet.', 'Blender fehlt – oben installieren': 'Blender missing – install above',
+  'Das Modell ist noch leer – beschreibe, was erzeugt werden soll, z. B. ein Stuhl mit vier Beinen': 'The model is still empty – describe what to generate, e.g. a chair with four legs', 'Werkzeuge': 'Tools', 'Community-MCP-Plugin': 'Community MCP plugin', 'Sandboxed installieren': 'Install sandboxed', 'Noch keine Vorschauen.': 'No previews yet.', 'Blender fehlt – oben installieren': 'Blender missing – install above',
   'Rendert Vorschauen, vereinfacht und exportiert Modelle. Läuft ohne Netzwerk.': 'Renders previews, simplifies and exports models. Runs without network access.',
   'Live-Ansicht und Editor für Low-Poly-Modelle, optional mit Community-MCP-Plugin.': 'Live view and editor for low-poly models, optionally with the community MCP plugin.',
   'Installiert in den App-Ordner und läuft in einer bubblewrap-Sandbox: nur Werkzeug- und Projektordner sind sichtbar.': 'Installed in the app folder and runs in a bubblewrap sandbox: only the tool and project folders are visible.',

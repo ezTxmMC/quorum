@@ -117,7 +117,8 @@ export function ThreeDPage() {
     reloadDetail(sel);
   };
 
-  const issues = detail?.summary.issues ?? [];
+  // Ein leeres Modell ist vor dem ersten Lauf normal – das Modell soll es ja erst erzeugen.
+  const issues = (detail?.summary.issues ?? []).filter((i) => !(detail?.summary.cubes === 0 && i.message === 'Modell hat keine Würfel'));
   return (
     <div className="flex h-full min-h-0">
       <aside className="w-64 shrink-0 space-y-2 overflow-y-auto border-r border-edge p-3">
@@ -171,7 +172,7 @@ export function ThreeDPage() {
 
                 <section className="space-y-3 rounded-lumen-lg border border-edge bg-surface p-4 lg:col-span-2">
                   <h2 className="text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Modellierungsauftrag')}</h2>
-                  <textarea className="field min-h-24" placeholder={t('Beschreibe das Modell, z. B. ein Stuhl mit vier Beinen')} value={goal} onChange={(e) => setGoal(e.target.value)} />
+                  <textarea className="field min-h-24" placeholder={detail?.summary.cubes === 0 ? t('Das Modell ist noch leer – beschreibe, was erzeugt werden soll, z. B. ein Stuhl mit vier Beinen') : t('Beschreibe das Modell, z. B. ein Stuhl mit vier Beinen')} value={goal} onChange={(e) => setGoal(e.target.value)} />
                   <div className="flex flex-wrap items-end gap-3 text-[12px]">
                     <label className="flex min-w-40 flex-1 flex-col gap-1"><span className="text-subtle">{t('Modell für den Plan')}</span>
                       <select className="field" value={engine} onChange={(e) => setEngine(e.target.value)}>
