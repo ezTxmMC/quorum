@@ -320,6 +320,15 @@ export const en: Record<string, string> = {
   'verfügbar': 'available', 'nicht verfügbar': 'not available',
   'Installation, Anmeldung, Pfade und Standardwerte aller Anbieter. Nicht verfügbare Anbieter erscheinen in Chats und Teams nicht zur Auswahl.': 'Installation, sign-in, paths and defaults of all providers. Unavailable providers do not appear for selection in chats and teams.',
   'Fehler': 'Error', 'Abgebrochen (': 'Cancelled (',
+  'Render': 'Render', 'Drehen': 'Rotate', 'Verschieben': 'Pan',
+  'Linke Maustaste: Drehen (Rechtsklick: Verschieben)': 'Left mouse: Rotate (Right-click: Pan)',
+  'Linke Maustaste: Ansicht verschieben': 'Left mouse: Pan view',
+  'Automatisches Drehen': 'Auto rotate', 'Gitter umschalten': 'Toggle grid', 'Drahtgitter': 'Wireframe', 'Ansicht zentrieren': 'Center view',
+  'Modell hat keine Würfel': 'Model has no cubes',
+  'Links: Drehen · Rechts/Shift: Verschieben': 'Left: Rotate · Right/Shift: Pan',
+  'Links: Verschieben · Rechts: Drehen': 'Left: Pan · Right: Rotate',
+  'Rad: Zoom': 'Wheel: Zoom',
+  'Noch kein Render-Bild vorhanden.': 'No rendered image available yet.',
 };
 
 /** Übersetzt einen deutschen Text; unbekannte Texte bleiben unverändert. */

@@ -4,6 +4,7 @@ import { hub } from '@/lib/api';
 import { imageUrl } from './MessageView';
 import { Icon } from '@/lib/icons';
 import { ModelAnimations, ModelTextures } from './ModelAssets';
+import { ModelViewer3D } from './ModelViewer3D';
 import { ThreeDTools } from './ThreeDTools';
 import { cx } from './ui';
 
@@ -75,7 +76,19 @@ export function ModelPane({ projectId, onProject, onClose }: { projectId?: strin
             <button className="btn" onClick={() => void toggle()}>{live ? t('Live aus') : t('Live an')}</button>
             <button className="btn" onClick={() => void act(() => hub.threedOpenWindow(projectId!))}>{t('In Blockbench öffnen')}</button>
           </div>
-          {shown ? <img src={shown} alt={detail.model.name} className="w-full rounded-lumen border border-edge" /> : <p className="text-[12px] text-subtle">{t('Noch keine Vorschau.')}</p>}
+          {live && frame ? (
+            <img src={frame} alt={detail.model.name} className="w-full rounded-lumen border border-edge" />
+          ) : detail.model ? (
+            <ModelViewer3D
+              model={detail.model}
+              renderUrl={still ? imageUrl(still) : null}
+              onOpenBlockbench={() => void act(() => hub.threedOpenWindow(projectId!))}
+            />
+          ) : shown ? (
+            <img src={shown} alt={detail.description || '3D'} className="w-full rounded-lumen border border-edge" />
+          ) : (
+            <p className="text-[12px] text-subtle">{t('Noch keine Vorschau.')}</p>
+          )}
         </>}
         {tab === 'textures' && <ModelTextures model={detail.model} />}
         {tab === 'animations' && <ModelAnimations key={projectId} model={detail.model} previews={detail.animationPreviews} />}
