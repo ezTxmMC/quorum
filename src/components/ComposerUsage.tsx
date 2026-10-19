@@ -28,11 +28,12 @@ export function ComposerUsage({ session }: { session: ChatSession }) {
   })) : (cli?.ok ? cli.meters : []).map((m) => ({ label: [m.group, m.label].filter(Boolean).join(' · '), used: session.provider === 'antigravity' || m.kind === 'remaining' ? 100 - m.percent : m.percent, reset: m.reset, expired: false }));
   const active = meters.filter((m) => !m.expired && Number.isFinite(m.used));
   const used = active.length ? Math.max(0, Math.min(100, Math.max(...active.map((m) => m.used)))) : undefined;
+  const remaining = used === undefined ? undefined : 100 - used;
   const stamp = limits?.at ?? cli?.at;
   return <Popover align="right" trigger={(open, toggle) => <button onClick={toggle} title={t('Nutzung & Limits')} className={cx('btn btn-ghost !gap-1.5 !px-2 text-subtle', open && '!bg-hover')}>
     <Icon name="lucide:chart-no-axes-column" size={13} />
-    {used !== undefined && <span className="h-1.5 w-7 overflow-hidden rounded-full bg-active"><span className={cx('block h-full rounded-full', used >= 85 ? 'bg-bad' : used >= 60 ? 'bg-warn' : 'bg-accent')} style={{ width: `${used}%` }} /></span>}
-    <span className="text-[10.5px]">{used !== undefined ? `${Math.round(100 - used)}%` : `${compact(tokens)} tok`}</span>
+    {remaining !== undefined && <span className="h-1.5 w-7 overflow-hidden rounded-full bg-active"><span className={cx('block h-full rounded-full', remaining <= 15 ? 'bg-bad' : remaining <= 40 ? 'bg-warn' : 'bg-accent')} style={{ width: `${remaining}%` }} /></span>}
+    <span className="text-[10.5px]">{remaining !== undefined ? `${Math.round(remaining)}%` : `${compact(tokens)} tok`}</span>
   </button>}>
     {() => <div className="w-64 space-y-3 p-2 text-[12px]">
       <div className="font-medium">{t('Nutzung & Limits')}</div>
