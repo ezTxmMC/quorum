@@ -38,7 +38,7 @@ const SYSTEM = [
   '{"actions":[{"action":"add_cube","name":"kopf","from":[-4,24,-4],"to":[4,32,4],"group":"oberkoerper"},',
   '{"action":"add_group","name":"oberkoerper","origin":[0,12,0]},{"action":"remove_cube","name":"alt"}],"done":false}',
   'Setze "done":true, sobald das Modell das Ziel erfüllt und keine Fehler mehr gemeldet werden.',
-  'Erlaubt sind nur add_cube, add_group und remove_cube. Namen: Buchstaben, Ziffern, _ . - Leerzeichen.',
+  'Erlaubt sind nur add_cube, add_group und remove_cube (keine anderen Aktionen, höchstens 24 pro Runde). Bei add_cube muss "to" in jeder Achse größer als "from" sein. Namen: Buchstaben, Ziffern, _ . - Leerzeichen.',
 ].join('\n');
 
 /**
@@ -60,10 +60,10 @@ export async function runModelingLoop(start: BbModel, goal: string, deps: LoopDe
     ].filter(Boolean).join('\n\n');
     const reply = await deps.chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: user }]);
     const plan = parsePlan(reply);
-    deps.emit({ type: 'plan', n, actions: plan.actions.length, errors: plan.errors });
     const candidate = structuredClone(model);
     const applied = applyActions(candidate, plan.actions);
     const errors = [...plan.errors, ...applied.errors];
+    deps.emit({ type: 'plan', n, actions: plan.actions.length, errors });
     // Nur ein fehlerfreier Stand wird übernommen; sonst bleibt der letzte gültige und die Fehler gehen als Rückmeldung zurück.
     const hard = validate(candidate).filter((i) => i.level === 'error');
     if (hard.length === 0 && applied.applied > 0) model = candidate;

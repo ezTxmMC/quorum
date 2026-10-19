@@ -41,7 +41,12 @@ function checkAction(raw: unknown): { ok: ModelAction } | { error: string } {
     case 'add_cube':
       if (!isVec(a.from) || !isVec(a.to)) return { error: `${a.name}: from/to brauchen drei Zahlen` };
       if (a.group !== undefined && (typeof a.group !== 'string' || !NAME.test(a.group))) return { error: `${a.name}: ungültige Gruppe` };
-      return { ok: { action: 'add_cube', name: a.name, from: a.from, to: a.to, group: a.group as string | undefined } };
+      {
+        // Kleine Modelle vertauschen oft Anfang/Ende oder liefern flache Würfel: korrigieren statt verwerfen.
+        const from = a.from.map((v, i) => Math.min(v, (a.to as Vec3)[i])) as Vec3;
+        const to = a.to.map((v, i) => { const hi = Math.max(v, (a.from as Vec3)[i]); return hi <= from[i] ? from[i] + 1 : hi; }) as Vec3;
+        return { ok: { action: 'add_cube', name: a.name, from, to, group: a.group as string | undefined } };
+      }
     case 'add_group':
       if (a.origin !== undefined && !isVec(a.origin)) return { error: `${a.name}: origin braucht drei Zahlen` };
       if (a.parent !== undefined && (typeof a.parent !== 'string' || !NAME.test(a.parent))) return { error: `${a.name}: ungültiger Elternknoten` };
@@ -75,7 +80,10 @@ export function applyActions(model: BbModel, actions: ModelAction[]): { applied:
   for (const a of actions) {
     if (a.action === 'add_cube') {
       if (a.group && !findGroup(model, a.group)) { errors.push(`${a.name}: Gruppe ${a.group} existiert nicht`); continue; }
-      addCube(model, { name: a.name, from: a.from, to: a.to, group: a.group });
+      const cube = addCube(model, { name: a.name, from: a.from, to: a.to, group: a.group });
+      // Nur der fehlerhafte Würfel wird verworfen (z. B. außerhalb der Java-Grenzen), nicht der ganze Plan.
+      const bad = validate(model).filter((i) => i.level === 'error' && i.uuid === cube.uuid);
+      if (bad.length) { removeCube(model, cube.name); errors.push(...bad.map((i) => i.message)); continue; }
     } else if (a.action === 'add_group') {
       if (a.parent && !findGroup(model, a.parent)) { errors.push(`${a.name}: Elternknoten ${a.parent} existiert nicht`); continue; }
       addGroup(model, { name: a.name, origin: a.origin, parent: a.parent });
