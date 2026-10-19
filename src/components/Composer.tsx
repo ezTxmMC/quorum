@@ -188,7 +188,7 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
   const meta = PROVIDERS[session.provider];
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pb-4" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+    <div className="mx-auto w-full max-w-5xl xl:max-w-6xl px-4 pb-4" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       <div className="relative rounded-[18px] border border-edge-strong bg-surface shadow-lg transition-colors focus-within:border-accent/60">
         {items.length > 0 && (
           <div data-state="open" className="pop absolute bottom-full left-0 right-0 z-30 mb-2 max-h-64 overflow-auto rounded-lumen border border-edge-strong bg-overlay p-1 shadow-2xl">

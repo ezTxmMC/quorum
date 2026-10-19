@@ -115,7 +115,7 @@ export function ChatPage() {
       <div className="flex min-w-0 flex-1 flex-col">
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
           {session.messages.length === 0 ? (
-            <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-6 text-center">
+            <div className="mx-auto flex h-full max-w-4xl xl:max-w-5xl flex-col items-center justify-center px-6 text-center">
               {/* Nur verfügbare Anbieter anbieten (CLI vorhanden, angemeldet bzw. erreichbar) – der aktuell gewählte bleibt sichtbar. */}
               <div className="mb-5 flex flex-wrap justify-center gap-2">{(Object.keys(PROVIDERS) as ProviderId[]).filter((p) => statuses[p]?.installed || p === session.provider).map((p) => (
                 <button key={p} onClick={() => patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p], chatMode: mode } })} className={cx('flex w-36 flex-col items-center gap-2 rounded-lumen-lg border p-4 transition-colors hover:bg-hover', p === session.provider ? 'border-accent bg-hover' : 'border-edge')}>
@@ -129,14 +129,14 @@ export function ChatPage() {
               <p className="mt-6 text-[12px] text-subtle">{t('Tipp:')} <kbd className="rounded bg-active px-1">/</kbd> {t('Befehle & Skills ·')} <kbd className="rounded bg-active px-1">@</kbd> {t('Dateien · Bilder per Drag & Drop · Anbieter wechseln behält den Kontext')}</p>
             </div>
           ) : (
-            <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+            <div className="mx-auto max-w-5xl xl:max-w-6xl space-y-6 px-4 py-6">
               {session.messages.map((m) => <MessageView key={m.id} onOpenModel={(projectId) => { patchSession(id, { modelProjectId: projectId }); setModelPaneOpen(true); }} m={m} live={activeMessages.has(m.id)} onStop={() => cancel(id)} />)}
             </div>
           )}
         </div>
 
         {status?.installed === false && (
-          <div className="mx-auto mb-2 flex w-full max-w-3xl items-center gap-2 rounded-lumen border border-warn/30 bg-warn/10 px-3 py-2 text-warn">
+          <div className="mx-auto mb-2 flex w-full max-w-5xl xl:max-w-6xl items-center gap-2 rounded-lumen border border-warn/30 bg-warn/10 px-3 py-2 text-warn">
             <Icon name="lucide:triangle-alert" size={14} /> <span>{session.provider === 'ollama' ? t('Ollama ist nicht erreichbar. Starte es mit „ollama serve“ und lade ein Modell (ollama pull …).') : <><b>{meta.bin}</b> {t('wurde nicht gefunden. Pfad unter Einstellungen angeben.')}</>}</span>
           </div>
         )}
