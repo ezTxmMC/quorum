@@ -370,8 +370,8 @@ export function modelChoices(
 
 /** Clear the image route on text selection, and never leak an image engine ID into a text CLI call. */
 export function selectModelOptions(base: ProviderOptions, id: string, info?: ModelInfo, imageEngine?: string): ProviderOptions {
-  if (imageEngine) return { ...base, model: undefined, imageGen: imageEngine, effort: undefined, speed: undefined };
-  return { ...base, model: id, imageGen: undefined,
+  if (imageEngine) return { ...base, chatMode: 'image', model: undefined, imageGen: imageEngine, effort: undefined, speed: undefined };
+  return { ...base, chatMode: base.chatMode === 'image' ? 'coding' : base.chatMode, model: id, imageGen: undefined,
     effort: base.effort && info?.efforts && !info.efforts.includes(base.effort) ? undefined : base.effort,
     speed: info?.speedTiers?.some((tier) => tier.id === base.speed) ? base.speed : undefined,
   };

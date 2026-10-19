@@ -14,6 +14,9 @@ export function applyEvent(m: Message, e: HubEvent): Message {
     }
     case 'text_full':
       return { ...m, blocks: [...m.blocks, { kind: 'text', text: e.text }] };
+    case 'model_project':
+      if (m.blocks.some((b) => b.kind === 'model' && b.projectId === e.projectId)) return m;
+      return { ...m, blocks: [...m.blocks, { kind: 'model', projectId: e.projectId }] };
     case 'image':
       if (m.blocks.some((b) => b.kind === 'image' && b.path === e.path)) return m;
       return { ...m, blocks: [...m.blocks, { kind: 'image', path: e.path, engine: e.engine }] };

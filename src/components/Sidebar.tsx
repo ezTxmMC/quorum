@@ -13,7 +13,6 @@ const nav = [
   { to: '/multi', icon: 'lucide:network', label: 'Multi-Agent' },
   { to: '/models', icon: 'lucide:box', label: 'Modelle' },
   { to: '/workflows', icon: 'lucide:workflow', label: 'Workflows' },
-  { to: '/3d', icon: 'lucide:cuboid', label: '3D' },
   { to: '/tools', icon: 'lucide:wrench', label: 'CLI-Werkzeuge' },
 ];
 

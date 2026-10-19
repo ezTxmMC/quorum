@@ -26,7 +26,7 @@ export function defaultModel(provider: ProviderId, status?: { models: { id: stri
   return provider === 'claude' ? 'claude-sonnet-5-5' : status?.models[0]?.id;
 }
 
-export function ModelList({ provider, model, imageGen, onPick, includeImages, onlyProvider }: { provider?: ProviderId; model?: string; imageGen?: string; onPick: (p: ProviderId, model: string, imageGen?: string) => void; includeImages?: boolean; onlyProvider?: ProviderId }) {
+export function ModelList({ provider, model, imageGen, onPick, includeImages, onlyProvider, kind }: { provider?: ProviderId; model?: string; imageGen?: string; onPick: (p: ProviderId, model: string, imageGen?: string) => void; includeImages?: boolean; onlyProvider?: ProviderId; kind?: 'image' | 'text' }) {
   const statuses = useHub((s) => s.statuses);
   const settings = useHub((s) => s.data.settings);
   const [query, setQuery] = useState('');
@@ -35,9 +35,9 @@ export function ModelList({ provider, model, imageGen, onPick, includeImages, on
   const q = query.trim().toLowerCase();
   const selected = imageGen ? `image:${imageGen}` : canonicalModel(provider ?? 'claude', model);
   const groups = ORDER.filter((p) => (!onlyProvider || p === onlyProvider) && (statuses[p]?.installed || p === provider)).map((p) => {
-    const models = modelChoices(p, statuses, settings.customModels?.[p], includeImages).filter((m) => isChatModel(m.id) && (older || !m.legacy || (p === provider && m.id === selected)) && (!q || `${PROVIDERS[p].name} ${m.id} ${modelLabel(m)}`.toLowerCase().includes(q)));
+    const models = modelChoices(p, statuses, settings.customModels?.[p], includeImages).filter((m) => (!kind || (kind === 'image' ? m.image : !m.image)) && isChatModel(m.id) && (older || !m.legacy || (p === provider && m.id === selected)) && (!q || `${PROVIDERS[p].name} ${m.id} ${modelLabel(m)}`.toLowerCase().includes(q)));
     return { p, models };
-  }).filter((g) => g.models.length || !q);
+  }).filter((g) => g.models.length || (!q && kind !== 'image'));
   return (
     <div className="w-80 max-w-[calc(100vw-3rem)]">
       <div className="border-b border-edge p-1.5">
@@ -77,15 +77,16 @@ interface ModelButtonProps {
   imageGen?: string;
   includeImages?: boolean;
   onlyProvider?: ProviderId;
+  kind?: 'image' | 'text';
   field?: boolean;
   down?: boolean;
   compact?: boolean;
   onPick: (provider: ProviderId, model: string, imageGen?: string) => void;
 }
 
-export function ModelButton({ provider, model, imageGen, onPick, down, compact, includeImages, onlyProvider, field }: ModelButtonProps) {
+export function ModelButton({ provider, model, imageGen, onPick, down, compact, includeImages, onlyProvider, field, kind }: ModelButtonProps) {
   const textLabel = useModelLabel(provider, model);
-  const label = imageGen ? imageEngineLabel(imageGen) : textLabel;
+  const label = imageGen ? imageEngineLabel(imageGen) : kind === 'image' ? t('Bildmodell wählen') : textLabel;
   return (
     <Popover down={down} trigger={(open, toggle) => (
       <button className={cx(field ? 'field flex w-full items-center gap-2 text-left' : 'btn btn-ghost !gap-2 !px-2 text-muted', open && '!bg-hover', !field && compact && '!py-1')} onClick={toggle} aria-expanded={open} aria-label={`${t('Modell')}: ${label}`}>
@@ -94,7 +95,7 @@ export function ModelButton({ provider, model, imageGen, onPick, down, compact, 
         <Icon name="lucide:chevron-down" size={12} className={cx('shrink-0 text-subtle transition-transform', open && 'rotate-180')} />
       </button>
     )}>
-      {(close) => <ModelList provider={provider} model={model} imageGen={imageGen} includeImages={includeImages} onlyProvider={onlyProvider} onPick={(p, id, engine) => { onPick(p, id, engine); close(); }} />}
+      {(close) => <ModelList kind={kind} provider={provider} model={model} imageGen={imageGen} includeImages={includeImages} onlyProvider={onlyProvider} onPick={(p, id, engine) => { onPick(p, id, engine); close(); }} />}
     </Popover>
   );
 }

@@ -1,11 +1,13 @@
 import { getLang, t } from '@/lib/i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DIRECT_MESSAGES, PROVIDERS, isChatModel, canonicalModel, selectModelOptions, modelChoices } from '@shared/catalog';
-import type { Attachment, ChatSession } from '@shared/types';
+import { DIRECT_MESSAGES, PROVIDERS, isChatModel, canonicalModel, selectModelOptions, modelChoices, imageEngines } from '@shared/catalog';
+import type { Attachment, ChatMode, ChatSession } from '@shared/types';
 import { hub, uid } from '@/lib/api';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { ModeButton, ModelButton, TuneButton, defaultModel } from './ModelPicker';
+import { chatMode, switchChatMode } from '@shared/chat-modes';
+import { ChatModeButton } from './ChatModeButton';
 import { ComposerUsage } from './ComposerUsage';
 import { cx } from './ui';
 
@@ -47,19 +49,26 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
   const status = useHub((s) => s.statuses);
   const patch = useHub((s) => s.patchSession);
   const pStatus = status[session.provider];
+  const mode = chatMode(session.options);
+  const imageReady = mode !== 'image' || !!session.options.imageGen;
 
   // Fehlt ein Modell, das Standardmodell eintragen, damit Anzeige und Aufruf übereinstimmen.
   useEffect(() => {
-    if (session.options.imageGen || !pStatus || (session.options.model && isChatModel(session.options.model))) return;
+    if (mode === 'image' || !pStatus || (session.options.model && isChatModel(session.options.model))) return;
     const m = defaultModel(session.provider, pStatus);
     if (m) patch(session.id, { options: { ...session.options, model: m } });
   }, [session.id, session.provider, session.options, pStatus, patch]);
 
   const pick = (provider: ChatSession['provider'], model: string, imageGen?: string) => {
-    const base = provider === session.provider ? session.options : { ...useHub.getState().data.settings.providerDefaults[provider] };
+    const base = provider === session.provider ? session.options : { ...useHub.getState().data.settings.providerDefaults[provider], chatMode: mode };
     model = canonicalModel(provider, model)!;
     const info = modelChoices(provider, status).find((m) => m.id === model);
     patch(session.id, { provider, options: selectModelOptions(base, model, info, imageGen) });
+  };
+
+  const changeMode = (next: ChatMode) => {
+    if (running) return;
+    patch(session.id, switchChatMode(session, next, imageEngines(status)));
   };
 
   useEffect(() => { void hub.slash(session.cwd || '/nonexistent').then(setSkills); }, [session.cwd]);
@@ -137,12 +146,12 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
     await ingest(files);
   };
 
-  const canDirect = DIRECT_MESSAGES[session.provider] && session.options.liveInput !== false && !session.options.imageGen;
+  const canDirect = DIRECT_MESSAGES[session.provider] && session.options.liveInput !== false && (mode === 'coding' || mode === 'text');
   const queued = useHub((s) => s.queued[session.id]) ?? [];
 
   const submit = (forceQueue = false) => {
     const t = text.trim();
-    if (!t && !images.length && !atts.length) return;
+    if ((!t && !images.length && !atts.length) || !imageReady) return;
     if (!running && t.startsWith('/')) {
       const [cmd, ...rest] = t.slice(1).split(/\s+/);
       if (BUILTIN.some((b) => b.name === cmd)) {
@@ -207,24 +216,26 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
             ))}
           </div>
         )}
+        {!imageReady && <div className="px-4 pt-3 text-[12px] text-warn">{t('Wähle ein Bildmodell. Verbinde bei Bedarf einen Anbieter in den Einstellungen.')}</div>}
         <textarea ref={ta} rows={1} value={text} onChange={(e) => { setText(e.target.value); setSel(0); }} onKeyDown={onKey} onPaste={onPaste}
-          placeholder={session.options.imageGen ? (getLang() === 'en' ? 'Describe the image … (or a change to the last one)' : 'Beschreibe das Bild … (oder eine Änderung am letzten)') : getLang() === 'en' ? `Message ${meta.name} …   (/ for commands, @ for files)` : `Nachricht an ${meta.name} …   (/ für Befehle, @ für Dateien)`}
+          placeholder={mode === 'model' ? t('Beschreibe das 3D-Modell, Texturen, Materialien oder Animationen …') : mode === 'image' ? (getLang() === 'en' ? 'Describe the image … (or a change to the last one)' : 'Beschreibe das Bild … (oder eine Änderung am letzten)') : getLang() === 'en' ? `Message ${meta.name} …   (/ for commands, @ for files)` : `Nachricht an ${meta.name} …   (/ für Befehle, @ für Dateien)`}
           className="block max-h-[220px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-relaxed outline-none placeholder:text-subtle" />
         <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
           <button className="icon-btn" title={t('Bild anhängen')} onClick={async () => { const f = await hub.pickFiles('image'); if (f.length) setImages((i) => [...i, ...f]); }}><Icon name="lucide:paperclip" /></button>
-          <ModelButton provider={session.provider} model={session.options.model} imageGen={session.options.imageGen} includeImages onPick={pick} />
-          {!session.options.imageGen && <ModeButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} onMore={() => useHub.getState().toggleChatOptions(true)} />}
-          {!session.options.imageGen && <TuneButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} />}
+          <ChatModeButton value={mode} onChange={changeMode} disabled={running} />
+          <ModelButton kind={mode === 'image' ? 'image' : 'text'} provider={session.provider} model={session.options.model} imageGen={session.options.imageGen} includeImages onPick={pick} />
+          {mode === 'coding' && <ModeButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} onMore={() => useHub.getState().toggleChatOptions(true)} />}
+          {mode !== 'image' && <TuneButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} />}
           <div className="flex-1" />
           <ComposerUsage session={session} />
           {/* Reihenfolge: Einreihen · Stopp · Senden – alle drei gleich hoch (h-8), Stopp in sanftem Rot direkt neben „Senden“ */}
           {running && canDirect && (
-            <button className="btn !h-8 !rounded-full !px-3 text-[12px]" disabled={!text.trim() && !images.length && !atts.length} onClick={() => submit(true)} title={t('Einreihen (Alt+Enter): wird nach dem aktuellen Lauf gesendet')}><Icon name="lucide:list-plus" size={14} /> {t('Einreihen')}</button>
+            <button className="btn !h-8 !rounded-full !px-3 text-[12px]" disabled={!imageReady || (!text.trim() && !images.length && !atts.length)} onClick={() => submit(true)} title={t('Einreihen (Alt+Enter): wird nach dem aktuellen Lauf gesendet')}><Icon name="lucide:list-plus" size={14} /> {t('Einreihen')}</button>
           )}
           {running && (
             <button className="chip-in grid h-8 w-11 place-items-center rounded-full border border-bad/30 bg-bad/15 text-bad transition-all hover:bg-bad/25 active:scale-95" onClick={onStop} title={t('Stopp')}><Icon name="lucide:square" size={13} /></button>
           )}
-          <button className="grid h-8 w-11 place-items-center rounded-full bg-accent text-accent-fg transition-all enabled:hover:brightness-110 enabled:active:scale-95 disabled:opacity-35" disabled={!text.trim() && !images.length && !atts.length} onClick={() => submit()}
+          <button className="grid h-8 w-11 place-items-center rounded-full bg-accent text-accent-fg transition-all enabled:hover:brightness-110 enabled:active:scale-95 disabled:opacity-35" disabled={!imageReady || (!text.trim() && !images.length && !atts.length)} onClick={() => submit()}
             title={running ? (canDirect ? t('Direkt senden (Enter) – mitten im Lauf') : t('Einreihen (Enter) – wird nach dem aktuellen Lauf gesendet')) : t('Senden (Enter)')}>
             <Icon name={running && !canDirect ? 'lucide:list-plus' : 'lucide:arrow-up'} size={16} />
           </button>

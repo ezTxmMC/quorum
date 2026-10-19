@@ -74,7 +74,7 @@ function fmtTok(n?: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
-export const MessageView = memo(function MessageView({ m, live, label, onStop }: { m: Message; live?: boolean; label?: string; onStop?: () => void }) {
+export const MessageView = memo(function MessageView({ m, live, label, onStop, onOpenModel }: { m: Message; live?: boolean; label?: string; onStop?: () => void; onOpenModel?: (projectId: string) => void }) {
   if (m.role === 'user') {
     const text = m.blocks.map((b) => (b.kind === 'text' ? b.text : '')).join('');
     return (
@@ -99,6 +99,7 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop }:
           if (b.kind === 'text') return <Markdown key={i} text={b.text} />;
           if (b.kind === 'inject') return <div key={i} className="chip-in ml-auto w-fit max-w-[85%] select-text whitespace-pre-wrap [overflow-wrap:anywhere] rounded-lumen border border-accent/30 bg-accent/10 px-3 py-1.5 text-[13px]"><span className="mr-2 text-[10.5px] font-medium uppercase tracking-wide text-accent">{t('Direkt')}</span>{b.text}</div>;
           if (b.kind === 'thinking') return <Thinking key={i} text={b.text} live={!!live && i === lastIdx} />;
+          if (b.kind === 'model') return <button key={b.projectId} className="btn border border-edge bg-surface" onClick={() => onOpenModel?.(b.projectId)}><Icon name="lucide:cuboid" size={16} />{t('3D-Modell öffnen')}</button>;
           if (b.kind === 'image') return <GeneratedImage key={b.path} path={b.path} engine={b.engine} />;
           return null;
         })}

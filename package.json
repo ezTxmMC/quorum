@@ -12,6 +12,7 @@
     "test:providers": "node --experimental-strip-types scripts/check-provider-management.mjs",
     "test:chat-controls": "node --experimental-strip-types scripts/check-chat-controls.mjs",
     "test:dev-releases": "node scripts/check-dev-release-cleanup.mjs",
+    "test:chat-modes": "node --experimental-strip-types scripts/check-chat-modes.mjs",
     "test:3d": "node --experimental-strip-types scripts/check-3d.mjs",
     "start": "electron . --no-sandbox",
     "dist": "vite build && electron-builder --publish never",

@@ -1,3 +1,4 @@
+import { chatMode, CHAT_MODES } from '@shared/chat-modes';
 import { getLang, t } from '@/lib/i18n';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
@@ -24,8 +25,8 @@ export function ChatPage() {
   const { send, submit, cancel, patchSession, newSession } = useHub.getState();
   const panelPresence = usePresence(optionsOpen, 170);
   // Modell aus dem Chat: wird die Projekt-ID gemeldet, zeigt die Ansicht rechts das Modell.
-  const [modelProject, setModelProject] = useState<string | null>(null);
-  useEffect(() => { setModelProject(null); return hub.onChatProject((p) => setModelProject(p.projectId)); }, [id]);
+  const [modelPaneOpen, setModelPaneOpen] = useState(() => !!session && chatMode(session.options) === 'model' && window.innerWidth >= 1100);
+  useEffect(() => { setModelPaneOpen(!!session && chatMode(session.options) === 'model' && window.innerWidth >= 1100); }, [id, session?.options.chatMode]);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -33,7 +34,7 @@ export function ChatPage() {
   const running = activeMessages.size > 0;
   const lastLen = session?.messages.at(-1)?.blocks.length ?? 0;
   const lb = session?.messages.at(-1)?.blocks.at(-1);
-  const lastText = !lb ? 0 : lb.kind === 'tool' ? (lb.output?.length ?? 0) + (lb.running ? 1 : 0) : lb.kind === 'image' ? 1 : lb.text.length;
+  const lastText = !lb ? 0 : lb.kind === 'tool' ? (lb.output?.length ?? 0) + (lb.running ? 1 : 0) : lb.kind === 'image' || lb.kind === 'model' ? 1 : lb.text.length;
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -47,20 +48,21 @@ export function ChatPage() {
     if (!session || !providerGone) return;
     const st = useHub.getState();
     const next = (['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'] as ProviderId[]).find((p) => st.statuses[p]?.installed);
-    if (next) patchSession(session.id, { provider: next, options: { ...st.data.settings.providerDefaults[next] } });
+    if (next) patchSession(session.id, { provider: next, options: { ...st.data.settings.providerDefaults[next], chatMode: chatMode(session.options) } });
   }, [providerGone, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setActiveCwd = useHub.getState().setActiveCwd;
   useEffect(() => { if (session) setActiveCwd(session.cwd); }, [session?.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!session) return <Navigate to="/" replace />;
   const meta = PROVIDERS[session.provider];
+  const mode = chatMode(session.options);
   const status = statuses[session.provider];
 
   const setOpts = (patch: object) => patchSession(id, { options: { ...session.options, ...patch } });
 
   const onCommand = (cmd: string, arg: string): boolean => {
     switch (cmd) {
-      case 'new': navigate(`/chat/${newSession({ cwd: session.cwd, provider: session.provider })}`, { viewTransition: true }); return true;
+      case 'new': navigate(`/chat/${newSession({ cwd: session.cwd, provider: session.provider, options: session.options })}`, { viewTransition: true }); return true;
       case 'plan': {
         const key = session.provider === 'codex' ? 'sandbox' : 'permission';
         const cur = session.provider === 'codex' ? session.options.sandbox : session.options.permission;
@@ -72,7 +74,7 @@ export function ChatPage() {
       case 'provider': {
         const p = ALIASES[arg.trim().toLowerCase()];
         if (!p) return false;
-        patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p] } });
+        patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p], chatMode: mode } });
         return true;
       }
       case 'model': {
@@ -104,25 +106,26 @@ export function ChatPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="relative flex h-full min-h-0">
       <div className="flex min-w-0 flex-1 flex-col">
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
           {session.messages.length === 0 ? (
-            <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center px-6 text-center">
+            <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-6 text-center">
               {/* Nur verfügbare Anbieter anbieten (CLI vorhanden, angemeldet bzw. erreichbar) – der aktuell gewählte bleibt sichtbar. */}
-              <div className="mb-5 flex gap-2">{(Object.keys(PROVIDERS) as ProviderId[]).filter((p) => statuses[p]?.installed || p === session.provider).map((p) => (
-                <button key={p} onClick={() => patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p] } })} className={cx('flex w-36 flex-col items-center gap-2 rounded-lumen-lg border p-4 transition-colors hover:bg-hover', p === session.provider ? 'border-accent bg-hover' : 'border-edge')}>
+              <div className="mb-5 flex flex-wrap justify-center gap-2">{(Object.keys(PROVIDERS) as ProviderId[]).filter((p) => statuses[p]?.installed || p === session.provider).map((p) => (
+                <button key={p} onClick={() => patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p], chatMode: mode } })} className={cx('flex w-36 flex-col items-center gap-2 rounded-lumen-lg border p-4 transition-colors hover:bg-hover', p === session.provider ? 'border-accent bg-hover' : 'border-edge')}>
                   <ProviderMark id={p} size={22} /><span className="text-[13px] font-medium">{PROVIDERS[p].name}</span>
                   <span className="text-[11px] text-subtle">{statuses[p]?.installed === false ? (p === 'ollama' ? t('läuft nicht') : t('nicht installiert')) : PROVIDERS[p].vendor}</span>
                 </button>
               ))}</div>
-              <h1 className="mb-1.5 text-[22px] font-semibold tracking-tight">{t('Woran arbeiten wir?')}</h1>
-              <p className="text-muted">{isTextOnly(session.provider) ? <span className="text-subtle">{session.provider === 'ollama' || session.provider === 'local' ? t('Lokaler Chat – kein Dateizugriff, keine Limits') : t('Chat-Modus – kein Dateizugriff, kein Codex-Kontingent')}</span> : session.cwd ? <>{t('Projekt:')} <button className="text-fg underline decoration-edge-strong underline-offset-4 hover:decoration-accent" onClick={pickProject}>{session.cwd}</button></> : <><button className="btn mx-auto" onClick={pickProject}><Icon name="lucide:folder-open" /> {t('Ordner wählen')}</button><span className="mt-2 block text-[12px] text-subtle">{t('Ohne Ordner läuft der Chat ohne Zugriff auf deine Dateien.')}</span></>}</p>
+              <h1 className="mb-1.5 text-[22px] font-semibold tracking-tight">{t(CHAT_MODES.find((entry) => entry.id === mode)!.label)}</h1>
+              <p className="mb-3 text-muted">{t(CHAT_MODES.find((entry) => entry.id === mode)!.description)}</p>
+              <p className="text-muted">{mode !== 'coding' ? t(mode === 'model' ? 'Beschreibe Form, Farben, Texturmuster, Materialien und gewünschte Animationen.' : mode === 'image' ? 'Bilder erzeugen und bearbeiten' : 'Fragen, schreiben und besprechen') : isTextOnly(session.provider) ? <span className="text-subtle">{session.provider === 'ollama' || session.provider === 'local' ? t('Lokaler Chat – kein Dateizugriff, keine Limits') : t('Chat-Modus – kein Dateizugriff, kein Codex-Kontingent')}</span> : session.cwd ? <>{t('Projekt:')} <button className="text-fg underline decoration-edge-strong underline-offset-4 hover:decoration-accent" onClick={pickProject}>{session.cwd}</button></> : <><button className="btn mx-auto" onClick={pickProject}><Icon name="lucide:folder-open" /> {t('Ordner wählen')}</button><span className="mt-2 block text-[12px] text-subtle">{t('Ohne Ordner läuft der Chat ohne Zugriff auf deine Dateien.')}</span></>}</p>
               <p className="mt-6 text-[12px] text-subtle">{t('Tipp:')} <kbd className="rounded bg-active px-1">/</kbd> {t('Befehle & Skills ·')} <kbd className="rounded bg-active px-1">@</kbd> {t('Dateien · Bilder per Drag & Drop · Anbieter wechseln behält den Kontext')}</p>
             </div>
           ) : (
             <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
-              {session.messages.map((m) => <MessageView key={m.id} m={m} live={activeMessages.has(m.id)} onStop={() => cancel(id)} />)}
+              {session.messages.map((m) => <MessageView key={m.id} onOpenModel={(projectId) => { patchSession(id, { modelProjectId: projectId }); setModelPaneOpen(true); }} m={m} live={activeMessages.has(m.id)} onStop={() => cancel(id)} />)}
             </div>
           )}
         </div>
@@ -132,10 +135,11 @@ export function ChatPage() {
             <Icon name="lucide:triangle-alert" size={14} /> <span>{session.provider === 'ollama' ? t('Ollama ist nicht erreichbar. Starte es mit „ollama serve“ und lade ein Modell (ollama pull …).') : <><b>{meta.bin}</b> {t('wurde nicht gefunden. Pfad unter Einstellungen angeben.')}</>}</span>
           </div>
         )}
+        {mode === 'model' && !modelPaneOpen && <button className="btn mx-auto mb-2" onClick={() => setModelPaneOpen(true)}><Icon name="lucide:cuboid" size={14} />{t('3D-Modell öffnen')}</button>}
         <Composer session={session} running={running} onSend={(txt, imgs, mode, attachments) => void submit(id, txt, { images: imgs, mode, attachments })} onStop={() => cancel(id)} onCommand={onCommand} />
       </div>
 
-      {modelProject && !panelPresence.mounted && <ModelPane projectId={modelProject} onClose={() => setModelProject(null)} />}
+      {modelPaneOpen && (mode === 'model' || !!session.modelProjectId) && !panelPresence.mounted && <ModelPane projectId={session.modelProjectId} onProject={(projectId) => patchSession(id, { modelProjectId: projectId })} onClose={() => setModelPaneOpen(false)} />}
 
       {panelPresence.mounted && (
         <aside data-state={panelPresence.state} className="dock-zone dock-right flex w-[380px] shrink-0 flex-col border-l border-edge bg-surface">

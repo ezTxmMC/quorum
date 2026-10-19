@@ -1,3 +1,4 @@
+import { chatMode, textOptions } from '../../shared/chat-modes';
 import { cancelAllApi, cancelApi, runApi } from './api';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -64,6 +65,7 @@ export function runCli(
   emit: (e: HubEvent) => void,
   binaries: Partial<Record<ProviderId, string>>,
 ): Promise<{ ok: boolean; sessionId?: string; text: string }> {
+  if (chatMode(req.options) === 'text') req = { ...req, options: textOptions(req.provider, req.options), review: undefined };
   if (req.imageGen) return runImage(req, emit, binaries);
   if (req.provider === 'api') return runApi(req, emit);
   if (req.provider === 'ollama') return runOllama(req, emit);

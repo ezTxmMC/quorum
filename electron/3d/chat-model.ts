@@ -1,56 +1,54 @@
-// Modellieren direkt aus dem Chat: erkennt eine Modellier-Absicht im normalen Satz und startet die 3D-Schleife.
-// Fortschritt läuft als Text in den Chat, das Ergebnis als Projekt, das die Ansicht rechts daneben zeigt.
 import type { HubEvent, ProviderId, RunRequest } from '../../shared/types';
-import { createProject, runProject } from './service';
+import { cancelProjectRun, createProject, readModel, runProject } from './service';
 import { blenderScript, findBlender } from './blender';
-import type { ChatEngine } from './llm';
+import type { LoopEvent } from './loop';
 import { pythonDir } from './ipc';
 
-// Absicht: ausdrücklich Blender/Blockbench/3D genannt, oder „modell(ier)…“ zusammen mit einer Aufforderung.
-const INTENT = /\b(blockbench|blender|3d-?modell\w*)\b|\b(modell(ier\w*)?\s+(mir|mal|das|den|die|einen|eine|ein)|mach\w*\s+mir\s+(mal\s+)?(das|den|die|einen|eine|ein)\s+\w*\s*(modell|würfel|stuhl|tisch))/i;
+const runs = new Map<string, { projectId?: string; cancelled: boolean }>();
 
-export function isModelingIntent(text: string): boolean {
-  return INTENT.test(text);
+export function cancelChatModeling(runId: string): boolean {
+  const run = runs.get(runId);
+  if (!run) return false;
+  run.cancelled = true;
+  if (run.projectId) cancelProjectRun(run.projectId);
+  return true;
 }
 
-/** Startet die Modellierung für eine Chat-Anfrage. Fortschritt und Ergebnis gehen als Chat-Text zurück. */
-export async function runChatModeling(req: RunRequest, emit: (e: HubEvent) => void, binaries: Partial<Record<ProviderId, string>>): Promise<{ projectId?: string }> {
+export function cancelAllChatModeling(): void { for (const id of runs.keys()) cancelChatModeling(id); }
+
+/** A chat keeps its project across prompts, mode changes and app restarts. */
+export async function runChatModeling(req: RunRequest, emit: (event: HubEvent) => void, binaries: Partial<Record<ProviderId, string>>, onProgress?: (projectId: string, event: LoopEvent | { type: 'log'; text: string }) => void): Promise<void> {
+  const state: { projectId?: string; cancelled: boolean } = { cancelled: false };
+  runs.set(req.runId, state);
   const say = (text: string) => emit({ type: 'text', delta: text + '\n' });
-  let engine: ChatEngine | undefined;
-  if (req.provider === 'local' && req.options.model) engine = { type: 'local', modelId: req.options.model };
-  else if (req.provider === 'claude') engine = { type: 'cli', provider: 'claude' };
-  if (!engine) {
-    say('Zum Modellieren brauche ich ein lokales Modell oder Claude als Anbieter dieses Chats.');
-    emit({ type: 'done', ok: false, error: 'Kein passender Anbieter' });
-    return {};
-  }
-  const blender = findBlender();
-  if (!blender) {
-    say('Blender ist nicht installiert. Setze QUORUM_BLENDER oder installiere Blender.');
-    emit({ type: 'done', ok: false, error: 'Blender fehlt' });
-    return {};
-  }
-  const goal = req.prompt.trim();
-  const project = await createProject(goal.slice(0, 40));
-  say(`Ich modelliere das – Projekt „${project.name}“. Ich melde mich mit jedem Schritt.`);
-  let cubes = 0;
-  const result = await runProject({
-    projectId: project.id,
-    goal,
-    engine,
-    binaries,
-    blender,
-    script: blenderScript(pythonDir()),
-    maxIterations: 3,
-    emit: (e) => {
-      if (e.type === 'iteration') say(`Runde ${e.n} …`);
-      else if (e.type === 'plan') say(`Plan: ${e.actions} Änderungen${e.errors.length ? ` (Hinweis: ${e.errors[0]})` : ''}`);
-      else if (e.type === 'render') say(e.ok ? 'Vorschau aktualisiert.' : `Vorschau nicht möglich: ${e.error ?? ''}`);
-      else if (e.type === 'done') say(e.ok ? 'Fertig.' : `Stopp: ${e.reason}.`);
-      else if (e.type === 'log') { const m = /^(\d+) Würfel/.exec(e.text); if (m) cubes = Number(m[1]); }
-    },
-  });
-  say(`Modell mit Texturen und Animationen gespeichert: ${cubes} Würfel. Rechts siehst du es; mit „In Blockbench öffnen“ kannst du es dort weiterbearbeiten.`);
-  emit({ type: 'done', ok: result.ok, code: result.ok ? 0 : 1, error: result.ok ? undefined : result.reason });
-  return { projectId: project.id };
+  try {
+    const blender = findBlender();
+    if (!blender) throw new Error('Blender fehlt. Installiere es unter „3D-Werkzeuge“ neben dem Chat.');
+    let projectId = req.modelProjectId;
+    if (projectId) await readModel(projectId);
+    else projectId = (await createProject(req.prompt.trim().slice(0, 40))).id;
+    state.projectId = projectId;
+    if (state.cancelled) throw new Error('Abgebrochen');
+    emit({ type: 'model_project', projectId });
+    say('Ich erstelle oder überarbeite das Modell mit Texturen, Materialien und gewünschten Animationen.');
+    const result = await runProject({
+      projectId, goal: req.prompt.trim(), engine: { type: 'provider', provider: req.provider, options: req.options }, binaries,
+      blender, script: blenderScript(pythonDir()), maxIterations: 6,
+      emit: (event) => {
+        onProgress?.(projectId, event);
+        if (event.type === 'iteration') emit({ type: 'tool_start', id: `model:${req.runId}`, name: 'Modellgenerierung', input: { description: `Runde ${event.n}` } });
+        else if (event.type === 'plan' && event.errors.length) say(event.errors.join('; '));
+        else if (event.type === 'render') {
+          if (event.png) emit({ type: 'image', path: event.png, engine: '3D' });
+          if (!event.ok) say(`Vorschau: ${event.error ?? 'fehlgeschlagen'}`);
+        }
+      },
+    });
+    emit({ type: 'tool_end', id: `model:${req.runId}`, output: result.reason, isError: !result.ok });
+    say(result.ok ? 'Modell, Texturen und Animationen gespeichert. Vorschau und Export findest du neben dem Chat.' : result.reason);
+    emit({ type: 'done', ok: result.ok, code: result.ok ? 0 : 1, error: result.ok ? undefined : result.reason });
+  } catch (error) {
+    const message = (error as Error).message;
+    emit({ type: 'done', ok: false, error: message });
+  } finally { runs.delete(req.runId); }
 }

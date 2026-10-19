@@ -170,7 +170,7 @@ export async function runProject(opts: RunOptions): Promise<LoopResult> {
   try {
     const start = await readModel(opts.projectId);
     const result = await runModelingLoop(start, opts.goal, {
-      chat: chatFor(opts.engine, opts.binaries),
+      chat: chatFor(opts.engine, opts.binaries, ctl.signal),
       emit: (event) => { if (event.type === 'done') completion = event; else opts.emit(event); },
       signal: ctl.signal,
       render: async (model, n) => {

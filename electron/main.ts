@@ -1,3 +1,4 @@
+import { chatMode } from '../shared/chat-modes';
 import { configureApi, inspectApi } from './providers/api';
 import { apiKey, setApiKey } from './api-keys';
 import { setOllamaSettings } from './providers/ollama';
@@ -21,7 +22,7 @@ import { cancelAll, cancelRun, injectMessage, runCli } from './providers/runner'
 import { registerModelIpc } from './models/ipc';
 import { registerWorkflowIpc } from './workflows/ipc';
 import { register3dIpc } from './3d/ipc';
-import { isModelingIntent, runChatModeling } from './3d/chat-model';
+import { cancelAllChatModeling, cancelChatModeling, runChatModeling } from './3d/chat-model';
 import { scheduler } from './runtimes/scheduler';
 import { dataDir, load, save } from './store';
 import { createTerminal, killTerminal, killTerminalsOf, resizeTerminal, writeTerminal } from './terminal';
@@ -263,19 +264,17 @@ function registerIpc() {
   ipcMain.handle('hub:run', async (e, req: RunRequest) => {
     const wc = e.sender;
     // Ohne gewählten Ordner läuft die CLI in einem leeren Arbeitsverzeichnis – kein Zugriff auf echte Projektdateien.
-    if (!req.cwd || !existsSync(req.cwd)) {
+    if (chatMode(req.options) === 'text' || !req.cwd || !existsSync(req.cwd)) {
       req = { ...req, cwd: join(dataDir(), 'scratch') };
       mkdirSync(req.cwd, { recursive: true });
     }
-    // Modellier-Absicht im Satz: die 3D-Schleife läuft im Chat, das Ergebnis erscheint daneben.
-    if (isModelingIntent(req.prompt) && (req.provider === 'local' || req.provider === 'claude') && !req.imageGen) {
-      const { projectId } = await runChatModeling(req, (event) => sendTo(wc, 'hub:event', { runId: req.runId, event }), binaries());
-      if (projectId) sendTo(wc, 'chat:project', { runId: req.runId, projectId });
+    if (chatMode(req.options) === 'model') {
+      await runChatModeling(req, (event) => sendTo(wc, 'hub:event', { runId: req.runId, event }), binaries(), (projectId, event) => sendTo(wc, '3d:event', { projectId, event }));
       return;
     }
     await runCli(req, (event) => sendTo(wc, 'hub:event', { runId: req.runId, event }), binaries());
   });
-  ipcMain.handle('hub:cancel', (_e, runId: string) => cancelRun(runId));
+  ipcMain.handle('hub:cancel', (_e, runId: string) => { if (!cancelChatModeling(runId)) cancelRun(runId); });
   // Lokale Modelle: Fortschritt und Status gehen an alle Fenster.
   registerModelIpc((channel, payload) => { for (const w of allWindows()) sendTo(w.webContents, channel, payload); });
   registerWorkflowIpc((channel, payload) => { for (const w of allWindows()) sendTo(w.webContents, channel, payload); }, binaries);
@@ -431,6 +430,7 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   if (shutdownStarted) return;
   shutdownStarted = true;
+  cancelAllChatModeling();
   cancelAll();
   void Promise.allSettled([shutdownOllama(), scheduler.shutdown()]).then(() => { shutdownComplete = true; app.quit(); });
 });

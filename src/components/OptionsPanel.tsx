@@ -1,3 +1,4 @@
+import { chatMode } from '@shared/chat-modes';
 import { t } from '@/lib/i18n';
 import { useState } from 'react';
 import { PROVIDERS, isTextOnly, modelEfforts, modesFor, modeLabel, currentMode, modePatch, effortLabel, canonicalModel, modelChoices, selectModelOptions } from '@shared/catalog';
@@ -23,6 +24,7 @@ function Lines({ value, onChange, placeholder }: { value: string[] | undefined; 
 
 export function OptionsPanel({ provider, value, onChange, basic, allowImages }: Props) {
   const meta = PROVIDERS[provider];
+  const coding = chatMode(value) === 'coding';
   const statuses = useHub((s) => s.statuses);
   const [more, setMore] = useState(false);
   const custom = useHub((s) => s.data.settings.customModels?.[provider]);
@@ -53,7 +55,7 @@ export function OptionsPanel({ provider, value, onChange, basic, allowImages }: 
           <Select value={value.effort} onChange={(v) => onChange({ effort: v || undefined })} options={efforts} placeholder={t('Standard')} />
         </div>}
       </div>
-      {!value.imageGen && modesFor(provider).length > 0 && <div>
+      {coding && modesFor(provider).length > 0 && <div>
         <Label>{t('Berechtigungen')}</Label>
         <Select value={currentMode(provider, value)} onChange={(mode) => onChange(modePatch(provider, mode))} options={[...new Set([currentMode(provider, value), ...modesFor(provider)])].map((id) => ({ value: id, label: t(modeLabel(provider, id)) }))} />
         <p className="mt-1 text-[11px] text-subtle">{t('Ask-Modi: Rückfragen werden im Headless-Betrieb abgelehnt. Für Änderungen einen passenden Modus wählen.')}</p>
@@ -65,7 +67,7 @@ export function OptionsPanel({ provider, value, onChange, basic, allowImages }: 
             <Label>{t('System-Prompt / Zusatzanweisungen')}</Label>
             <textarea className="field min-h-16 resize-y" placeholder={provider === 'claude' ? t('Wird an den System-Prompt angehängt') : provider === 'codex' ? t('Wird als Entwickleranweisung übergeben') : isTextOnly(provider) ? t('Wird als Systemnachricht übergeben') : t('Wird dem Prompt vorangestellt')} value={value.systemPrompt ?? ''} onChange={(e) => onChange({ systemPrompt: e.target.value || undefined })} />
           </div>
-          {!isTextOnly(provider) && <div>
+          {coding && !isTextOnly(provider) && <div>
             <Label>{t('Zusätzliche Verzeichnisse')}</Label>
             <div className="space-y-1">
               {(value.addDirs ?? []).map((d, i) => (
@@ -80,12 +82,12 @@ export function OptionsPanel({ provider, value, onChange, basic, allowImages }: 
         </>
       )}
 
-      {!basic && !value.imageGen && !isTextOnly(provider) && (
+      {!basic && coding && !isTextOnly(provider) && (
         <button className="flex items-center gap-1.5 text-[12px] text-muted hover:text-fg" onClick={() => setMore((m) => !m)}>
           <Icon name={more ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={14} /> {t('Erweiterte')} {meta.name} {t('Optionen')}
         </button>
       )}
-      {!basic && !value.imageGen && !isTextOnly(provider) && (
+      {!basic && coding && !isTextOnly(provider) && (
         <Collapse open={more}>
         <div className="space-y-3.5 border-l-2 border-edge py-1 pl-3">
           {provider === 'claude' && (

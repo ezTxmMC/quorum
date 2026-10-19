@@ -1,3 +1,4 @@
+import { chatMode } from '@shared/chat-modes';
 import { useRef } from 'react';
 import { create } from 'zustand';
 import { DEFAULT_OPTIONS, DIRECT_MESSAGES, PROVIDERS, defaultDock, defaultTerminal, isTextOnly } from '@shared/catalog';
@@ -191,14 +192,15 @@ export const useHub = create<State>((set, get) => {
       const empty = fresh ? undefined : get().data.sessions.find((x) => x.messages.length === 0);
       if (empty) {
         if (init?.cwd) get().addProject(init.cwd);
-        if (init) mutSession(empty.id, (x) => ({ ...x, ...init, options: init.provider && init.provider !== x.provider ? { ...get().data.settings.providerDefaults[init.provider] } : x.options }));
+        if (init) mutSession(empty.id, (x) => ({ ...x, ...init, options: { ...(init.provider && init.provider !== x.provider ? { ...get().data.settings.providerDefaults[init.provider], chatMode: 'text' as const } : x.options), ...init.options } }));
         return empty.id;
       }
       const { settings } = get().data;
       const provider = init?.provider ?? settings.defaultProvider;
       const s: ChatSession = {
         id: uid(), title: 'Neuer Chat', cwd: init?.cwd ?? '', provider,
-        options: { ...settings.providerDefaults[provider] }, providerSessions: {}, messages: [], createdAt: Date.now(), updatedAt: Date.now(), ...init,
+        providerSessions: {}, messages: [], createdAt: Date.now(), updatedAt: Date.now(), ...init,
+        options: { ...settings.providerDefaults[provider], chatMode: 'text', ...init?.options },
       };
       mutData((d) => ({ ...d, sessions: [s, ...d.sessions] }));
       return s.id;
@@ -283,6 +285,14 @@ export const useHub = create<State>((set, get) => {
       const runId = uid();
       const userMsg: Message = { id: uid(), role: 'user', blocks: [{ kind: 'text', text }], images: [...(opts.images ?? []), ...(opts.attachments?.map((a) => a.name) ?? [])], createdAt: Date.now() };
       const asst: Message = { id: uid(), role: 'assistant', provider: s.provider, blocks: [], createdAt: Date.now() };
+      const mode = chatMode(s.options);
+      if (mode === 'model') {
+        mutSession(sessionId, (x) => ({ ...x, title: x.messages.length === 0 ? titleOf(text) : x.title, messages: [...x.messages, userMsg, asst], updatedAt: Date.now() }));
+        set((st) => ({ runs: { ...st.runs, [runId]: { sessionId, messageId: asst.id, provider: s.provider } } }));
+        void hub.run({ runId, provider: s.provider, prompt: text, cwd: s.cwd, options: s.options, modelProjectId: s.modelProjectId, images: opts.images, attachments: opts.attachments });
+        return;
+      }
+      if (mode === 'image' && !s.options.imageGen) return;
       // Bildmodus: Anfrage geht an die Bild-Engine; das zuletzt erzeugte Bild des Chats dient als Referenz für Änderungswünsche.
       if (s.options.imageGen) {
         const lastImage = [...s.messages].reverse().flatMap((m) => [...m.blocks].reverse()).find((b) => b.kind === 'image') as { path: string } | undefined;
@@ -322,7 +332,7 @@ export const useHub = create<State>((set, get) => {
       if (!s) return;
       if (!get().isRunning(sessionId)) { get().send(sessionId, text, { images: opts.images, attachments: opts.attachments }); return; }
       const route = Object.entries(get().runs).find(([, r]) => r.sessionId === sessionId);
-      if (opts.mode === 'direct' && route && DIRECT_MESSAGES[s.provider] && s.options.liveInput !== false) {
+      if ((chatMode(s.options) === 'text' || chatMode(s.options) === 'coding') && opts.mode === 'direct' && route && DIRECT_MESSAGES[s.provider] && s.options.liveInput !== false) {
         const full = opts.images?.length ? `${opts.images.map((p) => `@${p}`).join(' ')}\n\n${text}` : text;
         if (await hub.inject(route[0], full, opts.attachments)) {
           mutSession(sessionId, (x) => ({ ...x, messages: x.messages.map((m) => (m.id === route[1].messageId ? { ...m, blocks: [...m.blocks, { kind: 'inject' as const, text }] } : m)) }));
@@ -399,6 +409,7 @@ function flush() {
             if (s.id !== route.sessionId) return s;
             // updatedAt nur am Ende ändern: sonst re-rendert die Sidebar bei jedem Token.
             let next: ChatSession = { ...s, messages: s.messages.map((m) => (m.id === route.messageId ? applyEvent(m, ev) : m)), updatedAt: ev.type === 'done' ? Date.now() : s.updatedAt };
+            if (ev.type === 'model_project') next = { ...next, modelProjectId: ev.projectId };
             if (ev.type === 'session') next = { ...next, providerSessions: { ...next.providerSessions, [route.provider]: ev.sessionId } };
             return next;
           }),

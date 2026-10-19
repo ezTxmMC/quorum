@@ -8,6 +8,7 @@ export function buildClaude(req: RunRequest): { args: string[]; stdin: string; l
   // "live": Eingabe als stream-json über stdin – dadurch kann der Hub während des Laufs weitere Nachrichten zustellen (Steuern/Queue).
   const live = o.liveInput !== false && !!req.live;
   const args = ['-p', ...(live ? ['--input-format', 'stream-json'] : []), '--output-format', 'stream-json', '--verbose', '--include-partial-messages'];
+  if (o.chatMode === 'text') args.push('--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}');
   if (o.model) args.push('--model', canonicalModel('claude', o.model)!);
   if (o.effort) args.push('--effort', o.effort);
   if (o.fullAccess) args.push('--dangerously-skip-permissions');

@@ -19,6 +19,7 @@ export function buildCodex(req: RunRequest): { args: string[]; stdin: string } {
   const args = ['exec'];
   if (resuming) args.push('resume');
   args.push('--json', '--skip-git-repo-check');
+  if (o.chatMode === 'text') args.push('-c', 'sandbox_mode="read-only"');
   if (!resuming) args.push('-C', req.cwd);
   if (o.systemPrompt) args.push('-c', `developer_instructions=${JSON.stringify(o.systemPrompt)}`);
   if (o.model) args.push('-m', o.model);

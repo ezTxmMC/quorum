@@ -3,8 +3,10 @@ import type { Capability } from './models';
 
 /** `local`: Modelle aus der Modell-Verwaltung (GGUF/Transformers), ohne Werkzeuge, nur Text. */
 export type ProviderId = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'ollama' | 'local' | 'api';
+export type ChatMode = 'text' | 'coding' | 'image' | 'model';
 
 export interface ProviderOptions {
+  chatMode?: ChatMode;
   model?: string;
   effort?: string;
   /** Berechtigungsmodus – providerspezifisch (siehe catalog.ts). */
@@ -56,6 +58,7 @@ export interface ResumeInfo {
 export interface Attachment { id: string; name: string; mime: string; /** Base64 ohne Präfix */ data: string }
 
 export interface RunRequest {
+  modelProjectId?: string;
   runId: string;
   provider: ProviderId;
   prompt: string;
@@ -76,6 +79,7 @@ export interface RunRequest {
 }
 
 export type HubEvent =
+  | { type: 'model_project'; projectId: string }
   | { type: 'session'; sessionId: string }
   | { type: 'text'; delta: string }
   | { type: 'text_full'; text: string }
@@ -197,6 +201,7 @@ export interface GitStatus {
 // ---- Persistenz ----------------------------------------------------------------
 
 export type Block =
+  | { kind: 'model'; projectId: string }
   | { kind: 'text'; text: string }
   /** Direkt zugestellte Nutzernachricht mitten im Lauf. */
   | { kind: 'inject'; text: string }
@@ -217,6 +222,8 @@ export interface Message {
 }
 
 export interface ChatSession {
+  modeSettings?: Partial<Record<ChatMode, { provider: ProviderId; options: ProviderOptions }>>;
+  modelProjectId?: string;
   id: string;
   title: string;
   cwd: string;

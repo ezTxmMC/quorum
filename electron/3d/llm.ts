@@ -1,31 +1,38 @@
-// Verbindung der Modellierungsschleife mit dem vorhandenen Agenten- und Provider-System:
-// lokale Modelle laufen über den Scheduler, CLI-Anbieter über den bestehenden Runner (nur lesend, leerer Arbeitsordner).
+// Use the selected chat provider for JSON plans, without granting project write access.
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { promises as fsp } from 'node:fs';
 import { join } from 'node:path';
-import type { ProviderId } from '../../shared/types';
+import type { ProviderId, ProviderOptions } from '../../shared/types';
 import type { ChatMessage } from '../../shared/models';
-import { runLocalChat } from '../models/chat';
-import { runCli } from '../providers/runner';
+import { cancelRun, runCli } from '../providers/runner';
 import { dataDir } from '../store';
 
-export type ChatEngine = { type: 'local'; modelId: string } | { type: 'cli'; provider: 'claude' | 'codex' | 'antigravity' | 'opencode' };
+export type ChatEngine = { type: 'local'; modelId: string }
+  | { type: 'cli'; provider: 'claude' | 'codex' | 'antigravity' | 'opencode' }
+  | { type: 'provider'; provider: ProviderId; options: ProviderOptions };
 
-/** Ein Chat-Aufruf für die Modellierungsschleife. Gibt den Antworttext zurück, wirft bei Fehlern. */
-export function chatFor(engine: ChatEngine, binaries: Partial<Record<ProviderId, string>>): (messages: ChatMessage[]) => Promise<string> {
+export function chatFor(engine: ChatEngine, binaries: Partial<Record<ProviderId, string>>, signal?: AbortSignal): (messages: ChatMessage[]) => Promise<string> {
   return async (messages) => {
-    if (engine.type === 'local') {
-      const r = await runLocalChat({ runId: randomUUID(), modelId: engine.modelId, messages, priority: 1, onDelta: () => {} });
-      if (!r.ok) throw new Error(r.error ?? 'Sprachmodell fehlgeschlagen');
-      return r.text;
-    }
-    const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
-    const rest = messages.filter((m) => m.role !== 'system').map((m) => m.content).join('\n\n');
+    if (signal?.aborted) throw new Error('Abgebrochen');
+    const runId = randomUUID();
+    const provider = engine.type === 'local' ? 'local' : engine.provider;
+    const options: ProviderOptions = engine.type === 'local' ? { model: engine.modelId } : engine.type === 'provider' ? engine.options : {};
+    const system = messages.filter((message) => message.role === 'system').map((message) => message.content).join('\n\n');
+    const conversation = messages.filter((message) => message.role !== 'system');
     const cwd = join(dataDir(), 'scratch');
-    mkdirSync(cwd, { recursive: true });
-    const options = engine.provider === 'codex' ? { sandbox: 'read-only' } : { permission: 'plan' };
-    const res = await runCli({ runId: randomUUID(), provider: engine.provider, cwd, prompt: system ? `${system}\n\n---\n\n${rest}` : rest, options }, () => {}, binaries);
-    if (!res.ok) throw new Error(`${engine.provider} fehlgeschlagen`);
-    return res.text;
+    await fsp.mkdir(cwd, { recursive: true });
+    if (signal?.aborted) throw new Error('Abgebrochen');
+    const abort = () => cancelRun(runId);
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      const result = await runCli({
+        runId, provider, cwd, prompt: conversation.at(-1)?.content ?? '',
+        options: { ...options, chatMode: 'text', imageGen: undefined, systemPrompt: [options.systemPrompt, system].filter(Boolean).join('\n\n') },
+        history: conversation.slice(0, -1).map((message) => ({ role: message.role === 'assistant' ? 'assistant' : 'user', content: message.content })),
+      }, () => {}, binaries);
+      if (signal?.aborted) throw new Error('Abgebrochen');
+      if (!result.ok) throw new Error(`${provider}: Modellierungsplan fehlgeschlagen`);
+      return result.text;
+    } finally { signal?.removeEventListener('abort', abort); }
   };
 }
