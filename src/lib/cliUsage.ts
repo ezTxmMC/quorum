@@ -54,50 +54,96 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function queryCliUsage(provider: 'claude' | 'antigravity', cwd: string): Promise<CliUsage> {
   const id = uid();
   const term = new Terminal({ cols: 120, rows: 45, allowProposedApi: true, scrollback: 0 });
-  let lastData = Date.now();
-  const off = hub.onTermData((p) => { if (p.id === id) { term.write(p.data); lastData = Date.now(); } });
+  const off = hub.onTermData((p) => { if (p.id === id) term.write(p.data); });
   const screen = () => {
     const b = term.buffer.active;
     const lines: string[] = [];
     for (let i = 0; i < b.length; i++) lines.push(b.getLine(i)?.translateToString(true) ?? '');
     return lines.join('\n');
   };
-  const settle = async (idleMs: number, maxMs: number) => {
-    // warten, bis die Ausgabe idleMs lang ruhig war (oder maxMs erreicht sind)
-    const start = Date.now();
-    while (Date.now() - start < maxMs && Date.now() - lastData < idleMs) await sleep(100);
-  };
   const fail = (error: string, raw = ''): CliUsage => ({ provider, ok: false, meters: [], raw, error, at: Date.now() });
+
   try {
     const r = await hub.termCreate(id, cwd, 120, 45, provider);
     if (r.mode === 'missing') return fail('CLI nicht gefunden');
     if (hub.platform === 'win32') return fail('Unter Windows nicht unterstützt (kein PTY).');
-    await settle(1500, 15000); // Startbildschirm abwarten
 
-    // Beide CLIs kennen /usage (das „View Usage“ im Modell-Menü gibt es nur in der Antigravity-Desktop-App, nicht in der CLI).
-    // Escape davor schließt evtl. offene Popups; als Rückfall folgt /status.
-    const steps: string[][] = provider === 'claude'
-      ? [['/usage', '\r']]
-      : [['/usage', '\r'], ['\x1b', '/status', '\r']];
-    for (const step of steps) {
-      for (const keys of step) { await hub.termWrite(id, keys); await sleep(450); }
-      await settle(1200, 8000);
-      let text = screen();
-      let meters = parseMeters(text);
-      if (meters.length) {
-        // Lange Ansichten sind scrollbar ("(1–32 of 38 lines)"): per Bild-runter-Taste weiterblättern und alles zusammenführen.
-        const seen = new Set(meters.map((m) => `${m.group}|${m.label}|${m.percent}`));
-        for (let page = 0; page < 6; page++) {
-          const ind = /\((\d+)\s*[–-]\s*(\d+)\s+of\s+(\d+)\s+lines?\)/i.exec(text);
-          if (!ind || Number(ind[2]) >= Number(ind[3])) break;
-          await hub.termWrite(id, '\x1b[6~');
-          await settle(700, 4000);
-          text = screen();
-          for (const m of parseMeters(text)) { const k = `${m.group}|${m.label}|${m.percent}`; if (!seen.has(k)) { seen.add(k); meters.push(m); } }
-        }
-        return { provider, ok: true, meters, raw: text.split('\n').map((l) => l.trimEnd()).filter(Boolean).join('\n'), at: Date.now() };
+    // 1. Warten, bis die CLI gestartet und bereit für Eingaben ist.
+    // Eventuelle Bestätigungsdialoge (z. B. Workspace-Trust bei Claude) automatisch annehmen.
+    const start = Date.now();
+    while (Date.now() - start < 15000) {
+      await sleep(150);
+      const text = screen();
+      // Claude Workspace-Trust Prompt:
+      if (/trust this folder|safety check|❯\s*No,\s*exit/i.test(text)) {
+        // Pfeil nach unten ("Yes, I trust this folder"), dann Enter
+        await hub.termWrite(id, '\x1b[B\r');
+        await sleep(500);
+        continue;
+      }
+      // Popup / Ankündigung ("Press Enter to continue"):
+      if (/press enter to continue/i.test(text)) {
+        await hub.termWrite(id, '\r');
+        await sleep(300);
+        continue;
+      }
+      // CLI-Prompt bereit:
+      if (/[❯>]/.test(text) || /shortcuts/i.test(text) || /Try\s*"/i.test(text) || /Models & Quota/i.test(text)) {
+        break;
       }
     }
+
+    await sleep(300);
+
+    // 2. Beide CLIs kennen /usage. Escape davor schließt evtl. offene Popups.
+    const steps: string[][] = provider === 'claude'
+      ? [['\x1b', '/usage\r']]
+      : [['\x1b', '/usage\r'], ['\x1b', '/status\r']];
+
+    for (const step of steps) {
+      for (const keys of step) {
+        await hub.termWrite(id, keys);
+        await sleep(250);
+      }
+
+      // Warten auf das Erscheinen der Prozentwerte (bis zu 8s)
+      const queryStart = Date.now();
+      let meters: UsageMeter[] = [];
+      let text = '';
+      while (Date.now() - queryStart < 8000) {
+        await sleep(200);
+        text = screen();
+        meters = parseMeters(text);
+        if (meters.length > 0) break;
+      }
+
+      if (meters.length > 0) {
+        // Scrollbare Ansicht weiterblättern (z. B. "(1–11 of 37 lines)" bei Antigravity)
+        const seen = new Set(meters.map((m) => `${m.group}|${m.label}|${m.percent}`));
+        for (let page = 0; page < 8; page++) {
+          const ind = /\((\d+)\s*[–-]\s*(\d+)\s+of\s+(\d+)\s+lines?\)/i.exec(text);
+          if (!ind || Number(ind[2]) >= Number(ind[3])) break;
+          await hub.termWrite(id, '\x1b[6~'); // PageDown
+          await sleep(400);
+          text = screen();
+          for (const m of parseMeters(text)) {
+            const k = `${m.group}|${m.label}|${m.percent}`;
+            if (!seen.has(k)) {
+              seen.add(k);
+              meters.push(m);
+            }
+          }
+        }
+        return {
+          provider,
+          ok: true,
+          meters,
+          raw: text.split('\n').map((l) => l.trimEnd()).filter(Boolean).join('\n'),
+          at: Date.now(),
+        };
+      }
+    }
+
     const text = screen();
     return fail('Keine Prozentwerte in der Ausgabe gefunden.', text.split('\n').map((l) => l.trimEnd()).filter(Boolean).join('\n'));
   } catch (e) {

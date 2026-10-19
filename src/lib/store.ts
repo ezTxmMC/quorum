@@ -258,7 +258,7 @@ export const useHub = create<State>((set, get) => {
         if (!st?.installed || get().cliUsageBusy[p]) continue;
         set((s) => ({ cliUsageBusy: { ...s.cliUsageBusy, [p]: true } }));
         try {
-          const res = await queryCliUsage(p, get().activeCwd || get().data.recentProjects[0] || '');
+          const res = await queryCliUsage(p, '');
           // Ein fehlgeschlagener Versuch überschreibt keine bereits gelesenen Werte.
           if (res.ok || !get().cliUsage[p]?.ok) set((s) => ({ cliUsage: { ...s.cliUsage, [p]: res } }));
         } finally { set((s) => ({ cliUsageBusy: { ...s.cliUsageBusy, [p]: false } })); }

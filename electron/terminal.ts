@@ -15,31 +15,50 @@ if pid == 0:
     os.environ['COLORTERM'] = 'truecolor'
     os.execvp(shell, [shell] + extra)
 def setsize(c, r):
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', r, c, 0, 0))
+    try: fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', r, c, 0, 0))
+    except Exception: pass
 setsize(cols, rows)
 buf = b''
+poller = select.poll()
+poller.register(fd, select.POLLIN | select.POLLHUP | select.POLLERR)
+poller.register(0, select.POLLIN | select.POLLHUP | select.POLLERR)
+try: poller.register(3, select.POLLIN | select.POLLHUP | select.POLLERR)
+except Exception: pass
 try:
     while True:
-        r, _, _ = select.select([fd, 0, 3], [], [])
-        if fd in r:
-            try: d = os.read(fd, 65536)
-            except OSError: break
-            if not d: break
-            os.write(1, d)
-        if 0 in r:
-            d = os.read(0, 65536)
-            if not d: break
-            os.write(fd, d)
-        if 3 in r:
-            d = os.read(3, 1024)
-            if d:
-                buf += d
-                while b'\\n' in buf:
-                    line, buf = buf.split(b'\\n', 1)
-                    try:
-                        c, rr = line.split()
-                        setsize(int(c), int(rr))
+        events = poller.poll()
+        for ev_fd, ev in events:
+            if ev_fd == fd:
+                if ev & (select.POLLIN | select.POLLHUP | select.POLLERR):
+                    try: d = os.read(fd, 65536)
+                    except OSError: d = b''
+                    if not d: raise StopIteration
+                    os.write(1, d)
+            elif ev_fd == 0:
+                if ev & select.POLLIN:
+                    try: d = os.read(0, 65536)
+                    except OSError: d = b''
+                    if not d: raise StopIteration
+                    try: os.write(fd, d)
+                    except OSError: raise StopIteration
+                elif ev & (select.POLLHUP | select.POLLERR):
+                    raise StopIteration
+            elif ev_fd == 3:
+                if ev & select.POLLIN:
+                    try: d = os.read(3, 1024)
+                    except OSError: d = b''
+                    if d:
+                        buf += d
+                        while b'\\n' in buf:
+                            line, buf = buf.split(b'\\n', 1)
+                            try:
+                                c, rr = line.split()
+                                setsize(int(c), int(rr))
+                            except Exception: pass
+                elif ev & (select.POLLHUP | select.POLLERR):
+                    try: poller.unregister(3)
                     except Exception: pass
+except (StopIteration, KeyboardInterrupt): pass
 finally:
     try: os.kill(pid, signal.SIGHUP)
     except Exception: pass
