@@ -110,6 +110,13 @@ export class ModelScheduler {
     this.timer.unref();
   }
 
+  configure(options?: { idleMinutes?: number; cpuFallback?: boolean; vramReserveMb?: number }): void {
+    const number = (value: number | undefined, fallback: number, min: number, max: number) => typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+    this.opts.idleMs = number(options?.idleMinutes, 10, 1, 1440) * 60000;
+    this.opts.cpuFallback = options?.cpuFallback !== false;
+    this.opts.vramReserve = number(options?.vramReserveMb, 512, 0, 65536) * 1024 ** 2;
+  }
+
   /** Modell ausleihen (lädt bei Bedarf). Höhere Priorität kommt in der Warteschlange zuerst. */
   acquire<T extends LoadedHandle = LoadedHandle>(record: ModelRecord, priority = 0, signal?: AbortSignal): Promise<Lease<T>> {
     return new Promise<Lease<T>>((resolve, reject) => {

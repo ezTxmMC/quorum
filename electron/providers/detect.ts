@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { PROVIDERS, CLAUDE_MODELS } from '../../shared/catalog';
+import { PROVIDERS, CLAUDE_MODELS, modelLabel, isChatModel } from '../../shared/catalog';
 import { ollamaStatus } from './ollama';
 import { listModels } from '../models/registry';
 import { resolveRuntime } from '../runtimes/scheduler';
@@ -37,9 +37,12 @@ async function codexModels(bin: string): Promise<ModelInfo[]> {
   const r = await execCli(bin, ['debug', 'models'], undefined, 30000);
   try {
     const data = JSON.parse(r.stdout) as { models: { slug: string; display_name?: string; visibility?: string; supported_reasoning_levels?: { effort: string }[]; service_tiers?: { id: string; name: string; description: string }[] }[] };
+    const newestMajor = Math.max(0, ...data.models.filter((m) => isChatModel(m.slug)).map((m) => Number(/^gpt-(\d+)/i.exec(m.slug)?.[1] ?? 0)));
     return data.models
-      .filter((m) => m.visibility !== 'hidden' && m.visibility !== 'none')
-      .map((m) => ({ id: m.slug, label: m.display_name ?? m.slug, efforts: m.supported_reasoning_levels?.map((l) => l.effort), speedTiers: m.service_tiers }));
+      .filter((m) => m.visibility !== 'none' && isChatModel(m.slug))
+      .map((m) => ({ id: m.slug, label: m.display_name ?? m.slug,
+        legacy: ['hide', 'hidden'].includes(m.visibility ?? '') || Number(/^gpt-(\d+)/i.exec(m.slug)?.[1] ?? newestMajor) < newestMajor,
+        efforts: m.supported_reasoning_levels?.map((l) => l.effort), speedTiers: m.service_tiers }));
   } catch { return []; }
 }
 
@@ -53,8 +56,9 @@ async function agyModels(bin: string): Promise<ModelInfo[]> {
     const m = /^(.*)-(low|medium|high)$/.exec(id);
     const lm = /^(.*) \((Low|Medium|High)\)$/.exec(label);
     if (!m || !lm) { groups.set(id, { id, label }); continue; }
-    const g = groups.get(m[1]) ?? { id: m[1], label: lm[1], efforts: [] };
-    g.efforts = [...(g.efforts ?? []), m[2]];
+    const g: ModelInfo = groups.get(m[1]) ?? { id: m[1], label: lm[1], efforts: [], effortModels: {} };
+    g.efforts = [...new Set([...(g.efforts ?? []), m[2]])];
+    g.effortModels = { ...g.effortModels, [m[2]]: id };
     groups.set(m[1], g);
   }
   return [...groups.values()];
@@ -63,10 +67,15 @@ async function agyModels(bin: string): Promise<ModelInfo[]> {
 /** `opencode models` listet "anbieter/modell" je Zeile. */
 async function opencodeModels(bin: string): Promise<ModelInfo[]> {
   const r = await execCli(bin, ['models'], undefined, 40000);
-  return r.stdout.split('\n').map((l) => l.trim()).filter((l) => /^[\w.-]+\/\S+$/.test(l)).map((id) => ({ id, label: id }));
+  return r.stdout.split('\n').map((l) => l.trim()).filter((l) => /^[\w.-]+\/\S+$/.test(l)).map((id) => ({ id, label: modelLabel({ id, label: id }), group: id.split('/')[0] }));
 }
 
 const cache = new Map<ProviderId, ProviderStatus>();
+
+/** UI discovery has already resolved grouped model variants; never delay a run to rediscover them. */
+export function detectedModel(provider: ProviderId, id: string): ModelInfo | undefined {
+  return cache.get(provider)?.models.find((m) => m.id === id);
+}
 
 /** Lokale Modelle: alle Registry-Einträge mit Text-Fähigkeit, die eine Runtime laden kann. Ohne Cache (ändert sich laufend). */
 function localStatus(): ProviderStatus {

@@ -1,11 +1,12 @@
 import { getLang, t } from '@/lib/i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DIRECT_MESSAGES, PROVIDERS } from '@shared/catalog';
+import { DIRECT_MESSAGES, PROVIDERS, isChatModel } from '@shared/catalog';
 import type { Attachment, ChatSession } from '@shared/types';
 import { hub, uid } from '@/lib/api';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { ImageButton, ModeButton, ModelButton, TuneButton, defaultModel } from './ModelPicker';
+import { ComposerUsage } from './ComposerUsage';
 import { cx } from './ui';
 
 function arrayToB64(bytes: Uint8Array): string {
@@ -49,7 +50,7 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
 
   // Fehlt ein Modell, das Standardmodell eintragen, damit Anzeige und Aufruf übereinstimmen.
   useEffect(() => {
-    if (session.options.model || !pStatus) return;
+    if (!pStatus || (session.options.model && isChatModel(session.options.model))) return;
     const m = defaultModel(session.provider, pStatus);
     if (m) patch(session.id, { options: { ...session.options, model: m } });
   }, [session.id, session.provider, session.options, pStatus, patch]);
@@ -217,6 +218,7 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
           <ModeButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} onMore={() => useHub.getState().toggleChatOptions(true)} />
           {!session.options.imageGen && <TuneButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} />}
           <div className="flex-1" />
+          <ComposerUsage session={session} />
           {/* Reihenfolge: Einreihen · Stopp · Senden – alle drei gleich hoch (h-8), Stopp in sanftem Rot direkt neben „Senden“ */}
           {running && canDirect && (
             <button className="btn !h-8 !rounded-full !px-3 text-[12px]" disabled={!text.trim() && !images.length && !atts.length} onClick={() => submit(true)} title={t('Einreihen (Alt+Enter): wird nach dem aktuellen Lauf gesendet')}><Icon name="lucide:list-plus" size={14} /> {t('Einreihen')}</button>

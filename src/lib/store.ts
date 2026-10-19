@@ -295,7 +295,7 @@ export const useHub = create<State>((set, get) => {
       const isApi = isTextOnly(s.provider);
       const prompt = !isApi && !providerSession && !opts.continueLast && s.messages.length ? contextPreamble(s) + text : text;
       // Ollama-Chat (API) hat keine eigene Session: der Verlauf kommt aus dem Hub.
-      const history = isApi ? s.messages.slice(-40).map((m) => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: messageText(m) })).filter((m) => m.content) : undefined;
+      const history = isApi ? s.messages.slice(-40).filter((m) => m.role !== 'system').map((m) => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: messageText(m) })).filter((m) => m.content) : undefined;
       mutSession(sessionId, (x) => ({
         ...x, title: x.messages.length === 0 ? titleOf(text) : x.title, messages: [...x.messages, userMsg, asst], updatedAt: Date.now(),
       }));

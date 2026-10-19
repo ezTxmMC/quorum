@@ -1,9 +1,10 @@
 import { t } from '@/lib/i18n';
-import { useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import type { ChatSession, MultiRunRecord } from '@shared/types';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { hub } from '@/lib/api';
 import { useHub, useHubEq } from '@/lib/store';
+import { searchChat } from '@/lib/chatSearch';
 import { Icon } from '@/lib/icons';
 import { ImportModal } from './ImportModal';
 import { Collapse, Modal, ProviderMark, cx } from './ui';
@@ -31,10 +32,24 @@ function ago(ts: number) {
 }
 
 export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; onTogglePin?: () => void; onClose?: () => void } = {}) {
-  const allSessions = useHubEq((s) => s.data.sessions, sessionsEqual);
+  const [search, setSearch] = useState('');
+  const query = useDeferredValue(search.trim());
+  const searching = query.length > 0;
+  const allSessions = useHubEq((s) => s.data.sessions, search.trim() ? Object.is : sessionsEqual);
+  const searchSessions = useDeferredValue(allSessions);
   // Chats erscheinen erst, nachdem der erste Prompt gesendet wurde.
   const hidden = useHub((s) => s.data.hidden);
-  const sessions = allSessions.filter((s) => s.messages.length > 0 && !hidden.includes(s.cwd));
+  const matches = useMemo(() => {
+    const results = new Map<string, { snippet?: string }>();
+    if (!query) return results;
+    for (const session of searchSessions) {
+      if (!session.messages.length || hidden.includes(session.cwd)) continue;
+      const result = searchChat(session, query);
+      if (result) results.set(session.id, result);
+    }
+    return results;
+  }, [searchSessions, hidden, query]);
+  const sessions = (searching ? searchSessions : allSessions).filter((s) => s.messages.length > 0 && !hidden.includes(s.cwd) && (!searching || matches.has(s.id)));
   const [removing, setRemoving] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -43,7 +58,7 @@ export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; on
   // Projekte = Ordnerpfade: angelegte + alle, in denen Chats liegen; "Ohne Projekt" (kein Ordner) zuletzt.
   const groups = (() => {
     const map = new Map<string, typeof sessions>();
-    for (const p of projects) map.set(p, []);
+    if (!searching) for (const p of projects) map.set(p, []);
     for (const s of sessions) map.set(s.cwd, [...(map.get(s.cwd) ?? []), s]);
     const latest = (l: typeof sessions) => Math.max(0, ...l.map((x) => x.updatedAt));
     return [...map.entries()].map(([cwd, list]) => ({ cwd, sessions: list })).sort((a, b) => (a.cwd === '' ? 1 : b.cwd === '' ? -1 : latest(b.sessions) - latest(a.sessions)));
@@ -92,8 +107,18 @@ export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; on
           </NavLink>
         ))}
       </nav>
+      <div role="search" className="px-2.5 pb-2">
+        <div className="flex items-center gap-2 rounded-lumen-sm border border-edge bg-input px-2.5 focus-within:border-accent/60">
+          <Icon name="lucide:search" size={14} className="shrink-0 text-subtle" />
+          <input type="text" role="searchbox" aria-label={t('Chats durchsuchen')} placeholder={t('Chats durchsuchen …')} value={search} onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape' && search) { e.preventDefault(); e.stopPropagation(); setSearch(''); } }}
+            className="min-w-0 flex-1 bg-transparent py-2 text-[12px] outline-none placeholder:text-subtle" />
+          {search && <button className="icon-btn !size-5" aria-label={t('Suche leeren')} title={t('Suche leeren')} onClick={() => setSearch('')}><Icon name="lucide:x" size={12} /></button>}
+        </div>
+        {search.trim() && <div role="status" aria-live="polite" className="px-1 pt-1.5 text-[10.5px] text-subtle">{query !== search.trim() ? t('Suche …') : `${matches.size} ${t('Chats gefunden')}`}</div>}
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
-        {multis.length > 0 && (
+        {!searching && multis.length > 0 && (
           <>
             <div className="px-2.5 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-subtle">{t('Teams')}</div>
             {multis.slice(0, 8).map((m) => (
@@ -113,9 +138,10 @@ export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; on
             <button className="icon-btn !size-5" title={t('Sessions importieren')} onClick={() => setImporting(true)}><Icon name="lucide:download" size={13} /></button>
           </span>
         </div>
-        {groups.length === 0 && <div className="px-2.5 py-2 text-subtle">{t('Noch keine Chats.')} <button className="underline decoration-edge-strong underline-offset-4 hover:text-fg" onClick={() => setImporting(true)}>{t('Sessions importieren')}</button></div>}
+        {searching && groups.length === 0 && <div className="px-2.5 py-4 text-[12px] text-subtle">{t('Keine passenden Chats gefunden.')}</div>}
+        {!searching && groups.length === 0 && <div className="px-2.5 py-2 text-subtle">{t('Noch keine Chats.')} <button className="underline decoration-edge-strong underline-offset-4 hover:text-fg" onClick={() => setImporting(true)}>{t('Sessions importieren')}</button></div>}
         {groups.map((g) => {
-          const open = !collapsed.has(g.cwd);
+          const open = searching || !collapsed.has(g.cwd);
           return (
             <div key={g.cwd || '__none'} className="mb-0.5">
               <div className="group/p flex items-center rounded-lumen-sm hover:bg-hover">
@@ -138,7 +164,7 @@ export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; on
                   {g.sessions.map((s) => (
                     <NavLink key={s.id} to={`/chat/${s.id}`} viewTransition className={({ isActive }) => cx('group flex items-center gap-2 rounded-lumen-sm px-2 py-1.5 transition-colors hover:bg-hover', (isActive || id === s.id) && 'bg-active', leaving.has(s.id) && 'row-leave')}>
                       <ProviderMark id={s.provider} size={12} />
-                      <span className="min-w-0 flex-1 truncate">{s.title}</span>
+                      <span className="min-w-0 flex-1"><span className="block truncate">{s.title}</span>{searching && matches.get(s.id)?.snippet && <span className="mt-0.5 block truncate text-[11px] text-subtle">{matches.get(s.id)?.snippet}</span>}</span>
                       {running.has(s.id) ? <span className="pulse-dot size-2 rounded-full bg-accent" /> : <span className="text-[10.5px] text-subtle group-hover:hidden">{ago(s.updatedAt)}</span>}
                       <button className="icon-btn hidden !size-5 group-hover:grid" title={t('Ordner dieses Chats ändern')} onClick={async (e) => { e.preventDefault(); const d = await hub.pickFolder(); if (d) moveSession(s.id, d); }}><Icon name="lucide:folder-pen" size={12} /></button>
                       <button className="icon-btn hidden !size-5 group-hover:grid" title={t('In neuem Fenster öffnen')} onClick={(e) => { e.preventDefault(); void hub.newWindow(`/chat/${s.id}`); }}><Icon name="lucide:app-window" size={12} /></button>

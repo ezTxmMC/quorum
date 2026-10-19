@@ -1,10 +1,9 @@
 import { t } from '@/lib/i18n';
 import { useCallback, useEffect, useState } from 'react';
-import { CAPABILITY_LABELS, type ChatMessage, type ModelRecord, type RuntimeDetection } from '@shared/models';
+import { CAPABILITY_LABELS, type ChatMessage, type ModelRecord } from '@shared/models';
 import { compatibleRuntimes } from '@shared/compat';
 import { defaultSelection, expandShards } from '@shared/selection';
 import type { LoadedInfo } from '../../electron/runtimes/scheduler';
-import type { ResourceSnapshot } from '../../electron/runtimes/resources';
 import type { PyStatus } from '../../electron/runtimes/pyenv';
 import type { DownloadState } from '../../electron/models/manager';
 import type { HfModelInfo, HfSearchHit } from '../../electron/models/hf';
@@ -20,44 +19,6 @@ const gb = (b: number) => (b / 1024 ** 3).toFixed(1);
 const size = (b: number) => (b < 1024 ** 3 ? `${Math.round(b / 1024 ** 2)} MB` : `${gb(b)} GB`);
 const pct = (a: number, b: number) => (b > 0 ? Math.min(100, (a / b) * 100) : 0);
 const TEXT_CAPS = ['chat', 'coding', 'reasoning', 'agent', 'vision'];
-
-function Bar({ value, label }: { value: number; label: string }) {
-  return (
-    <div>
-      <div className="mb-1 flex justify-between text-[11.5px] text-subtle"><span>{label}</span><span>{Math.round(value)} %</span></div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-hover"><div className="h-full bg-accent transition-[width]" style={{ width: `${value}%` }} /></div>
-    </div>
-  );
-}
-
-function RuntimeCard({ rt, res }: { rt?: RuntimeDetection; res?: ResourceSnapshot }) {
-  return (
-    <section className="rounded-lumen-lg border border-edge bg-surface p-4">
-      <div className="mb-3 flex items-center gap-3">
-        <Icon name="lucide:cpu" size={18} className="text-muted" />
-        <div className="min-w-0 flex-1">
-          <div className="font-medium">llama.cpp <span className="font-normal text-subtle">· GGUF</span></div>
-          <div className="truncate font-mono text-[11.5px] text-subtle">
-            {rt?.available ? `${rt.version ?? ''} · Backends: ${rt.backends.join(', ')}` : rt?.error ?? t('Prüfe Installation …')}
-          </div>
-        </div>
-        <span className={cx('rounded-full px-2.5 py-0.5 text-[11.5px]', rt?.available ? 'bg-ok/15 text-ok' : 'bg-bad/15 text-bad')}>{rt?.available ? t('bereit') : t('fehlt')}</span>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        {res?.gpu ? (
-          <div className="col-span-1">
-            <Bar value={pct(res.gpu.vramUsed, res.gpu.vramTotal)} label={`VRAM ${gb(res.gpu.vramUsed)} / ${gb(res.gpu.vramTotal)} GB`} />
-            {res.gpu.busyPercent !== undefined && <div className="mt-2"><Bar value={res.gpu.busyPercent} label={t('GPU-Auslastung')} /></div>}
-          </div>
-        ) : (
-          <div className="col-span-1 text-[11.5px] text-subtle">{t('Keine GPU-Daten')}</div>
-        )}
-        <div className="col-span-1"><Bar value={res ? pct(res.ram.used, res.ram.total) : 0} label={res ? `RAM ${gb(res.ram.used)} / ${gb(res.ram.total)} GB` : 'RAM'} /></div>
-        <div className="col-span-1"><Bar value={res ? Math.min(100, (res.cpu.load1 / res.cpu.cores) * 100) : 0} label={`CPU · ${res?.cpu.cores ?? '–'} ${t('Kerne')}`} /></div>
-      </div>
-    </section>
-  );
-}
 
 function PythonCard() {
   const [st, setSt] = useState<PyStatus | undefined>();
@@ -328,8 +289,6 @@ export function ModelsPage() {
   const [models, setModels] = useState<ModelRecord[]>([]);
   const [loaded, setLoaded] = useState<LoadedInfo[]>([]);
   const [downloads, setDownloads] = useState<DownloadState[]>([]);
-  const [rt, setRt] = useState<RuntimeDetection | undefined>();
-  const [res, setRes] = useState<ResourceSnapshot | undefined>();
   const [err, setErr] = useState<string | null>(null);
 
   const reload = useCallback(() => {
@@ -341,10 +300,7 @@ export function ModelsPage() {
 
   useEffect(() => {
     reload();
-    void hub.modelRuntime().then(setRt);
-    const tick = () => void hub.modelResources().then(setRes);
-    tick();
-    const iv = setInterval(() => { tick(); void hub.modelLoaded().then(setLoaded); }, 2000);
+    const iv = setInterval(() => { void hub.modelLoaded().then(setLoaded); }, 2000);
     const a = hub.onModelDownload((d) => setDownloads((list) => [...list.filter((x) => x.id !== d.id), d]));
     const b = hub.onModelRegistry(() => reload());
     const c = hub.onModelEvent(() => void hub.modelLoaded().then(setLoaded));
@@ -370,7 +326,6 @@ export function ModelsPage() {
           <p className="text-muted">{t('Lokale Modelle von Hugging Face suchen, laden und ausführen. Ressourcen werden live überwacht.')}</p>
         </div>
 
-        <RuntimeCard rt={rt} res={res} />
         <PythonCard />
 
         <section className="space-y-3">

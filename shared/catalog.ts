@@ -62,8 +62,8 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
   },
   local: {
     id: 'local',
-    name: 'Lokal',
-    vendor: 'Hub · Modell-Verwaltung',
+    name: 'llama.cpp / Lokal',
+    vendor: 'Lokal · GGUF / Transformers',
     bin: '',
     color: '#8fb7a8',
     icon: 'lucide:cpu',
@@ -140,7 +140,7 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
       { value: 'plan', label: 'Plan (nur lesen)' },
       { value: 'auto', label: 'Auto', hint: 'Nicht für jeden Account verfügbar' },
     ],
-    efforts: ['low', 'medium', 'high', 'xhigh', 'max'].map((v) => ({ value: v, label: v })),
+    efforts: ['low', 'medium', 'high'].map((v) => ({ value: v, label: v })),
     commands: [
       { id: 'models', label: 'Modelle', icon: 'lucide:cpu', args: ['models'], hint: 'agy models' },
       { id: 'agents', label: 'Agenten', icon: 'lucide:bot', args: ['agents'], hint: 'agy agents' },
@@ -155,10 +155,10 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
 };
 
 export const CLAUDE_MODELS = [
-  { id: 'fable', label: 'Claude Fable 5.1' },
-  { id: 'opus', label: 'Claude Opus 5.5' },
-  { id: 'sonnet', label: 'Claude Sonnet 5.5' },
-  { id: 'haiku', label: 'Claude Haiku 5.5' },
+  { id: 'fable', label: 'Claude Fable · Latest' },
+  { id: 'opus', label: 'Claude Opus · Latest' },
+  { id: 'sonnet', label: 'Claude Sonnet · Latest' },
+  { id: 'haiku', label: 'Claude Haiku · Latest' },
 ];
 
 export const EFFORT_LABELS: Record<string, string> = {
@@ -175,9 +175,10 @@ export const DEFAULT_OPTIONS: Record<ProviderId, ProviderOptions> = {
 };
 
 // ---- Berechtigungsmodi (pro Chat wählbar) ---------------------------------------------------------------------------------
-export type ModeId = 'ask' | 'edit' | 'plan' | 'auto' | 'noask' | 'full';
+export type ModeId = 'ask' | 'edit' | 'plan' | 'auto' | 'noask' | 'full' | 'review';
 
 export const MODES: { id: ModeId; icon: string; label: string; hint: string }[] = [
+  { id: 'review', icon: 'lucide:clipboard-check', label: 'Request review', hint: 'Plant zuerst; keine Änderungen bis zur Freigabe durch Moduswechsel' },
   { id: 'ask', icon: 'lucide:message-circle-question', label: 'Fragen', hint: 'Fragt vor Änderungen – nicht erlaubte Tools werden headless abgelehnt' },
   { id: 'edit', icon: 'lucide:file-pen-line', label: 'Bearbeiten', hint: 'Dateiänderungen ohne Rückfrage' },
   { id: 'plan', icon: 'lucide:map', label: 'Plan', hint: 'Nur lesen und planen, nichts ändern' },
@@ -190,14 +191,15 @@ export const MODES: { id: ModeId; icon: string; label: string; hint: string }[] 
 const MODE_MAP: Partial<Record<ProviderId, Partial<Record<ModeId, ProviderOptions>>>> = {
   claude: {
     ask: { permission: 'manual' }, edit: { permission: 'acceptEdits' }, plan: { permission: 'plan' },
-    auto: { permission: 'auto' }, noask: { permission: 'dontAsk' }, full: { fullAccess: true },
+    auto: { permission: 'auto' }, full: { fullAccess: true },
   },
   codex: {
-    plan: { sandbox: 'read-only' }, edit: { sandbox: 'workspace-write' }, full: { fullAccess: true },
+    ask: { sandbox: 'workspace-write', approvalPolicy: 'untrusted' },
+    auto: { sandbox: 'workspace-write', approvalPolicy: 'on-request' }, full: { fullAccess: true },
   },
   antigravity: {
-    ask: { permission: 'default' }, edit: { permission: 'accept-edits' }, plan: { permission: 'plan' },
-    auto: { permission: 'auto' }, noask: { permission: 'allow-commands' }, full: { fullAccess: true },
+    review: { permission: 'plan' }, ask: { permission: 'default' },
+    auto: { permission: 'auto' }, full: { fullAccess: true },
   },
 };
 
@@ -207,21 +209,57 @@ export const modesFor = (p: ProviderId): ModeId[] => Object.keys(MODE_MAP[p] ?? 
 export function modePatch(p: ProviderId, mode: ModeId): ProviderOptions {
   const m = MODE_MAP[p]?.[mode];
   if (!m) return {};
-  return { permission: undefined, sandbox: undefined, fullAccess: false, ...m };
+  return { permission: undefined, sandbox: undefined, approvalPolicy: undefined, fullAccess: false, ...m };
 }
 
 /** Aktueller Modus aus den Optionen eines Chats. */
 export function currentMode(p: ProviderId, o: ProviderOptions): ModeId {
-  if (o.fullAccess) return 'full';
+  if (o.fullAccess || o.permission === 'bypassPermissions' || o.sandbox === 'danger-full-access' || (p === 'antigravity' && o.permission === 'allow-commands')) return 'full';
+  if (p === 'claude' && o.permission === 'dontAsk') return 'noask';
+  if (p === 'antigravity' && o.permission === 'accept-edits') return 'edit';
+  if (p === 'codex' && o.sandbox === 'read-only') return 'plan';
+  if (p === 'codex' && o.sandbox === 'workspace-write' && !o.approvalPolicy) return 'auto';
   const map = MODE_MAP[p];
   if (!map) return 'edit';
   for (const [id, patch] of Object.entries(map) as [ModeId, ProviderOptions][]) {
     if (id === 'full') continue;
     if (patch.permission !== undefined && patch.permission === o.permission) return id;
-    if (patch.sandbox !== undefined && patch.sandbox === o.sandbox) return id;
+    if (patch.sandbox !== undefined && patch.sandbox === o.sandbox && (!patch.approvalPolicy || patch.approvalPolicy === o.approvalPolicy)) return id;
   }
-  // Unbekannt/Standard: bei Claude und Antigravity ist der Standard „Fragen“, bei Codex „Bearbeiten“
-  return p === 'codex' ? 'edit' : 'ask';
+  // Unbekannt/Standard: bei Claude und Antigravity ist der Standard „Fragen“, bei Codex „Auto“
+  return p === 'codex' ? 'auto' : 'ask';
+}
+
+
+export function modeLabel(p: ProviderId, id: ModeId): string {
+  if (id === 'ask') return p === 'antigravity' ? 'Default / Ask' : 'Manuell / Ask';
+  if (id === 'full') return p === 'antigravity' ? 'Turbo / Full access' : 'Full access';
+  if (id === 'edit') return 'Accept edits';
+  return MODES.find((m) => m.id === id)?.label ?? id;
+}
+
+export const isChatModel = (id: string): boolean => !/(?:^|\/)(?:gpt-reserve|codex-auto-review)$/i.test(id);
+
+/** Keep transport IDs intact; normalize names only for presentation. */
+export function modelLabel(model: ModelInfo): string {
+  // Ollama tags (including quantization names) are part of the exact model name.
+  if (model.id.includes(':') && !model.id.startsWith('opencode/')) return model.label;
+  const raw = model.label.replace(/^opencode\//i, '');
+  if (model.label !== model.id && !model.label.includes('/')) return model.label;
+  return raw.replace(/^opencode\//i, '').replace(/-free$/i, ' · Free')
+    .replace(/\b(gpt|glm|vl)\b/gi, (v) => v.toUpperCase())
+    .replace(/deepseek/gi, 'DeepSeek').replace(/nemotron/gi, 'Nemotron')
+    .replace(/longcat/gi, 'LongCat').replace(/mimo/gi, 'MiMo')
+    .replace(/[-_]/g, ' ').replace(/\b(beam|big|pickle|flash|preview|ultra|lightning|super|space|bunny)\b/gi, (v) => v[0].toUpperCase() + v.slice(1));
+}
+
+export function effortLabel(p: ProviderId, value: string): string {
+  if (value === 'xhigh' && p === 'claude') return 'Extra';
+  return EFFORT_LABELS[value] ?? value;
+}
+
+export function modelEfforts(p: ProviderId, info?: ModelInfo): string[] {
+  return info?.efforts ?? PROVIDERS[p].efforts.map((e) => e.value);
 }
 
 export function defaultTerminal(): TerminalStyle {
@@ -255,12 +293,15 @@ export function defaultDock(): DockState {
 
 // ---- Bildgenerierung -----------------------------------------------------------------------------------------------
 
-export interface ImageEngine { id: string; label: string; via: string; provider: ProviderId; hint: string }
+export interface ImageEngine { id: string; label: string; via: string; provider: ProviderId; hint: string; model?: string }
 
 /** Bild-Engines, die über vorhandene Anmeldungen laufen (kein API-Key): GPT Image über Codex (ChatGPT-Plan), Nano Banana über Antigravity. */
 export const IMAGE_ENGINES: ImageEngine[] = [
   { id: 'gpt-image', label: 'GPT Image', via: 'Codex · ChatGPT-Plan', provider: 'codex', hint: 'Fotos, Illustrationen, Text im Bild, Bearbeiten mit Referenzbildern' },
-  { id: 'nano-banana', label: 'Nano Banana', via: 'Antigravity · Gemini', provider: 'antigravity', hint: 'Schnelle Bilder und Bearbeitungen mit Gemini' },
+  { id: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 · Sunburst', model: 'gpt-image-2.5-sunburst', via: 'Codex', provider: 'codex', hint: 'Version wird angefordert; Modellzugriff über die CLI erforderlich' },
+  { id: 'gpt-image-2.5-flare', label: 'GPT Image 2.5 · Flare', model: 'gpt-image-2.5-flare', via: 'Codex', provider: 'codex', hint: 'Version wird angefordert; Modellzugriff über die CLI erforderlich' },
+  { id: 'nano-banana-2', label: 'Nano Banana 2', model: 'gemini-3.1-flash-image', via: 'Antigravity', provider: 'antigravity', hint: 'Version wird angefordert; Modellzugriff über die CLI erforderlich' },
+  { id: 'nano-banana', model: 'gemini-2.5-flash-image', label: 'Nano Banana', via: 'Antigravity · Gemini', provider: 'antigravity', hint: 'Schnelle Bilder und Bearbeitungen mit Gemini' },
 ];
 
 /** Verfügbare Engines inkl. lokaler Ollama-Bildmodelle. */

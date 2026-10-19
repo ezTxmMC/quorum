@@ -11,6 +11,7 @@ export interface ProviderOptions {
   permission?: string;
   /** Nur Codex: Sandbox (read-only | workspace-write | danger-full-access). */
   sandbox?: string;
+  approvalPolicy?: 'untrusted' | 'on-request' | 'never';
   /** Alle Prüfungen abschalten (gefährlich). */
   fullAccess?: boolean;
   addDirs?: string[];
@@ -162,6 +163,9 @@ export interface ModelInfo {
   label: string;
   efforts?: string[];
   speedTiers?: SpeedTier[];
+  legacy?: boolean;
+  effortModels?: Record<string, string>;
+  group?: string;
   /** Modell erzeugt Bilder (z. B. Ollama-Bildmodelle). */
   image?: boolean;
 }
@@ -277,6 +281,11 @@ export interface TerminalStyle {
 
 export interface Settings {
   sidebarPinned: boolean;
+  showOlderModels?: boolean;
+  showUsageInComposer?: boolean;
+  customModels?: Partial<Record<ProviderId, string[]>>;
+  llamaBinary?: string;
+  localRuntime?: { idleMinutes?: number; cpuFallback?: boolean; vramReserveMb?: number };
   terminal: TerminalStyle;
   /** Globaler Hotkey für das Schnell-Prompt-Fenster (Electron-Accelerator). */
   quickHotkey: string;

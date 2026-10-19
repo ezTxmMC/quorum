@@ -3,55 +3,11 @@ import { memo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PROVIDERS, imageEngineLabel } from '@shared/catalog';
 import { hub } from '@/lib/api';
-import type { Block, Message } from '@shared/types';
+import type { Message } from '@shared/types';
 import { Icon } from '@/lib/icons';
+import { ToolActivity } from './ToolActivity';
 import { Markdown } from './Markdown';
 import { Collapse, CopyButton, ProviderMark, cx } from './ui';
-
-const TOOL_ICONS: [RegExp, string][] = [
-  [/bash|shell|command|run_command|terminal/i, 'lucide:terminal'],
-  [/edit|write|replace|file_change|dateiänderung|notebook/i, 'lucide:file-pen-line'],
-  [/read|view|cat|list_dir|ls/i, 'lucide:file-text'],
-  [/grep|glob|find|search|suche/i, 'lucide:search'],
-  [/web|fetch|url|browser/i, 'lucide:globe'],
-  [/agent|task|subagent/i, 'lucide:bot'],
-  [/todo|aufgabe|manage_task/i, 'lucide:list-checks'],
-  [/mcp|:/i, 'lucide:plug'],
-];
-const toolIcon = (n: string) => TOOL_ICONS.find(([r]) => r.test(n))?.[1] ?? 'lucide:wrench';
-
-function summarize(input: unknown): string {
-  if (input == null) return '';
-  if (typeof input === 'string') return input;
-  if (typeof input === 'object') {
-    const o = input as Record<string, unknown>;
-    const k = ['command', 'CommandLine', 'file_path', 'path', 'AbsolutePath', 'TargetFile', 'pattern', 'query', 'Query', 'url', 'description', 'prompt'].find((x) => typeof o[x] === 'string');
-    if (k) return String(o[k]);
-    return JSON.stringify(input);
-  }
-  return String(input);
-}
-
-function ToolCard({ b, nested }: { b: Extract<Block, { kind: 'tool' }>; nested: boolean }) {
-  const [open, setOpen] = useState(false);
-  const sum = summarize(b.input);
-  return (
-    <div className={cx('rounded-lumen border border-edge bg-surface text-[12.5px]', nested && 'ml-5')}>
-      <button className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left" onClick={() => setOpen((o) => !o)}>
-        <Icon name={b.running ? 'lucide:loader-circle' : b.isError ? 'lucide:circle-x' : toolIcon(b.name)} size={14} className={cx(b.running && 'spin text-accent', b.isError && 'text-bad', !b.running && !b.isError && 'text-muted')} />
-        <span className="shrink-0 font-medium">{b.name}</span>
-        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-subtle">{sum}</span>
-        <Icon name={open ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={14} className="text-subtle" />
-      </button>
-      <Collapse open={open}>
-        <div className="space-y-2 border-t border-edge p-2.5">
-          {b.input != null && <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all font-mono text-[11.5px] text-muted">{typeof b.input === 'string' ? b.input : JSON.stringify(b.input, null, 2)}</pre>}
-          {b.output && <pre className={cx('max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-lumen-sm bg-bg p-2 font-mono text-[11.5px]', b.isError ? 'text-bad' : 'text-muted')}>{b.output.length > 12000 ? b.output.slice(0, 12000) + '\n…' : b.output}</pre>}
-        </div>
-      </Collapse>
-    </div>
-  );
-}
 
 function Thinking({ text, live }: { text: string; live: boolean }) {
   const [open, setOpen] = useState(false);
@@ -110,7 +66,7 @@ function GeneratedImage({ path, engine }: { path: string; engine?: string }) {
 
 function fmtTok(n?: number) { return n === undefined ? '' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n); }
 
-export const MessageView = memo(function MessageView({ m, live, label }: { m: Message; live?: boolean; label?: string }) {
+export const MessageView = memo(function MessageView({ m, live, label, onStop }: { m: Message; live?: boolean; label?: string; onStop?: () => void }) {
   if (m.role === 'user') {
     const text = m.blocks.map((b) => (b.kind === 'text' ? b.text : '')).join('');
     return (
@@ -124,20 +80,23 @@ export const MessageView = memo(function MessageView({ m, live, label }: { m: Me
     );
   }
   const lastIdx = m.blocks.length - 1;
-  const empty = m.blocks.length === 0;
+  const empty = !m.blocks.some((b) => b.kind !== 'tool');
+  const activeTools = m.blocks.some((b) => b.kind === 'tool' && b.running);
+  if (!live && empty && !m.error) return null;
   return (
     <div className="fade-in group/asst">
       {/* Volle Breite wie das Eingabefeld: Anbieter-Icon steht in der Kopfzeile statt in einer eigenen Spalte. */}
       <div className="min-w-0 space-y-2.5 [overflow-wrap:anywhere]">
         {(label || m.provider) && <div className="flex items-center gap-2 text-[11.5px] font-medium text-subtle">{m.provider && <ProviderMark id={m.provider} size={12} />}{label ?? PROVIDERS[m.provider!].name}</div>}
-        {empty && live && <div className="flex items-center gap-2 text-muted"><span className="pulse-dot size-2 rounded-full bg-accent" /> {t('arbeitet…')}</div>}
+        {empty && live && !activeTools && <div className="flex items-center gap-2 text-muted"><span className="pulse-dot size-2 rounded-full bg-accent" /> {t('arbeitet…')}</div>}
         {m.blocks.map((b, i) => {
           if (b.kind === 'text') return <Markdown key={i} text={b.text} />;
           if (b.kind === 'inject') return <div key={i} className="chip-in ml-auto w-fit max-w-[85%] select-text whitespace-pre-wrap [overflow-wrap:anywhere] rounded-lumen border border-accent/30 bg-accent/10 px-3 py-1.5 text-[13px]"><span className="mr-2 text-[10.5px] font-medium uppercase tracking-wide text-accent">{t('Direkt')}</span>{b.text}</div>;
           if (b.kind === 'thinking') return <Thinking key={i} text={b.text} live={!!live && i === lastIdx} />;
           if (b.kind === 'image') return <GeneratedImage key={b.path} path={b.path} engine={b.engine} />;
-          return <ToolCard key={b.id} b={b} nested={!!b.parentId} />;
+          return null;
         })}
+        {live && <ToolActivity blocks={m.blocks} onStop={onStop} />}
         {m.error && <div className="flex gap-2 whitespace-pre-wrap rounded-lumen border border-bad/30 bg-bad/10 px-3 py-2 text-[12.5px] text-bad"><Icon name="lucide:triangle-alert" size={14} className="mt-0.5 shrink-0" /><span>{m.error}</span></div>}
         {!live && m.blocks.some((b) => b.kind === 'text') && (
           <div className="-mb-1 flex opacity-0 transition-opacity group-hover/asst:opacity-100">

@@ -1,7 +1,7 @@
 import { getLang, t } from '@/lib/i18n';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { PROVIDERS, isTextOnly } from '@shared/catalog';
+import { PROVIDERS, isTextOnly, modelEfforts } from '@shared/catalog';
 import type { ProviderId } from '@shared/types';
 import { Composer } from '@/components/Composer';
 import { MessageView } from '@/components/MessageView';
@@ -65,7 +65,7 @@ export function ChatPage() {
         const cur = session.provider === 'codex' ? session.options.sandbox : session.options.permission;
         const planVal = session.provider === 'codex' ? 'read-only' : 'plan';
         const def = useHub.getState().data.settings.providerDefaults[session.provider][key as 'permission'] ;
-        setOpts({ [key]: cur === planVal ? (def === planVal ? undefined : def) : planVal });
+        setOpts({ [key]: cur === planVal ? (def === planVal ? undefined : def) : planVal, fullAccess: false, approvalPolicy: undefined });
         return true;
       }
       case 'provider': {
@@ -74,8 +74,13 @@ export function ChatPage() {
         patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p] } });
         return true;
       }
-      case 'model': setOpts({ model: arg.trim() || undefined }); return true;
-      case 'effort': setOpts({ effort: arg.trim() || undefined }); return true;
+      case 'model': setOpts({ model: arg.trim() || undefined, effort: undefined, speed: undefined }); return true;
+      case 'effort': {
+        const effort = arg.trim();
+        const info = status?.models.find((m) => m.id === session.options.model);
+        if (effort && !modelEfforts(session.provider, info).includes(effort)) return false;
+        setOpts({ effort: effort || undefined }); return true;
+      }
       case 'diff': { const st = useHub.getState(); if (!st.data.settings.dock.panels.changes.visible) st.togglePanel('changes'); return true; }
       case 'review':
         if (session.provider === 'codex') send(id, '/review (Codex: uncommitted changes)', { review: { target: 'uncommitted' } });
@@ -111,7 +116,7 @@ export function ChatPage() {
             </div>
           ) : (
             <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
-              {session.messages.map((m, i) => <MessageView key={m.id} m={m} live={running && i === session.messages.length - 1} />)}
+              {session.messages.map((m, i) => <MessageView key={m.id} m={m} live={running && i === session.messages.length - 1} onStop={() => cancel(id)} />)}
             </div>
           )}
         </div>

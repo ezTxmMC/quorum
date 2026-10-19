@@ -6,6 +6,7 @@ import { ChangesPanel } from '@/components/ChangesPanel';
 import { Markdown } from '@/components/Markdown';
 import { MessageView } from '@/components/MessageView';
 import { Collapse, ProviderMark, cx, usePresence } from '@/components/ui';
+import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { STRATEGIES } from './MultiBuilder';
@@ -15,7 +16,7 @@ const STATUS: Record<MultiRunRecord['status'], { label: string; cls: string }> =
   done: { label: 'Fertig', cls: 'text-ok' }, failed: { label: 'Fehlgeschlagen', cls: 'text-bad' }, stopped: { label: 'Gestoppt', cls: 'text-warn' },
 };
 
-function TurnCard({ t, agent, defaultOpen }: { t: MultiTurn; agent?: AgentSpec; defaultOpen: boolean }) {
+function TurnCard({ t, agent, defaultOpen, multiId }: { t: MultiTurn; agent?: AgentSpec; defaultOpen: boolean; multiId: string }) {
   const [open, setOpen] = useState(defaultOpen);
   const [showPrompt, setShowPrompt] = useState(false);
   useEffect(() => { if (t.running) setOpen(true); }, [t.running]);
@@ -35,7 +36,7 @@ function TurnCard({ t, agent, defaultOpen }: { t: MultiTurn; agent?: AgentSpec; 
             <Icon name="lucide:scroll-text" size={12} /> {showPrompt ? tr('Prompt ausblenden') : tr('Prompt anzeigen')}{t.cwd ? ` · ${t.cwd.split(/[\\/]/).slice(-2).join('/')}` : ''}
           </button>
           <Collapse open={showPrompt}><pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-lumen-sm bg-bg p-2.5 font-mono text-[11.5px] text-muted">{t.prompt}</pre></Collapse>
-          <MessageView m={{ ...t.message, provider: undefined }} live={t.running} />
+          <MessageView m={{ ...t.message, provider: undefined }} live={t.running} onStop={() => void hub.multiStopTurn(multiId, t.turnId)} />
         </div>
       </Collapse>
     </div>
@@ -130,7 +131,7 @@ export function MultiRunPage() {
                     <Icon name={s.done ? 'lucide:circle-check' : 'lucide:loader-circle'} size={14} className={s.done ? 'text-ok' : 'spin text-accent'} /> {s.label}
                   </div>
                   <div className="space-y-2 border-l-2 border-edge pl-3">
-                    {turns.map((t) => <TurnCard key={t.turnId} t={t} agent={agentOf(t.agentId)} defaultOpen={t.running || turns.length === 1} />)}
+                    {turns.map((t) => <TurnCard multiId={id} key={t.turnId} t={t} agent={agentOf(t.agentId)} defaultOpen={t.running || turns.length === 1} />)}
                   </div>
                 </section>
               );

@@ -19,6 +19,7 @@ interface Ctx {
   trees: Map<string, { dir: string; branch: string }>;
   stopped: boolean;
   activeRuns: Set<string>;
+  activeTurns: Map<string, string>;
   stageSeq: number;
   /** Gemeinsames "Blackboard": Zusammenfassung der bisherigen Ergebnisse. */
   board: string[];
@@ -33,6 +34,13 @@ export function stopMulti(multiId: string) {
   if (!c) return;
   c.stopped = true;
   for (const r of c.activeRuns) cancelRun(r);
+}
+
+export function stopMultiTurn(multiId: string, turnId: string): boolean {
+  const runId = active.get(multiId)?.activeTurns.get(turnId);
+  if (!runId) return false;
+  cancelRun(runId);
+  return true;
 }
 
 const ROLE_TEXT: Record<AgentSpec['role'], string> = {
@@ -82,6 +90,7 @@ async function turn(c: Ctx, stageId: string, agent: AgentSpec, prompt: string, o
   const cwd = opts.cwd ?? c.trees.get(agent.id)?.dir ?? c.config.cwd;
   const runId = randomUUID();
   c.activeRuns.add(runId);
+  c.activeTurns.set(turnId, runId);
   c.emit({ type: 'agent_start', stageId, turnId, agentId: agent.id, prompt, cwd });
   const localId = agent.localModel ?? (agent.capability ? modelForCapability(agent.capability) : undefined);
   if (agent.localModel || agent.capability) {
@@ -96,6 +105,7 @@ async function turn(c: Ctx, stageId: string, agent: AgentSpec, prompt: string, o
       onDelta: (delta) => c.emit({ type: 'agent_event', turnId, agentId: agent.id, event: { type: 'text', delta } }),
     });
     c.activeRuns.delete(runId);
+    c.activeTurns.delete(turnId);
     if (!local.ok) c.emit({ type: 'agent_event', turnId, agentId: agent.id, event: { type: 'done', ok: false, error: local.error } });
     const text = local.text.trim();
     c.emit({ type: 'agent_end', turnId, agentId: agent.id, ok: local.ok, output: text });
@@ -117,6 +127,7 @@ async function turn(c: Ctx, stageId: string, agent: AgentSpec, prompt: string, o
     c.binaries,
   );
   c.activeRuns.delete(runId);
+  c.activeTurns.delete(turnId);
   if (res.sessionId) c.providerSessions.set(agent.id, res.sessionId);
   const output = res.text.trim();
   c.emit({ type: 'agent_end', turnId, agentId: agent.id, ok: res.ok, output });
@@ -387,7 +398,7 @@ function fail(c: Ctx, msg: string) {
 export async function startMulti(multiId: string, config: MultiConfig, emit: Emit, binaries: Partial<Record<ProviderId, string>>, dataDir: string) {
   const c: Ctx = {
     multiId, config: { ...config, agents: config.agents.map((a) => ({ ...a })) }, emit: (e) => emit(e.type === 'log' ? { ...e, text: loc(c, e.text) } : e.type === 'finished' ? { ...e, summary: e.summary.replace(/^[^\n]{1,100}/, (first) => loc(c, first)) } : e), binaries,
-    worktreeRoot: join(dataDir, 'worktrees'), trees: new Map(), stopped: false, activeRuns: new Set(), stageSeq: 0, board: [], providerSessions: new Map(),
+    worktreeRoot: join(dataDir, 'worktrees'), trees: new Map(), stopped: false, activeRuns: new Set(), activeTurns: new Map(), stageSeq: 0, board: [], providerSessions: new Map(),
   };
   active.set(multiId, c);
   try {

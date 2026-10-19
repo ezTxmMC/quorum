@@ -6,7 +6,8 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import type { Backend, Capability, ModelDescriptor, RuntimeDetection } from '../../shared/models';
 import type { ChatHandle, LoadedHandle, LoadOptions, Memory, RuntimeAdapter } from './adapter';
 
-const BIN = 'llama-server';
+let binaryPath = () => 'llama-server';
+export function setLlamaBinary(get: () => string | undefined): void { binaryPath = () => get()?.trim() || 'llama-server'; }
 
 // Laufende Server-Prozesse werden in einer Datei geführt. Stürzt die App hart ab, beendet der nächste Start
 // verwaiste Server – sonst bliebe deren VRAM belegt.
@@ -57,7 +58,7 @@ export function backendsFromDevices(output: string): Backend[] {
 
 function run(args: string[], timeout = 15000): Promise<{ ok: boolean; out: string }> {
   return new Promise((resolve) => {
-    execFile(BIN, args, { timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(binaryPath(), args, { timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
       resolve({ ok: !err, out: `${stdout}\n${stderr}` });
     });
   });
@@ -95,7 +96,7 @@ export class LlamaModel implements ChatHandle {
   async start(args: string[], timeoutMs: number): Promise<void> {
     this.port = await freePort();
     const full = [...args, '--host', '127.0.0.1', '--port', String(this.port), '--no-webui'];
-    this.proc = spawn(BIN, full, { stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
+    this.proc = spawn(binaryPath(), full, { stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
     this.proc.stderr?.setEncoding('utf8');
     this.proc.stderr?.on('data', (c: string) => { this.stderr = (this.stderr + c).slice(-8000); });
     this.proc.stdout?.resume();
@@ -200,7 +201,7 @@ export const llamaCppAdapter: RuntimeAdapter = {
 
   async detect(): Promise<RuntimeDetection> {
     const v = await run(['--version']);
-    if (!v.ok) return { runtime: 'llama.cpp', available: false, backends: [], error: `${BIN} nicht im PATH` };
+    if (!v.ok) return { runtime: 'llama.cpp', available: false, backends: [], error: `${binaryPath()} nicht im PATH` };
     const dev = await run(['--list-devices'], 30000);
     const version = /version:\s*(\S+)/.exec(v.out)?.[1];
     return { runtime: 'llama.cpp', available: true, version, backends: backendsFromDevices(dev.out) };

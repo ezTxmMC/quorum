@@ -6,7 +6,7 @@ import type { Attachment, HubEvent, ProviderId, RunRequest } from '../../shared/
 import { buildClaude, ClaudeParser } from './claude';
 import { buildCodex, CodexParser } from './codex';
 import { buildAntigravity, AntigravityParser } from './antigravity';
-import { resolveBinary } from './detect';
+import { detectedModel, resolveBinary } from './detect';
 import { cancelOllama, runOllama } from './ollama';
 import { buildOpenCode, OpenCodeParser } from './opencode';
 import { IMAGE_ENGINES } from '../../shared/catalog';
@@ -65,6 +65,15 @@ export function runCli(
   if (req.imageGen) return runImage(req, emit, binaries);
   if (req.provider === 'ollama') return runOllama(req, emit);
   if (req.provider === 'local') return runLocalText(req, emit);
+  if (req.provider === 'antigravity' && req.options.model) {
+    const model = detectedModel('antigravity', req.options.model);
+    const variants = model?.effortModels;
+    if (variants) {
+      const effort = req.options.effort ?? (variants.medium ? 'medium' : model?.efforts?.[0]);
+      const variant = effort ? variants[effort] : undefined;
+      if (variant) req = { ...req, options: { ...req.options, model: variant, effort: undefined } };
+    }
+  }
   return new Promise((resolve) => {
     const bin = resolveBinary(req.provider, binaries);
     if (!bin) {
@@ -194,21 +203,20 @@ export function cancelRun(runId: string): void {
     if (process.platform === 'win32') p.kill();
     else process.kill(-p.pid, 'SIGTERM');
   } catch { p.kill('SIGTERM'); }
-  setTimeout(() => { try { if (!p.killed) p.kill('SIGKILL'); } catch { /* ignore */ } }, 4000);
+  const pid = p.pid;
+  const timer = setTimeout(() => {
+    try {
+      if (process.platform === 'win32') { if (p.exitCode === null && p.signalCode === null) p.kill('SIGKILL'); }
+      else process.kill(-pid, 'SIGKILL');
+    } catch {
+      if (p.exitCode === null && p.signalCode === null) { try { p.kill('SIGKILL'); } catch { /* already exited */ } }
+    }
+  }, 4000);
+  timer.unref();
 }
 
 export function cancelAll(): void {
   for (const id of [...procs.keys()]) cancelRun(id);
-}
-
-/** Kleine Hilfsfunktion: Shell-artige Argumentzeile in Tokens zerlegen (Anführungszeichen werden berücksichtigt). */
-export function splitArgs(s: string | undefined): string[] {
-  if (!s) return [];
-  const out: string[] = [];
-  const re = /"((?:\\.|[^"])*)"|'([^']*)'|(\S+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s))) out.push(m[1] !== undefined ? m[1].replace(/\\(.)/g, '$1') : m[2] ?? m[3]);
-  return out;
 }
 
 /** Chat mit einem lokalen Modell aus der Registry: nur Text, Verlauf kommt aus dem Hub. */

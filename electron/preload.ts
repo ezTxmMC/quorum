@@ -31,6 +31,7 @@ const api = {
   onRun: (cb: (e: RunEnvelope) => void) => sub('hub:event', cb),
   multiStart: (m: MultiStart): Promise<void> => ipcRenderer.invoke('multi:start', m),
   multiStop: (id: string): Promise<void> => ipcRenderer.invoke('multi:stop', id),
+  multiStopTurn: (id: string, turnId: string): Promise<boolean> => ipcRenderer.invoke('multi:stop-turn', id, turnId),
   onMulti: (cb: (e: MultiEnvelope) => void) => sub('multi:event', cb),
   providerStatus: (id: ProviderId, refresh?: boolean): Promise<ProviderStatus> => ipcRenderer.invoke('provider:status', id, refresh),
   cli: (id: ProviderId, args: string[], cwd?: string): Promise<CliCommandResult> => ipcRenderer.invoke('cli:exec', id, args, cwd),

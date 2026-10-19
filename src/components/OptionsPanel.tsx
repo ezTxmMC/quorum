@@ -1,6 +1,6 @@
 import { t } from '@/lib/i18n';
 import { useState } from 'react';
-import { PROVIDERS } from '@shared/catalog';
+import { PROVIDERS, isTextOnly, modelEfforts, modesFor, modeLabel, currentMode, modePatch, effortLabel, isChatModel } from '@shared/catalog';
 import type { ProviderId, ProviderOptions } from '@shared/types';
 import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
@@ -23,12 +23,11 @@ export function OptionsPanel({ provider, value, onChange, basic }: Props) {
   const meta = PROVIDERS[provider];
   const status = useHub((s) => s.statuses[provider]);
   const [more, setMore] = useState(false);
-  const models = status?.models ?? [];
-  const model = models.find((m) => m.id === value.model);
-  const efforts = (model?.efforts ?? meta.efforts.map((e) => e.value)).map((v) => ({ value: v, label: v }));
-  const permKey = provider === 'codex' ? 'sandbox' : 'permission';
-  const permValue = provider === 'codex' ? value.sandbox : value.permission;
-  const permHint = meta.permissions.find((p) => p.value === permValue)?.hint;
+  const custom = useHub((s) => s.data.settings.customModels?.[provider]);
+  const models = [...(status?.models ?? []), ...(custom ?? []).filter((id) => !status?.models.some((m) => m.id === id)).map((id) => ({ id, label: id }))].filter((m) => isChatModel(m.id));
+  const available = value.model && !models.some((m) => m.id === value.model) ? [{ id: value.model, label: value.model }, ...models] : models;
+  const model = models.find((m) => m.id === value.model) ?? models[0];
+  const efforts = modelEfforts(provider, model).map((v) => ({ value: v, label: t(effortLabel(provider, v)) }));
 
   const pickFile = async (key: 'mcpConfig' | 'jsonSchema') => {
     const [f] = await hub.pickFiles('json');
@@ -44,27 +43,27 @@ export function OptionsPanel({ provider, value, onChange, basic }: Props) {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label>{t('Modell')}</Label>
-          <input className="field" list={`models-${provider}`} placeholder={t('Standard')} value={value.model ?? ''} onChange={(e) => onChange({ model: e.target.value || undefined })} />
-          <datalist id={`models-${provider}`}>{models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</datalist>
+          {provider === 'ollama' ? <Select value={value.model} onChange={(model) => onChange({ model: model || undefined, effort: undefined, speed: undefined })} options={available.map((m) => ({ value: m.id, label: m.label }))} placeholder={t('Standard')} /> : <><input className="field" list={`models-${provider}`} placeholder={t('Standard')} value={value.model ?? ''} onChange={(e) => onChange({ model: e.target.value || undefined, effort: undefined, speed: undefined })} />
+          <datalist id={`models-${provider}`}>{models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</datalist></>}
         </div>
-        {meta.efforts.length > 0 && <div>
+        {efforts.length > 0 && <div>
           <Label>{t('Effort')}</Label>
           <Select value={value.effort} onChange={(v) => onChange({ effort: v || undefined })} options={efforts} placeholder={t('Standard')} />
         </div>}
       </div>
-      {meta.permissions.length > 0 && <div>
-        <Label hint={permHint ? t(permHint) : undefined}>{t(meta.permissionLabel)}</Label>
-        <Select value={permValue} onChange={(v) => onChange({ [permKey]: v || undefined })} options={meta.permissions.map((p) => ({ value: p.value, label: t(p.label) }))} placeholder={t('Standard')} />
+      {modesFor(provider).length > 0 && <div>
+        <Label>{t('Berechtigungen')}</Label>
+        <Select value={currentMode(provider, value)} onChange={(mode) => onChange(modePatch(provider, mode))} options={[...new Set([currentMode(provider, value), ...modesFor(provider)])].map((id) => ({ value: id, label: t(modeLabel(provider, id)) }))} />
+        <p className="mt-1 text-[11px] text-subtle">{t('Ask-Modi: Rückfragen werden im Headless-Betrieb abgelehnt. Für Änderungen einen passenden Modus wählen.')}</p>
       </div>}
-      {(provider === 'claude' || provider === 'codex' || provider === 'antigravity') && <Toggle checked={!!value.fullAccess} danger onChange={(v) => onChange({ fullAccess: v })} label={t('Vollzugriff (alle Prüfungen aus)')} hint={t('Befehle & Edits ohne Rückfrage/Sandbox – nur in vertrauenswürdigen Projekten')} />}
 
       {!basic && (
         <>
           <div>
             <Label>{t('System-Prompt / Zusatzanweisungen')}</Label>
-            <textarea className="field min-h-16 resize-y" placeholder={provider === 'claude' ? t('Wird an den System-Prompt angehängt') : t('Wird bei Bedarf dem Prompt vorangestellt')} value={value.systemPrompt ?? ''} onChange={(e) => onChange({ systemPrompt: e.target.value || undefined })} />
+            <textarea className="field min-h-16 resize-y" placeholder={provider === 'claude' ? t('Wird an den System-Prompt angehängt') : provider === 'codex' ? t('Wird als Entwickleranweisung übergeben') : isTextOnly(provider) ? t('Wird als Systemnachricht übergeben') : t('Wird dem Prompt vorangestellt')} value={value.systemPrompt ?? ''} onChange={(e) => onChange({ systemPrompt: e.target.value || undefined })} />
           </div>
-          <div>
+          {!isTextOnly(provider) && <div>
             <Label>{t('Zusätzliche Verzeichnisse')}</Label>
             <div className="space-y-1">
               {(value.addDirs ?? []).map((d, i) => (
@@ -75,16 +74,16 @@ export function OptionsPanel({ provider, value, onChange, basic }: Props) {
               ))}
               <button className="btn btn-ghost !px-1 text-muted" onClick={addDir}><Icon name="lucide:folder-plus" /> {t('Verzeichnis hinzufügen')}</button>
             </div>
-          </div>
+          </div>}
         </>
       )}
 
-      {!basic && (
+      {!basic && !isTextOnly(provider) && (
         <button className="flex items-center gap-1.5 text-[12px] text-muted hover:text-fg" onClick={() => setMore((m) => !m)}>
           <Icon name={more ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={14} /> {t('Erweiterte')} {meta.name} {t('Optionen')}
         </button>
       )}
-      {!basic && (
+      {!basic && !isTextOnly(provider) && (
         <Collapse open={more}>
         <div className="space-y-3.5 border-l-2 border-edge py-1 pl-3">
           {provider === 'claude' && (

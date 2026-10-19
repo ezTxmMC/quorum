@@ -1,3 +1,4 @@
+import { setLlamaBinary } from './runtimes/llamacpp';
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray, type WebContents } from 'electron';
 import { existsSync, mkdirSync, promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
@@ -9,7 +10,7 @@ import type { UsageReport, Attachment, FsEntry, MultiStart, Persisted, ProviderI
 import { gitDiff, gitStatus } from './git';
 import { handleImageScheme, imagesDir, registerImageScheme } from './images';
 import { listImportable, loadImportable } from './importer';
-import { startMulti, stopMulti } from './orchestrator';
+import { startMulti, stopMulti, stopMultiTurn } from './orchestrator';
 import { Worker } from 'node:worker_threads';
 import { execCli, providerStatus, resolveBinary } from './providers/detect';
 import { cancelAll, cancelRun, injectMessage, runCli } from './providers/runner';
@@ -228,9 +229,12 @@ function refreshUsage(): Promise<UsageReport> {
 }
 
 function registerIpc() {
+  setLlamaBinary(() => data.settings.llamaBinary);
+  scheduler.configure(data.settings.localRuntime);
   ipcMain.handle('store:load', () => data);
   ipcMain.handle('store:save', (e, d: Persisted) => {
     data = d; save(d);
+    scheduler.configure(data.settings.localRuntime);
     registerHotkey();
     // Andere Fenster bekommen den neuen Stand (gleiche Daten in allen Fenstern).
     for (const w of BrowserWindow.getAllWindows()) if (w.webContents !== e.sender) sendTo(w.webContents, 'store:sync', d);
@@ -264,6 +268,7 @@ function registerIpc() {
     void startMulti(m.multiId, m.config, (event) => sendTo(wc, 'multi:event', { multiId: m.multiId, event }), binaries(), dataDir());
   });
   ipcMain.handle('multi:stop', (_e, id: string) => stopMulti(id));
+  ipcMain.handle('multi:stop-turn', (_e, id: string, turnId: string) => stopMultiTurn(id, turnId));
 
   ipcMain.handle('provider:status', (_e, id: ProviderId, refresh?: boolean) => providerStatus(id, binaries(), refresh));
   ipcMain.handle('cli:exec', async (_e, id: ProviderId, args: string[], cwd?: string) => {

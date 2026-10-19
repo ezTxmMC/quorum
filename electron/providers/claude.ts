@@ -1,6 +1,6 @@
 import type { HubEvent, RunRequest } from '../../shared/types';
 import type { LineParser } from './runner';
-import { splitArgs } from './runner';
+import { splitArgs } from './args.ts';
 
 export function buildClaude(req: RunRequest): { args: string[]; stdin: string; live: boolean } {
   const o = req.options;

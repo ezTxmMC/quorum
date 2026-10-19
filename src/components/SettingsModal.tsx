@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { PROVIDERS, TERMINAL_THEMES, defaultTerminal } from '@shared/catalog';
+import { useEffect, useState } from 'react';
+import { DEFAULT_OPTIONS, PROVIDERS, TERMINAL_THEMES, defaultTerminal } from '@shared/catalog';
 import type { ProviderId, TerminalStyle, UpdateChannel } from '@shared/types';
 import { hub } from '@/lib/api';
 import { t } from '@/lib/i18n';
@@ -7,6 +7,7 @@ import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { Dot } from './ModelPicker';
 import { OptionsPanel } from './OptionsPanel';
+import { LocalProviderSettings } from './LocalProviderSettings';
 import { UsageView } from './UsageView';
 import { Markdown } from './Markdown';
 import { termBackground } from './panels/TerminalPanel';
@@ -72,6 +73,9 @@ function General() {
           <Label hint={t('Öffnet das Schnell-Prompt-Fenster (Tray). Unter Wayland evtl. nicht verfügbar.')}>{t('Hotkey Schnell-Prompt')}</Label>
           <HotkeyField value={settings.quickHotkey} onChange={(quickHotkey) => setSettings({ quickHotkey })} />
         </div>
+        <Toggle checked={settings.showUsageInComposer !== false} onChange={(showUsageInComposer) => setSettings({ showUsageInComposer })} label={t('Nutzung in der Chatbox anzeigen')} />
+        <Toggle checked={!!settings.showOlderModels} onChange={(showOlderModels) => setSettings({ showOlderModels })} label={t('Ältere Modelle standardmäßig anzeigen')} hint={t('Zeigt zusätzlich von der CLI gelistete ältere und eigene Modelle')} />
+        <div><Label>{t('Standard-Projektordner')}</Label><div className="flex gap-2"><input className="field" value={settings.defaultCwd} onChange={(e) => setSettings({ defaultCwd: e.target.value })} /><button className="btn" onClick={async () => { const d = await hub.pickFolder(); if (d) setSettings({ defaultCwd: d }); }}><Icon name="lucide:folder-open" /></button></div></div>
         <Toggle checked={settings.autoImport} onChange={(autoImport) => setSettings({ autoImport })} label={t('Neue Sessions automatisch importieren')} hint={t('Prüft alle 60 s auf neue Claude- und Codex-Sessions und legt sie als Chats an')} />
       </section>
       {hidden.length > 0 && (
@@ -91,6 +95,7 @@ function General() {
 
 function OllamaTab() {
   const st = useHub((s) => s.statuses.ollama);
+  const defaults = useHub((s) => s.data.settings.providerDefaults.ollama);
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3"><Dot id="ollama" size={10} /><h2 className="flex-1 text-[16px] font-semibold">Ollama</h2>
@@ -99,11 +104,11 @@ function OllamaTab() {
       <p className="text-muted">{t('Lokale Modelle über die Ollama-API (Standard: http://127.0.0.1:11434, änderbar über die Umgebungsvariable OLLAMA_HOST). Reiner Chat – ohne Tools, ohne Konto, ohne Limits.')}</p>
       {!st?.installed && <div className="rounded-lumen border border-warn/30 bg-warn/10 px-3 py-2 text-warn">{t('Ollama ist nicht erreichbar. Starte es mit „ollama serve“ und lade ein Modell (ollama pull …).')}</div>}
       {st?.models.length ? (
-        <div className="flex flex-wrap gap-1.5">{st.models.map((m) => <span key={m.id} className="rounded-full border border-edge px-2.5 py-0.5 text-[12px]">{m.label}</span>)}</div>
+        <div className="flex flex-wrap gap-1.5">{st.models.map((m) => <button key={m.id} className={cx('rounded-full border px-2.5 py-0.5 text-[12px] hover:bg-hover', defaults.model === m.id ? 'border-accent text-accent' : 'border-edge')} onClick={() => useHub.getState().setProviderDefaults('ollama', { model: m.id })}>{m.label}</button>)}</div>
       ) : null}
       <div>
         <div className="mb-2 text-[12px] font-medium text-muted">{t('Standardwerte für neue Chats & Agenten')}</div>
-        <OptionsPanel provider="ollama" value={useHub.getState().data.settings.providerDefaults.ollama} onChange={(patch) => useHub.getState().setProviderDefaults('ollama', patch)} />
+        <OptionsPanel provider="ollama" value={defaults} onChange={(patch) => useHub.getState().setProviderDefaults('ollama', patch)} />
       </div>
     </div>
   );
@@ -157,10 +162,36 @@ function ProvidersTab() {
         })}
       </div>
       <div key={sel} className="fade-in rounded-lumen-lg border border-edge p-5">
-        {sel === 'ollama' ? <OllamaTab /> : <ProviderTab p={sel} />}
+        {sel === 'local' ? <LocalProviderSettings /> : sel === 'ollama' ? <OllamaTab /> : <ProviderTab p={sel} />}
+        <ProviderCatalog p={sel} />
       </div>
     </div>
   );
+}
+
+function ProviderCatalog({ p }: { p: ProviderId }) {
+  const settings = useHub((s) => s.data.settings);
+  const status = useHub((s) => s.statuses[p]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [draft, setDraft] = useState((settings.customModels?.[p] ?? []).join('\n'));
+  useEffect(() => { setDraft((settings.customModels?.[p] ?? []).join('\n')); }, [p, settings.customModels]);
+  const refresh = async () => { setBusy(true); setError(''); try { await useHub.getState().refreshStatus(p, true); } catch (e) { setError(String(e)); } finally { setBusy(false); } };
+  return <section className="mt-6 space-y-3 border-t border-edge pt-5">
+    <div className="flex items-center justify-between"><Label>{t('Modellkatalog')}</Label><button className="btn" disabled={busy} onClick={() => void refresh()}><Icon name="lucide:refresh-cw" size={13} />{t('Aktualisieren')}</button></div>
+    <div className="max-h-44 overflow-auto rounded-lumen border border-edge">
+      {status?.models.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 border-b border-edge px-3 py-2 last:border-0"><span className="min-w-0"><span className="block text-[12px]">{m.label}</span><span className="block truncate font-mono text-[10px] text-subtle">{m.id}</span></span><span className="text-[10px] text-subtle">{m.efforts?.join(' · ')}</span></div>)}
+      {!status?.models.length && <p className="p-3 text-muted">{t('Keine Modelle verfügbar')}</p>}
+    </div>
+    {error && <p className="text-bad">{error}</p>}
+    {!['local', 'ollama'].includes(p) && <>
+      <Label hint={t('Eine Modell-ID pro Zeile')}>{t('Eigene / ältere Modell-IDs')}</Label>
+      <textarea className="field min-h-20 resize-y font-mono text-[12px]" value={draft} onChange={(e) => setDraft(e.target.value)} />
+      <p className="text-[11px] text-subtle">{t('Nur IDs eintragen, auf die dein Konto Zugriff hat. Diese Einträge sind manuell konfiguriert; die Verfügbarkeit wird nicht geprüft.')}</p>
+      <button className="btn" onClick={() => useHub.getState().setSettings({ customModels: { ...settings.customModels, [p]: [...new Set(draft.split('\n').map((id) => id.trim()).filter(Boolean))] } })}>{t('Speichern')}</button>
+    </>}
+    <button className="btn btn-ghost text-muted" onClick={() => useHub.getState().setSettings({ providerDefaults: { ...settings.providerDefaults, [p]: { ...DEFAULT_OPTIONS[p] } } })}><Icon name="lucide:rotate-ccw" size={13} />{t('Anbieter-Standardwerte zurücksetzen')}</button>
+  </section>;
 }
 
 const FONTS = [

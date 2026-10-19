@@ -1,7 +1,7 @@
 import { t } from '@/lib/i18n';
-import { PROVIDERS, EFFORT_LABELS, MODES, currentMode, imageEngineLabel, imageEngines, modePatch, modesFor } from '@shared/catalog';
-import type { ProviderId, ProviderOptions } from '@shared/types';
-import type { ReactNode } from 'react';
+import { PROVIDERS, MODES, currentMode, imageEngineLabel, imageEngines, modePatch, modesFor, modeLabel, modelLabel, modelEfforts, effortLabel, isChatModel } from '@shared/catalog';
+import type { ModelInfo, ProviderId, ProviderOptions } from '@shared/types';
+import { useState, type ReactNode } from 'react';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { Popover, cx } from './ui';
@@ -16,7 +16,8 @@ export function Dot({ id, size = 8 }: { id: ProviderId; size?: number }) {
 export function useModelLabel(provider: ProviderId, model?: string): string {
   const status = useHub((s) => s.statuses[provider]);
   if (!model) return status?.models[0]?.label ?? '…';
-  return status?.models.find((m) => m.id === model)?.label ?? model;
+  const info = status?.models.find((m) => m.id === model);
+  return modelLabel(info ?? { id: model, label: model });
 }
 
 export function defaultModel(provider: ProviderId, status?: { models: { id: string }[] }): string | undefined {
@@ -25,26 +26,46 @@ export function defaultModel(provider: ProviderId, status?: { models: { id: stri
 
 export function ModelList({ provider, model, onPick }: { provider?: ProviderId; model?: string; onPick: (p: ProviderId, model: string) => void }) {
   const statuses = useHub((s) => s.statuses);
+  const settings = useHub((s) => s.data.settings);
+  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState<ProviderId | undefined>(provider);
+  const [older, setOlder] = useState(!!settings.showOlderModels);
+  const q = query.trim().toLowerCase();
+  const groups = ORDER.filter((p) => statuses[p]?.installed || p === provider).map((p) => {
+    const discovered = statuses[p]?.models ?? [];
+    const custom: ModelInfo[] = (settings.customModels?.[p] ?? []).filter((id) => !discovered.some((m) => m.id === id)).map((id) => ({ id, label: id, legacy: true, group: 'Custom' }));
+    const models = [...discovered, ...custom].filter((m) => isChatModel(m.id) && (older || !m.legacy || (p === provider && m.id === model)) && (!q || `${PROVIDERS[p].name} ${m.id} ${modelLabel(m)}`.toLowerCase().includes(q)));
+    return { p, models };
+  }).filter((g) => g.models.length || !q);
   return (
-    <div className="max-h-96 w-72 overflow-auto">
-      {ORDER.filter((p) => statuses[p]?.installed || p === provider).map((p) => {
-        const st = statuses[p];
-        return (
-          <div key={p}>
-            <div className="flex items-center gap-2 px-2.5 pb-1 pt-2 text-[10.5px] font-medium uppercase tracking-wide text-subtle"><Dot id={p} size={6} />{PROVIDERS[p].vendor}</div>
-            {st?.installed === false && <div className="px-2.5 pb-1 text-[11.5px] text-subtle">{p === 'ollama' ? t('Ollama läuft nicht (ollama serve)') : t('nicht installiert')}</div>}
-            {st?.models.map((m) => {
-              const active = p === provider && (model ?? defaultModel(p, st)) === m.id;
-              return (
-                <button key={m.id} className={cx('flex w-full items-center gap-2.5 rounded-lumen-sm px-2.5 py-1.5 text-left transition-colors hover:bg-hover', active && 'bg-active')} onClick={() => onPick(p, m.id)}>
-                  <span className="flex-1 truncate text-[12.5px]">{m.label}</span>
-                  {active && <Icon name="lucide:check" size={14} className="text-accent" />}
-                </button>
-              );
-            })}
-          </div>
-        );
-      })}
+    <div className="w-80 max-w-[calc(100vw-3rem)]">
+      <div className="border-b border-edge p-1.5">
+        <input aria-label={t('Modelle suchen')} className="field !text-[12px]" placeholder={t('Modelle suchen …')} value={query} onChange={(e) => setQuery(e.target.value)} />
+        <label className="mt-2 flex items-center gap-2 text-[11.5px] text-muted"><input type="checkbox" checked={older} onChange={(e) => setOlder(e.target.checked)} />{t('Ältere & eigene Modelle')}</label>
+      </div>
+      <div className="max-h-[min(24rem,50vh)] overflow-y-auto py-1">
+        {groups.map(({ p, models }) => {
+          const open = !!q || expanded === p;
+          const subgroups = new Map<string, ModelInfo[]>();
+          for (const m of models) { const key = m.group ?? ''; subgroups.set(key, [...(subgroups.get(key) ?? []), m]); }
+          return <div key={p}>
+            <button aria-expanded={open} className="flex w-full items-center gap-2 rounded-lumen-sm px-2.5 py-2 text-left hover:bg-hover" onClick={() => setExpanded(open ? undefined : p)}>
+              <Dot id={p} size={7} /><span className="flex-1 text-[12px] font-medium">{PROVIDERS[p].name}</span><span className="text-[10px] text-subtle">{models.length}</span><Icon name={open ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={13} />
+            </button>
+            {open && [...subgroups].map(([group, list]) => <div key={group}>
+              {group && <div className="px-5 py-1 text-[10px] uppercase tracking-wide text-subtle">{group === 'opencode' ? 'OpenCode Zen' : group}</div>}
+              {list.map((m) => {
+                const active = p === provider && (model ?? defaultModel(p, statuses[p])) === m.id;
+                return <button key={m.id} title={m.id} className={cx('flex w-full items-center gap-2 rounded-lumen-sm py-1.5 pl-5 pr-2.5 text-left hover:bg-hover', active && 'bg-active')} onClick={() => onPick(p, m.id)}>
+                  <span className="min-w-0 flex-1 truncate text-[12.5px]">{modelLabel(m)}</span>{m.legacy && <span className="text-[9px] text-subtle">{t('Älter / Eigene')}</span>}{active && <Icon name="lucide:check" size={14} className="text-accent" />}
+                </button>;
+              })}
+              {!list.length && <div className="px-5 py-2 text-[12px] text-subtle">{t('Keine Modelle verfügbar')}</div>}
+            </div>)}
+          </div>;
+        })}
+        {!groups.length && <div className="p-3 text-[12px] text-subtle">{t('Keine Modelle gefunden')}</div>}
+      </div>
     </div>
   );
 }
@@ -66,11 +87,11 @@ export function ModelButton({ provider, model, onPick, down, compact }: { provid
 export function EffortButton({ provider, model, value, onChange, down }: { provider: ProviderId; model?: string; value?: string; onChange: (v: string | undefined) => void; down?: boolean }) {
   const status = useHub((s) => s.statuses[provider]);
   const info = status?.models.find((m) => m.id === (model ?? defaultModel(provider, status)));
-  const efforts = info?.efforts ?? PROVIDERS[provider].efforts.map((e) => e.value);
+  const efforts = modelEfforts(provider, info);
   return (
     <Popover down={down} trigger={(open, tg) => (
       <button className={cx('btn btn-ghost !gap-1.5 !px-2 text-muted', open && '!bg-hover')} onClick={tg} title={t('Denktiefe / Reasoning-Effort')}>
-        <Icon name="lucide:brain" size={14} /> <span className="text-[12px]">{value ? t(EFFORT_LABELS[value] ?? value) : t('Auto')}</span>
+        <Icon name="lucide:brain" size={14} /> <span className="text-[12px]">{value ? t(effortLabel(provider, value)) : t('Auto')}</span>
         <Icon name="lucide:chevron-down" size={12} className={cx('text-subtle transition-transform', open && 'rotate-180')} />
       </button>
     )}>
@@ -79,7 +100,7 @@ export function EffortButton({ provider, model, value, onChange, down }: { provi
           <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-subtle">{t('Denktiefe')}</div>
           {[undefined, ...efforts].map((e) => (
             <button key={e ?? 'auto'} className={cx('flex w-full items-center rounded-lumen-sm px-2.5 py-1.5 text-left text-[12.5px] hover:bg-hover', value === e && 'bg-active')} onClick={() => { onChange(e); close(); }}>
-              <span className="flex-1">{e ? t(EFFORT_LABELS[e] ?? e) : t('Auto')}</span>
+              <span className="flex-1">{e ? t(effortLabel(provider, e)) : t('Auto')}</span>
               {value === e && <Icon name="lucide:check" size={14} className="text-accent" />}
             </button>
           ))}
@@ -126,7 +147,7 @@ export function ModeButton({ provider, options, onChange, onMore }: { provider: 
   return (
     <Popover trigger={(open, tg) => (
       <button className={cx('btn btn-ghost !gap-1.5 !px-2', cur === 'full' ? 'text-bad' : 'text-muted', open && '!bg-hover')} onClick={tg} title={t(meta.hint)}>
-        <Icon name={meta.icon} size={14} /> <span className="text-[12px]">{t(meta.label)}</span>
+        <Icon name={meta.icon} size={14} /> <span className="text-[12px]">{t(modeLabel(provider, cur))}</span>
         <Icon name="lucide:chevron-down" size={12} className={cx('text-subtle transition-transform', open && 'rotate-180')} />
       </button>
     )}>
@@ -136,7 +157,7 @@ export function ModeButton({ provider, options, onChange, onMore }: { provider: 
           {MODES.filter((m) => ids.includes(m.id)).map((m) => (
             <button key={m.id} className={cx('flex w-full items-start gap-2.5 rounded-lumen-sm px-2.5 py-1.5 text-left transition-colors hover:bg-hover', cur === m.id && 'bg-active')} onClick={() => { onChange(modePatch(provider, m.id)); close(); }}>
               <Icon name={m.icon} size={15} className={cx('mt-0.5 shrink-0', m.id === 'full' ? 'text-bad' : 'text-muted')} />
-              <span className="min-w-0 flex-1"><span className="block text-[12.5px]">{t(m.label)}</span><span className="block text-[11px] text-subtle">{t(m.hint)}</span></span>
+              <span className="min-w-0 flex-1"><span className="block text-[12.5px]">{t(modeLabel(provider, m.id))}</span><span className="block text-[11px] text-subtle">{t(m.hint)}</span></span>
               {cur === m.id && <Icon name="lucide:check" size={14} className="mt-0.5 shrink-0 text-accent" />}
             </button>
           ))}
@@ -159,12 +180,12 @@ export function UltracodeButton({ value, onChange }: { value?: boolean; onChange
 export function TuneButton({ provider, options, onChange }: { provider: ProviderId; options: ProviderOptions; onChange: (patch: ProviderOptions) => void }) {
   const status = useHub((s) => s.statuses[provider]);
   const info = status?.models.find((m) => m.id === (options.model ?? defaultModel(provider, status)));
-  const efforts = PROVIDERS[provider].efforts.length ? (info?.efforts ?? PROVIDERS[provider].efforts.map((e) => e.value)) : [];
+  const efforts = modelEfforts(provider, info);
   const tiers = info?.speedTiers ?? [];
   const ultra = provider === 'claude';
   if (!efforts.length && !tiers.length && !ultra) return null;
   const tier = tiers.find((x) => x.id === options.speed);
-  const parts = [efforts.length ? (options.effort ? t(EFFORT_LABELS[options.effort] ?? options.effort) : t('Auto')) : null, tier?.name, ultra && options.ultracode ? 'Ultracode' : null].filter(Boolean);
+  const parts = [efforts.length ? (options.effort ? t(effortLabel(provider, options.effort)) : t('Auto')) : null, tier?.name, ultra && options.ultracode ? 'Ultracode' : null].filter(Boolean);
   const hot = !!tier || (ultra && !!options.ultracode);
   const Head = ({ children }: { children: string }) => <div className="px-2.5 pb-1 pt-2 text-[10.5px] font-medium uppercase tracking-wide text-subtle">{children}</div>;
   const Row = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) => (
@@ -183,7 +204,7 @@ export function TuneButton({ provider, options, onChange }: { provider: Provider
         <div className="w-64">
           {efforts.length > 0 && (<>
             <Head>{t('Denktiefe')}</Head>
-            {[undefined, ...efforts].map((e) => <Row key={e ?? 'auto'} active={options.effort === e} onClick={() => onChange({ effort: e })}>{e ? t(EFFORT_LABELS[e] ?? e) : t('Auto')}</Row>)}
+            {[undefined, ...efforts].map((e) => <Row key={e ?? 'auto'} active={options.effort === e} onClick={() => onChange({ effort: e })}>{e ? t(effortLabel(provider, e)) : t('Auto')}</Row>)}
           </>)}
           {tiers.length > 0 && (<>
             {efforts.length > 0 && <div className="my-1 border-t border-edge" />}
@@ -210,16 +231,18 @@ export function TuneButton({ provider, options, onChange }: { provider: Provider
 export function ImageButton({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
   const statuses = useHub((s) => s.statuses);
   const engines = imageEngines(statuses);
-  if (!engines.length && !value) return null;
+
   return (
     <Popover trigger={(open, tg) => (
       <button className={cx('btn btn-ghost !gap-1.5 !px-2 transition-colors', value ? '!bg-accent/15 text-accent' : 'text-muted', open && !value && '!bg-hover')} onClick={tg} title={t('Bild erzeugen')}>
-        <Icon name="lucide:image-plus" size={14} /> {value ? <span className="text-[12px]">{imageEngineLabel(value)}</span> : <span className="text-[12px]">{t('Bild')}</span>}
+        <Icon name="lucide:image-plus" size={14} /> {value ? <span className="text-[12px]">{imageEngineLabel(value)}</span> : <span className="text-[12px]">{t('Bildmodell')}</span>}
       </button>
     )}>
       {(close) => (
         <div className="w-72">
           <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-subtle">{t('Bild erzeugen')}</div>
+          {!engines.length && <div className="px-2.5 py-2 text-[12px] text-subtle">{t('Verbinde Codex, Antigravity oder ein lokales Bildmodell in den Einstellungen.')}</div>}
+          {engines.length > 0 && <p className="px-2.5 pb-2 text-[11px] text-subtle">{t('Die CLI muss die gewählte Bildversion unterstützen. Zugriff wird bei der Generierung geprüft.')}</p>}
           {engines.map((e) => (
             <button key={e.id} className={cx('flex w-full items-start gap-2.5 rounded-lumen-sm px-2.5 py-1.5 text-left transition-colors hover:bg-hover', value === e.id && 'bg-active')} onClick={() => { onChange(e.id); close(); }}>
               <Dot id={e.provider} size={7} />

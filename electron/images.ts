@@ -1,3 +1,4 @@
+import { IMAGE_ENGINES } from '../shared/catalog';
 import { net, protocol } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
@@ -104,14 +105,16 @@ export function handleImageScheme() {
 
 export function imagePrompt(engine: string, prompt: string, refs: number): string {
   const ref = refs ? `\n${refs} reference image(s) are attached. Use them as input (edit, vary or match their style) only if the request refers to them; otherwise ignore them.` : '';
-  if (engine === 'gpt-image') {
-    return `Use your built-in image_gen tool to create the image requested below. Do not write code, do not create or modify any files, and do not use the CLI/API fallback.${ref}
+  const selected = IMAGE_ENGINES.find((e) => e.id === engine);
+  const exact = selected?.model ? `\nUse exactly the image model ${selected.model}. If your image tool cannot select or confirm this model, explain that it is unavailable and do not generate with a different model.` : '';
+  if (engine.startsWith('gpt-image')) {
+    return `Use your built-in image_gen tool to create the image requested below. Do not write code, do not create or modify any files, and do not use the CLI/API fallback.${exact}${ref}
 When the image is done, reply with one short sentence in the language of the request.
 
 Request:
 ${prompt}`;
   }
-  return `Generate the image requested below with your image generation capability (Nano Banana). Wait until the image has been fully generated before replying. Do not create or modify any project files.${ref}
+  return `Generate the image requested below with your image generation capability (${selected?.label ?? 'Nano Banana'}).${exact} Wait until the image has been fully generated before replying. Do not create or modify any project files.${ref}
 When the image is done, reply with one short sentence in the language of the request.
 
 Request:

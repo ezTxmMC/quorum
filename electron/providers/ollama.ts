@@ -1,5 +1,4 @@
 import type { HubEvent, ModelInfo, RunRequest } from '../../shared/types';
-import { storeImage } from '../images';
 
 // Ollama: lokale Modelle über die HTTP-API (Standard http://127.0.0.1:11434, überschreibbar mit OLLAMA_HOST).
 // Reiner Textchat – der Verlauf kommt aus dem Hub, es gibt keine Tools.
@@ -108,6 +107,7 @@ export async function runOllamaImage(req: RunRequest, emit: (e: HubEvent) => voi
   aborts.set(req.runId, ctl);
   const t0 = Date.now();
   try {
+    const { storeImage } = await import('../images');
     const res = await fetch(`${host()}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt: req.prompt, stream: true }), signal: ctl.signal });
     if (!res.ok || !res.body) {
       let msg = `HTTP ${res.status}`;

@@ -1,15 +1,13 @@
 import type { HubEvent, RunRequest } from '../../shared/types';
 import type { LineParser } from './runner';
-import { splitArgs } from './runner';
+import { splitArgs } from './args.ts';
 
 export function buildAntigravity(req: RunRequest): { args: string[] } {
   const o = req.options;
   const args = ['--output-format', 'stream-json'];
-  // Modelle sind als "<basis>-<low|medium|high>" benannt; der Effort wählt die Variante.
-  if (o.model) {
-    const variant = /-(low|medium|high)$/.test(o.model) ? o.model : `${o.model}-${['low', 'medium', 'high'].includes(o.effort ?? '') ? o.effort : 'medium'}`;
-    args.push('--model', variant);
-  } else if (o.effort) args.push('--effort', o.effort);
+  // Pass effort separately: not every model exposes suffixed variants.
+  if (o.model) args.push('--model', o.model);
+  if (o.effort) args.push('--effort', o.effort);
   // Headless kann agy nicht nachfragen: Shell-Befehle gehen nur mit Auto-Genehmigung (optional zusätzlich Terminal-Sandbox).
   const allowCommands = o.permission === 'allow-commands';
   if (o.fullAccess || allowCommands) args.push('--dangerously-skip-permissions');
@@ -24,8 +22,11 @@ export function buildAntigravity(req: RunRequest): { args: string[] } {
   args.push(...splitArgs(o.extraArgs));
   const imgs = (req.images ?? []).map((p) => `@${p}`).join(' ');
   // agy erwartet den Prompt als `-p=<text>` (Flag und Wert müssen zusammenhängen).
-  const prompt = (imgs ? `${imgs}\n\n` : '') + req.prompt;
-  args.push(`-p=${prompt.length > 110000 ? prompt.slice(-110000) : prompt}`);
+  const instructions = o.systemPrompt ? `${o.systemPrompt}\n\n---\n\n` : '';
+  const body = (imgs ? `${imgs}\n\n` : '') + req.prompt;
+  // Keep instructions intact when the message must be clipped to the CLI argument limit.
+  const room = Math.max(0, 110000 - instructions.length);
+  args.push(`-p=${instructions}${room ? body.slice(-room) : ''}`);
   return { args };
 }
 

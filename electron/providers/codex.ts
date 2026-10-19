@@ -1,6 +1,6 @@
 import type { HubEvent, RunRequest } from '../../shared/types';
 import type { LineParser } from './runner';
-import { splitArgs } from './runner';
+import { splitArgs } from './args.ts';
 
 export function buildCodex(req: RunRequest): { args: string[]; stdin: string } {
   const o = req.options;
@@ -9,6 +9,7 @@ export function buildCodex(req: RunRequest): { args: string[]; stdin: string } {
     if (req.review.target === 'uncommitted') a.push('--uncommitted');
     else if (req.review.target === 'base' && req.review.ref) a.push('--base', req.review.ref);
     else if (req.review.target === 'commit' && req.review.ref) a.push('--commit', req.review.ref);
+    if (o.systemPrompt) a.push('-c', `developer_instructions=${JSON.stringify(o.systemPrompt)}`);
     if (req.options.model) a.push('-m', req.options.model);
     if (req.options.fullAccess) a.push('--dangerously-bypass-approvals-and-sandbox');
     a.push('-');
@@ -19,11 +20,13 @@ export function buildCodex(req: RunRequest): { args: string[]; stdin: string } {
   if (resuming) args.push('resume');
   args.push('--json', '--skip-git-repo-check');
   if (!resuming) args.push('-C', req.cwd);
+  if (o.systemPrompt) args.push('-c', `developer_instructions=${JSON.stringify(o.systemPrompt)}`);
   if (o.model) args.push('-m', o.model);
   if (o.effort) args.push('-c', `model_reasoning_effort="${o.effort}"`);
   if (o.speed) args.push('-c', `service_tier="${o.speed}"`);
   if (o.fullAccess) args.push('--dangerously-bypass-approvals-and-sandbox');
   else if (o.sandbox && !resuming) args.push('-s', o.sandbox);
+  if (!o.fullAccess && o.approvalPolicy) args.push('-c', `approval_policy="${o.approvalPolicy}"`);
   if (o.profile) args.push('-p', o.profile);
   for (const c of o.configOverrides ?? []) args.push('-c', c);
   if (o.oss) { args.push('--oss'); if (o.localProvider) args.push('--local-provider', o.localProvider); }
