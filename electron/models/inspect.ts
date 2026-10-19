@@ -92,6 +92,16 @@ export function capabilitiesFromPipeline(pipelineTag: string | undefined, tags: 
   return [...caps];
 }
 
+/** Standard-Fähigkeiten eines Sprachmodells ohne Pipeline-Tag (Namenshinweise für Coding/Reasoning). */
+export function defaultTextCapabilities(name: string, files: string[] = []): Capability[] {
+  const hint = `${name} ${files.join(' ')}`.toLowerCase();
+  const caps: Capability[] = ['chat'];
+  if (/coder|code/.test(hint)) caps.push('coding');
+  if (/reason|thinking|r1|gpt-oss/.test(hint)) caps.push('reasoning');
+  if (/tool|agent/.test(hint)) caps.push('agent');
+  return caps;
+}
+
 /** Architektur grob aus Dateiliste und config.json ableiten. */
 export function architectureFor(files: string[], configJson?: Record<string, unknown>, pipelineTag?: string): ModelArchitecture {
   if (files.includes('model_index.json') || pipelineTag?.startsWith('text-to-image') || pipelineTag === 'image-to-image') return 'diffusers-pipeline';
@@ -129,11 +139,15 @@ export function describeModel(args: {
   configJson?: Record<string, unknown>;
 }): ModelDescriptor & { quantization?: string } {
   const format = formatFor(args.files);
+  const architecture = architectureFor(args.files, args.configJson, args.pipelineTag);
+  let capabilities = capabilitiesFromPipeline(args.pipelineTag, args.tags, args.name);
+  // Viele GGUF-Repos haben keinen Pipeline-Tag: ein Sprachmodell kann dann trotzdem chatten.
+  if (!capabilities.length && format === 'gguf' && architecture === 'transformer-lm') capabilities = defaultTextCapabilities(args.name, args.files);
   return {
     source: args.source,
     format,
-    architecture: architectureFor(args.files, args.configJson, args.pipelineTag),
-    capabilities: capabilitiesFromPipeline(args.pipelineTag, args.tags, args.name),
+    architecture,
+    capabilities,
     needsRemoteCode: needsRemoteCode(args.files, args.configJson),
     quantization: format === 'gguf' ? quantizationFromName(args.files.find((f) => f.endsWith('.gguf')) ?? args.name) : undefined,
   };

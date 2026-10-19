@@ -1,3 +1,4 @@
+import type { ToolId, ToolStatus } from '../shared/threed';
 import type { ApiConnection, OllamaManagement, OllamaPull } from '../shared/connections';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { Attachment, UsageReport, FsEntry, CliCommandResult, GitStatus, ImportEntry, ImportedSession, MultiEnvelope, MultiStart, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunEnvelope, RunRequest, UpdateChannel, UpdateProgress, UpdateState } from '../shared/types';
@@ -130,6 +131,12 @@ const api = {
   threedRun: (id: string, goal: string, engine: ChatEngine, maxIterations?: number): Promise<boolean> => ipcRenderer.invoke('3d:run', id, goal, engine, maxIterations),
   threedCancel: (id: string): Promise<boolean> => ipcRenderer.invoke('3d:cancel', id),
   threedBlender: (): Promise<{ bin?: string; version?: string; script: string }> => ipcRenderer.invoke('3d:blender'),
+  threedTools: (): Promise<ToolStatus[]> => ipcRenderer.invoke('3d:tools'),
+  threedToolInstall: (id: ToolId, opts?: { mcp?: boolean }): Promise<boolean> => ipcRenderer.invoke('3d:tool-install', id, opts),
+  threedToolCancel: (id: ToolId): Promise<void> => ipcRenderer.invoke('3d:tool-cancel', id),
+  threedToolRemove: (id: ToolId): Promise<ToolStatus[]> => ipcRenderer.invoke('3d:tool-remove', id),
+  threedToolMcp: (enabled: boolean): Promise<ToolStatus[]> => ipcRenderer.invoke('3d:tool-mcp', enabled),
+  onThreedToolProgress: (cb: (p: { id: ToolId; step: string; percent?: number; done?: boolean; error?: string }) => void) => sub('3d:tool-progress', cb),
   threedViewerOpen: (id: string): Promise<boolean> => ipcRenderer.invoke('3d:viewer-open', id),
   threedViewerClose: (id: string): Promise<boolean> => ipcRenderer.invoke('3d:viewer-close', id),
   threedViewerStatus: (id: string): Promise<boolean> => ipcRenderer.invoke('3d:viewer-status', id),

@@ -4,12 +4,16 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { createServer } from 'node:net';
+import { dirname, resolve } from 'node:path';
+import { managedBlockbench, mcpPluginFile, sandboxed, toolsDir } from './tools';
+import { readFileSync } from 'node:fs';
 
 export const BLOCKBENCH_DEFAULT = '/opt/blockbench/blockbench';
 
 export function findBlockbench(): string | undefined {
   const env = process.env.QUORUM_BLOCKBENCH;
   if (env && existsSync(env)) return env;
+  if (existsSync(managedBlockbench())) return managedBlockbench();
   return existsSync(BLOCKBENCH_DEFAULT) ? BLOCKBENCH_DEFAULT : undefined;
 }
 
@@ -49,6 +53,19 @@ async function waitPage(port: number, timeoutMs = 60000): Promise<{ url: string;
   throw new Error('Blockbench ist nicht rechtzeitig gestartet');
 }
 
+/** Starter: Eigeninstallation läuft in der Sandbox (Chromium-eigene Sandbox aus, dafür bubblewrap), sonst wie bisher. */
+function launch(bin: string, args: string[], file: string, profileDir: string, _gui: boolean): ChildProcess {
+  const managed = resolve(bin).startsWith(resolve(toolsDir()) + '/');
+  if (!managed) return spawn(bin, [...args, file], { stdio: 'ignore', detached: true });
+  const run = sandboxed(bin, ['--no-sandbox', '--disable-dev-shm-usage', ...args, file], {
+    rw: [resolve(profileDir), dirname(resolve(file))],
+    ro: [dirname(dirname(resolve(bin)))],
+    net: true,
+    gui: true, // Chromium braucht /dev/dri für GL, auch headless
+  });
+  return spawn(run.cmd, run.args, { stdio: 'ignore', detached: true, env: run.cmd === bin ? run.env : process.env });
+}
+
 export interface ViewerOptions {
   projectId: string;
   file: string;
@@ -63,10 +80,7 @@ export async function openViewer(opts: ViewerOptions): Promise<void> {
   await closeViewer(opts.projectId);
   mkdirSync(opts.profileDir, { recursive: true });
   const port = await freePort();
-  const proc = spawn(opts.bin, ['--ozone-platform=headless', '--use-gl=angle', `--user-data-dir=${opts.profileDir}`, `--remote-debugging-port=${port}`, opts.file], {
-    stdio: 'ignore',
-    detached: true,
-  });
+  const proc = launch(opts.bin, ['--ozone-platform=headless', '--use-gl=angle', `--user-data-dir=${opts.profileDir}`, `--remote-debugging-port=${port}`], opts.file, opts.profileDir, false);
   let page;
   try {
     page = await waitPage(port);
@@ -94,6 +108,10 @@ export async function openViewer(opts: ViewerOptions): Promise<void> {
       pending.set(i, resolve);
       ws.send(JSON.stringify({ id: i, method, params }));
     });
+  // Community-MCP-Plugin in die Blockbench-Seite laden (nur wenn installiert).
+  if (existsSync(mcpPluginFile())) {
+    try { await call('Runtime.evaluate', { expression: readFileSync(mcpPluginFile(), 'utf8') }); } catch { /* Plugin optional */ }
+  }
   await call('Emulation.setDeviceMetricsOverride', { width: 1100, height: 700, deviceScaleFactor: 1, mobile: false });
   // Nur der Vorschaubereich mit dem Modell: Position des Vorschau-Elements abfragen, dann genau diesen Ausschnitt aufnehmen.
   const rectExpr = "(()=>{const p=document.querySelector('#preview'); if(!p) return null; const r=p.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height};})()";
@@ -138,7 +156,7 @@ export async function closeViewer(projectId: string): Promise<boolean> {
 /** Blockbench mit sichtbarem Fenster öffnen (eigenes Profil, läuft unabhängig von der Oberfläche). */
 export function openWindow(bin: string, file: string, profileDir: string): void {
   mkdirSync(profileDir, { recursive: true });
-  const proc = spawn(bin, [`--user-data-dir=${profileDir}`, file], { stdio: 'ignore', detached: true });
+  const proc = launch(bin, [`--user-data-dir=${profileDir}`], file, profileDir, true);
   proc.unref();
 }
 

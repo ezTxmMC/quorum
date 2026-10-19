@@ -3,7 +3,8 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
+import { managedBlender, sandboxed, toolsDir } from './tools';
 
 export interface BlenderOp {
   op: 'load' | 'info' | 'decimate' | 'smooth' | 'export' | 'render' | 'bbmodel_to_scene';
@@ -24,6 +25,7 @@ const TIMEOUT_MS = 10 * 60 * 1000;
 export function findBlender(): string | undefined {
   const env = process.env.QUORUM_BLENDER;
   if (env && existsSync(env)) return env;
+  if (existsSync(managedBlender())) return managedBlender();
   const portable = join(homedir(), '.local', 'opt');
   if (existsSync(portable)) {
     const dirs = readdirSync(portable).filter((d) => d.startsWith('blender-')).sort().reverse();
@@ -59,9 +61,15 @@ export function runBlenderOps(opts: { bin: string; script: string; workdir: stri
   const jobPath = join(opts.workdir, `.job-${Date.now()}.json`);
   writeFileSync(jobPath, JSON.stringify({ workdir: resolve(opts.workdir), ops: opts.ops }));
   return new Promise((resolveRun) => {
-    const child = spawn(opts.bin, ['-b', '--factory-startup', '--python', opts.script, '--', jobPath], {
+    const args = ['-b', '--factory-startup', '--python', opts.script, '--', jobPath];
+    // Eigeninstallation: in der Sandbox ohne Netzwerk; sie sieht nur Blender, das Skript und den Projektordner.
+    const managed = resolve(opts.bin).startsWith(resolve(toolsDir()) + sep);
+    const run = managed
+      ? sandboxed(opts.bin, args, { rw: [resolve(opts.workdir)], ro: [dirname(resolve(opts.bin)), dirname(resolve(opts.script))], net: false, gui: false })
+      : { cmd: opts.bin, args, env: { PATH: process.env.PATH ?? '', HOME: homedir(), LANG: 'C.UTF-8' } as NodeJS.ProcessEnv };
+    const child = spawn(run.cmd, run.args, {
       cwd: opts.workdir,
-      env: { PATH: process.env.PATH ?? '', HOME: homedir(), LANG: 'C.UTF-8' },
+      env: run.env,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: process.platform !== 'win32',
     });

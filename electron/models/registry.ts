@@ -4,6 +4,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ModelRecord } from '../../shared/models';
 import { dataDir } from '../store';
+import { defaultTextCapabilities } from './inspect';
 
 const file = () => join(dataDir(), 'models.json');
 
@@ -13,6 +14,8 @@ function all(): ModelRecord[] {
   if (records) return records;
   try {
     records = existsSync(file()) ? (JSON.parse(readFileSync(file(), 'utf8')) as ModelRecord[]) : [];
+    // Ältere Einträge ohne Fähigkeiten (GGUF ohne Pipeline-Tag) bekommen Text-Fähigkeiten nachgetragen.
+    for (const m of records) if (!m.capabilities?.length && m.format === 'gguf' && m.architecture === 'transformer-lm') m.capabilities = defaultTextCapabilities(m.name, m.files);
   } catch {
     records = [];
   }

@@ -9,6 +9,7 @@ import { imageUrl } from '@/components/MessageView';
 import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
 import { cx } from '@/components/ui';
+import { ThreeDTools } from '@/components/ThreeDTools';
 
 type Detail = { model: BbModel; summary: BbSummary; description: string; renders: string[]; history: { file: string; at: number }[] };
 type LogLine = { at: number; text: string; kind: 'ok' | 'warn' | 'err' | 'info' };
@@ -39,6 +40,7 @@ export function ThreeDPage() {
   const [err, setErr] = useState<string | null>(null);
   const [frame, setFrame] = useState<string | null>(null);
   const [live, setLive] = useState(false);
+  const [tab, setTab] = useState<'renders' | 'history'>('renders');
   const [viewerErr, setViewerErr] = useState<string | null>(null);
 
   const reloadList = () => void hub.threedList().then(setProjects);
@@ -133,81 +135,91 @@ export function ThreeDPage() {
       </aside>
 
       <main className="min-w-0 flex-1 overflow-y-auto">
-        {!detail && <div className="p-8 text-[12.5px] text-subtle">{t('Projekt auswählen oder neu anlegen.')}</div>}
-        {detail && (
-          <div className="mx-auto max-w-4xl space-y-5 px-6 py-6">
-            <div>
-              <h1 className="text-[20px] font-semibold tracking-tight">{detail.model.name}</h1>
-              <div className="text-[12px] text-subtle">
-                {detail.summary.cubes} {t('Würfel')} · {detail.summary.groups} {t('Gruppen')} · {detail.summary.format}
-                {' · '}
-                {blender?.bin ? `Blender ${blender.version ?? ''}` : t('Blender nicht gefunden (QUORUM_BLENDER setzen)')}
+        <div className="mx-auto max-w-6xl space-y-4 px-6 py-6">
+          <ThreeDTools onChange={() => void hub.threedBlender().then(setBlender)} />
+          {!detail && <div className="rounded-lumen-lg border border-dashed border-edge p-10 text-center text-[12.5px] text-subtle">{t('Projekt auswählen oder neu anlegen.')}</div>}
+          {detail && (
+            <>
+              <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
+                <h1 className="text-[20px] font-semibold tracking-tight">{detail.model.name}</h1>
+                <div className="flex flex-wrap gap-1.5 pb-1 text-[11.5px] text-muted">
+                  <span className="rounded-full bg-hover px-2 py-0.5">{detail.summary.cubes} {t('Würfel')}</span>
+                  <span className="rounded-full bg-hover px-2 py-0.5">{detail.summary.groups} {t('Gruppen')}</span>
+                  <span className="rounded-full bg-hover px-2 py-0.5">{detail.summary.format}</span>
+                  <span className={cx('rounded-full px-2 py-0.5', blender?.bin ? 'bg-ok/15 text-ok' : 'bg-warn/15 text-warn')}>{blender?.bin ? `Blender ${blender.version ?? ''}` : t('Blender fehlt – oben installieren')}</span>
+                </div>
               </div>
-            </div>
 
-            {issues.length > 0 && (
-              <div className="space-y-1 rounded-lumen border border-warn/40 bg-warn/10 px-3 py-2 text-[12.5px]">
-                {issues.map((i, k) => <div key={k} className={i.level === 'error' ? 'text-bad' : 'text-warn'}>{i.level === 'error' ? t('Fehler') : t('Hinweis')}: {i.message}</div>)}
-              </div>
-            )}
-
-            <section className="space-y-3 rounded-lumen-lg border border-edge bg-surface p-4">
-              <h2 className="text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Modellierungsauftrag')}</h2>
-              <textarea className="field min-h-20" placeholder={t('Beschreibe das Modell, z. B. ein Stuhl mit vier Beinen')} value={goal} onChange={(e) => setGoal(e.target.value)} />
-              <div className="flex flex-wrap items-end gap-3 text-[12px]">
-                <label className="flex min-w-56 flex-1 flex-col gap-1"><span className="text-subtle">{t('Modell für den Plan')}</span>
-                  <select className="field" value={engine} onChange={(e) => setEngine(e.target.value)}>
-                    <option value="">{t('– wählen –')}</option>
-                    {models.map((m) => <option key={m.id} value={`local:${m.id}`}>{m.name} ({t('lokal')})</option>)}
-                    {['claude', 'codex'].map((p) => <option key={p} value={`cli:${p}`}>{p} ({t('CLI, nur lesend')})</option>)}
-                  </select>
-                </label>
-                <label className="flex w-28 flex-col gap-1"><span className="text-subtle">{t('Runden')}</span><input className="field" value={iters} onChange={(e) => setIters(e.target.value.replace(/\D/g, ''))} /></label>
-                {running
-                  ? <button className="btn" onClick={() => sel && void hub.threedCancel(sel)}><Icon name="lucide:square" size={14} /> {t('Stopp')}</button>
-                  : <button className="btn btn-primary" disabled={!engine || !goal.trim()} onClick={() => void run()}><Icon name="lucide:play" size={14} /> {t('Modellieren')}</button>}
-              </div>
-              {err && <div className="text-[12px] text-bad">{err}</div>}
-              {log.length > 0 && (
-                <ul className="max-h-48 space-y-1 overflow-y-auto rounded-lumen border border-edge bg-hover p-2 font-mono text-[11.5px]">
-                  {log.map((l, i) => <li key={i} className={cx(l.kind === 'ok' && 'text-ok', l.kind === 'warn' && 'text-warn', l.kind === 'err' && 'text-bad')}>{l.text}</li>)}
-                </ul>
+              {issues.length > 0 && (
+                <div className="space-y-1 rounded-lumen border border-warn/40 bg-warn/10 px-3 py-2 text-[12.5px]">
+                  {issues.map((i, k) => <div key={k} className={i.level === 'error' ? 'text-bad' : 'text-warn'}>{i.level === 'error' ? t('Fehler') : t('Hinweis')}: {i.message}</div>)}
+                </div>
               )}
-            </section>
 
-            <section className="space-y-2 rounded-lumen-lg border border-edge bg-surface p-4">
-              <div className="flex items-center gap-2">
-                <h2 className="flex-1 text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Live-Ansicht · Blockbench')}</h2>
-                <button className="btn" onClick={() => void toggleLive()}><Icon name={live ? 'lucide:square' : 'lucide:play'} size={14} /> {live ? t('Live beenden') : t('Live starten')}</button>
-                <button className="btn" onClick={() => void openWindow()}><Icon name="lucide:external-link" size={14} /> {t('In Blockbench öffnen')}</button>
+              <div className="grid gap-4 lg:grid-cols-5">
+                <section className="space-y-2 rounded-lumen-lg border border-edge bg-surface p-4 lg:col-span-3">
+                  <div className="flex items-center gap-2">
+                    <h2 className="flex-1 text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Live-Ansicht · Blockbench')}</h2>
+                    <button className="btn" onClick={() => void toggleLive()}><Icon name={live ? 'lucide:square' : 'lucide:play'} size={14} /> {live ? t('Live beenden') : t('Live starten')}</button>
+                    <button className="btn" onClick={() => void openWindow()}><Icon name="lucide:external-link" size={14} /> {t('In Blockbench öffnen')}</button>
+                  </div>
+                  {viewerErr && <div className="text-[12px] text-bad">{viewerErr}</div>}
+                  {frame
+                    ? <img src={frame} alt="" className="w-full rounded-lumen border border-edge" />
+                    : <div className="grid aspect-video place-items-center rounded-lumen border border-dashed border-edge p-6 text-center text-[12px] text-subtle">{live ? t('Warte auf die erste Ansicht …') : t('Live-Ansicht startet headless, ohne Fenster auf deinem Bildschirm.')}</div>}
+                </section>
+
+                <section className="space-y-3 rounded-lumen-lg border border-edge bg-surface p-4 lg:col-span-2">
+                  <h2 className="text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Modellierungsauftrag')}</h2>
+                  <textarea className="field min-h-24" placeholder={t('Beschreibe das Modell, z. B. ein Stuhl mit vier Beinen')} value={goal} onChange={(e) => setGoal(e.target.value)} />
+                  <div className="flex flex-wrap items-end gap-3 text-[12px]">
+                    <label className="flex min-w-40 flex-1 flex-col gap-1"><span className="text-subtle">{t('Modell für den Plan')}</span>
+                      <select className="field" value={engine} onChange={(e) => setEngine(e.target.value)}>
+                        <option value="">{t('– wählen –')}</option>
+                        {models.map((m) => <option key={m.id} value={`local:${m.id}`}>{m.name} ({t('lokal')})</option>)}
+                        {['claude', 'codex'].map((p) => <option key={p} value={`cli:${p}`}>{p} ({t('CLI, nur lesend')})</option>)}
+                      </select>
+                    </label>
+                    <label className="flex w-20 flex-col gap-1"><span className="text-subtle">{t('Runden')}</span><input className="field" value={iters} onChange={(e) => setIters(e.target.value.replace(/\D/g, ''))} /></label>
+                  </div>
+                  {running
+                    ? <button className="btn w-full justify-center" onClick={() => sel && void hub.threedCancel(sel)}><Icon name="lucide:square" size={14} /> {t('Stopp')}</button>
+                    : <button className="btn btn-primary w-full justify-center" disabled={!engine || !goal.trim()} onClick={() => void run()}><Icon name="lucide:play" size={14} /> {t('Modellieren')}</button>}
+                  {err && <div className="text-[12px] text-bad">{err}</div>}
+                  {log.length > 0 && (
+                    <ul className="max-h-56 space-y-1 overflow-y-auto rounded-lumen border border-edge bg-hover p-2 font-mono text-[11.5px]">
+                      {log.map((l, i) => <li key={i} className={cx(l.kind === 'ok' && 'text-ok', l.kind === 'warn' && 'text-warn', l.kind === 'err' && 'text-bad')}>{l.text}</li>)}
+                    </ul>
+                  )}
+                </section>
               </div>
-              {viewerErr && <div className="text-[12px] text-bad">{viewerErr}</div>}
-              {frame
-                ? <img src={frame} alt="" className="w-full rounded-lumen border border-edge" />
-                : <div className="rounded-lumen border border-dashed border-edge p-6 text-center text-[12px] text-subtle">{live ? t('Warte auf die erste Ansicht …') : t('Live-Ansicht startet headless, ohne Fenster auf deinem Bildschirm.')}</div>}
-            </section>
 
-            {detail.renders.length > 0 && (
-              <section className="space-y-2">
-                <h2 className="text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Vorschauen')}</h2>
-                <div className="grid grid-cols-3 gap-2">
-                  {detail.renders.slice(-12).map((p) => <img key={p} src={imageUrl(p)} alt="" className="rounded-lumen border border-edge" />)}
+              <section className="space-y-3 rounded-lumen-lg border border-edge bg-surface p-4">
+                <div className="flex gap-1">
+                  {(['renders', 'history'] as const).map((k) => (
+                    <button key={k} onClick={() => setTab(k)} className={cx('rounded-lumen-sm px-3 py-1 text-[12px] transition-colors', tab === k ? 'bg-active text-fg' : 'text-muted hover:bg-hover')}>
+                      {k === 'renders' ? `${t('Vorschauen')} (${detail.renders.length})` : `${t('Verlauf')} (${detail.history.length})`}
+                    </button>
+                  ))}
                 </div>
+                {tab === 'renders' && (detail.renders.length === 0
+                  ? <div className="text-[12px] text-subtle">{t('Noch keine Vorschauen.')}</div>
+                  : <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{detail.renders.slice(-12).map((p) => <img key={p} src={imageUrl(p)} alt="" className="rounded-lumen border border-edge" />)}</div>)}
+                {tab === 'history' && (
+                  <div className="space-y-1.5">
+                    {detail.history.length === 0 && <div className="text-[12px] text-subtle">{t('Noch keine früheren Stände.')}</div>}
+                    {detail.history.slice(0, 15).map((h) => (
+                      <div key={h.file} className="flex items-center gap-3 rounded-lumen border border-edge px-3 py-1.5 text-[12px]">
+                        <span className="flex-1 text-subtle">{new Date(h.at).toLocaleString('de-DE')}</span>
+                        <button className="btn" onClick={() => void restore(h.file)}>{t('Wiederherstellen')}</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
-            )}
-
-            <section className="space-y-2">
-              <h2 className="text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Verlauf')}</h2>
-              {detail.history.length === 0 && <div className="text-[12px] text-subtle">{t('Noch keine früheren Stände.')}</div>}
-              {detail.history.slice(0, 15).map((h) => (
-                <div key={h.file} className="flex items-center gap-3 rounded-lumen border border-edge px-3 py-1.5 text-[12px]">
-                  <span className="flex-1 text-subtle">{new Date(h.at).toLocaleString('de-DE')}</span>
-                  <button className="btn" onClick={() => void restore(h.file)}>{t('Wiederherstellen')}</button>
-                </div>
-              ))}
-            </section>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </main>
     </div>
   );

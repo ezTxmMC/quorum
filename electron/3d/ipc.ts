@@ -9,6 +9,8 @@ import { blenderScript, blenderVersion, findBlender } from './blender';
 import { cancelProjectRun, createProject, deleteProject, history, listProjects, projectDir, readModel, renders, restoreVersion, runProject } from './service';
 import { closeViewer, findBlockbench, hasViewer, openViewer, openWindow } from './viewer';
 import { dataDir } from '../store';
+import { cancelInstall, installTool, setMcp, toolStatus, uninstallTool } from './tools';
+import type { ToolId } from '../../shared/threed';
 import { join as joinPath } from 'node:path';
 
 type Send = (channel: string, payload: unknown) => void;
@@ -32,7 +34,7 @@ export function register3dIpc(send: Send, binaries: () => Partial<Record<Provide
   const profile = (id: string) => joinPath(dataDir(), 'blockbench-profile', id);
   const viewerOn = async (id: string, file: string) => {
     const bin = findBlockbench();
-    if (!bin) throw new Error('Blockbench nicht gefunden (QUORUM_BLOCKBENCH setzen).');
+    if (!bin) throw new Error('Blockbench nicht gefunden (unter 3D installieren oder QUORUM_BLOCKBENCH setzen).');
     await openViewer({
       projectId: id,
       file,
@@ -47,10 +49,17 @@ export function register3dIpc(send: Send, binaries: () => Partial<Record<Provide
   ipcMain.handle('3d:viewer-status', (_e, id: string) => hasViewer(id));
   ipcMain.handle('3d:open-window', (_e, id: string) => {
     const bin = findBlockbench();
-    if (!bin) throw new Error('Blockbench nicht gefunden (QUORUM_BLOCKBENCH setzen).');
+    if (!bin) throw new Error('Blockbench nicht gefunden (unter 3D installieren oder QUORUM_BLOCKBENCH setzen).');
     openWindow(bin, joinPath(projectDir(id), 'model.bbmodel'), joinPath(dataDir(), 'blockbench-window'));
     return true;
   });
+  // Eigene (Sandbox-)Installation von Blender und Blockbench, je Werkzeug einzeln.
+  const toolEmit = (p: unknown) => send('3d:tool-progress', p);
+  ipcMain.handle('3d:tools', () => toolStatus());
+  ipcMain.handle('3d:tool-install', (_e, id: ToolId, opts: { mcp?: boolean } = {}) => { void installTool(id, opts, toolEmit); return true; });
+  ipcMain.handle('3d:tool-cancel', (_e, id: ToolId) => cancelInstall(id));
+  ipcMain.handle('3d:tool-remove', async (_e, id: ToolId) => { await uninstallTool(id); return toolStatus(); });
+  ipcMain.handle('3d:tool-mcp', async (_e, enabled: boolean) => { await setMcp(enabled, toolEmit); return toolStatus(); });
   ipcMain.handle('3d:blender', () => {
     const bin = findBlender();
     return { bin, version: bin ? blenderVersion(bin) : undefined, script: blenderScript(pythonDir()) };
@@ -59,7 +68,7 @@ export function register3dIpc(send: Send, binaries: () => Partial<Record<Provide
   // Modellierungslauf im Hintergrund; Fortschritt kommt als `3d:event`. Ergebnis wird gespeichert, wenn der Lauf endet.
   ipcMain.handle('3d:run', (_e, id: string, goal: string, engine: ChatEngine, maxIterations = 3) => {
     const blender = findBlender();
-    if (!blender) throw new Error('Blender nicht gefunden (QUORUM_BLENDER setzen oder Blender installieren).');
+    if (!blender) throw new Error('Blender nicht gefunden – unter 3D → Werkzeuge installieren (oder QUORUM_BLENDER setzen).');
     const emit = (event: unknown) => send('3d:event', { projectId: id, event });
     // Läuft eine Live-Ansicht, zeigt sie nach jeder Runde den neuen Stand.
     const onIteration = (file: string) => { if (hasViewer(id)) void viewerOn(id, file).catch((err: Error) => emit({ type: 'log', text: `Live-Ansicht: ${err.message}` })); };

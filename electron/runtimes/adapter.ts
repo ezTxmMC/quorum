@@ -6,7 +6,7 @@ import type { ChatMessage } from '../../shared/models';
 
 export interface LoadOptions {
   /** Ausführung auf dieser Hardware; `cpu` ist immer möglich. */
-  backend: Backend;
+  backend?: Backend;
   /** Anzahl der Schichten, die auf die GPU ausgelagert werden (llama.cpp). */
   gpuLayers?: number;
   contextSize?: number;

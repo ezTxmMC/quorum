@@ -174,10 +174,27 @@ export class LlamaModel implements ChatHandle {
   }
 }
 
+let deviceCache: string | undefined;
+/** Geräteliste von `llama-server --list-devices` (einmalig gecacht). */
+async function deviceList(): Promise<string> {
+  if (deviceCache === undefined) deviceCache = (await run(['--list-devices'], 30000)).out;
+  return deviceCache;
+}
+
+/** Argumente, die das gewählte Backend durchsetzen (sonst wählt llama-server selbst ein Gerät). */
+export async function backendArgs(backend: Backend | undefined): Promise<string[]> {
+  if (!backend) return [];
+  if (backend === 'cpu') return ['--device', 'none', '-ngl', '0'];
+  const prefix: Record<string, string> = { vulkan: 'Vulkan', rocm: '(?:ROCm|HIP)', cuda: 'CUDA', metal: 'MTL' };
+  const m = new RegExp(`^\\s*(${prefix[backend] ?? backend}\\d+):`, 'mi').exec(await deviceList());
+  if (!m) throw new Error(`Backend ${backend.toUpperCase()} ist in diesem llama-server nicht verfügbar. Anderes Backend wählen oder ein passendes llama.cpp installieren.`);
+  return ['--device', m[1]];
+}
+
 /** Ein Ladeauftrag. Hält die Instanz, damit der Scheduler sie beenden kann. */
 export async function startLlama(modelPath: string, opts: LoadOptions & { memory: Memory }): Promise<LlamaModel> {
-  const args = ['-m', modelPath];
-  if (opts.gpuLayers !== undefined) args.push('-ngl', String(opts.gpuLayers));
+  const args = ['-m', modelPath, ...(await backendArgs(opts.backend))];
+  if (opts.gpuLayers !== undefined && opts.backend !== 'cpu') args.push('-ngl', String(opts.gpuLayers));
   if (opts.contextSize) args.push('-c', String(opts.contextSize));
   const m = new LlamaModel(modelPath, opts.memory);
   // Ladedauer abhängig von der Modellgröße: große GGUFs brauchen mehr Zeit.

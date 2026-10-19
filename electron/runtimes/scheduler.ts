@@ -248,7 +248,7 @@ export class ModelScheduler {
       if (signal?.aborted) throw new Error('Abgebrochen');
       const memory = estimateGguf(sizeBytes, gpuLayers);
       try {
-        const model = await startLlama(record.path, { backend, gpuLayers, contextSize: record.load?.contextSize, trustRemoteCode: false, memory });
+        const model = await startLlama(record.path, { backend: record.load?.backend, gpuLayers, contextSize: record.load?.contextSize, trustRemoteCode: false, memory });
         return this.register(record.id, model, gpuLayers, backend, memory, started);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
