@@ -160,4 +160,26 @@ export function openWindow(bin: string, file: string, profileDir: string): void 
   proc.unref();
 }
 
+/** Blender mit sichtbarem Fenster öffnen (ggf. mit Datei, läuft unabhängig von der Oberfläche). */
+export function openBlenderWindow(bin: string, file: string | undefined, profileDir: string): void {
+  mkdirSync(profileDir, { recursive: true });
+  const managed = resolve(bin).startsWith(resolve(toolsDir()) + '/');
+  const args = file && existsSync(file) ? [file] : [];
+  if (!managed) {
+    const proc = spawn(bin, args, { stdio: 'ignore', detached: true });
+    proc.unref();
+    return;
+  }
+  const rw = [resolve(profileDir)];
+  if (file && existsSync(file)) rw.push(dirname(resolve(file)));
+  const run = sandboxed(bin, args, {
+    rw,
+    ro: [dirname(dirname(resolve(bin)))],
+    net: false,
+    gui: true,
+  });
+  const proc = spawn(run.cmd, run.args, { stdio: 'ignore', detached: true, env: run.cmd === bin ? run.env : process.env });
+  proc.unref();
+}
+
 export const hasViewer = (projectId: string) => sessions.has(projectId);

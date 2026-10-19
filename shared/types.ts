@@ -289,6 +289,12 @@ export interface TerminalStyle {
   scrollback: number;
 }
 
+export interface ThreeDSettings {
+  preferredTool?: 'blockbench' | 'blender';
+  defaultExportFormat?: 'glb' | 'gltf' | 'obj' | 'fbx';
+  autoExport?: boolean;
+}
+
 export interface Settings {
   sidebarPinned: boolean;
   showOlderModels?: boolean;
@@ -312,6 +318,7 @@ export interface Settings {
   providerDefaults: Record<ProviderId, ProviderOptions>;
   updateChannel: UpdateChannel;
   autoCheckUpdate: boolean;
+  threed?: ThreeDSettings;
 }
 
 export interface Persisted {

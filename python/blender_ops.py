@@ -124,6 +124,13 @@ def op_export(job, step):
     return {"file": out, "bytes": os.path.getsize(out)}
 
 
+def op_save_blend(job, step):
+    out = inside(job["workdir"], step["file"])
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    bpy.ops.wm.save_as_mainfile(filepath=out)
+    return {"file": out, "bytes": os.path.getsize(out)}
+
+
 VIEWS = {
     "iso": (1.0, -1.0, 0.8),
     "front": (0.0, -1.0, 0.0),
@@ -383,6 +390,7 @@ OPS = {
     "render": op_render,
     "pose": op_pose,
     "bbmodel_to_scene": op_bbmodel_to_scene,
+    "save_blend": op_save_blend,
 }
 
 

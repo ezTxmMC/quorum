@@ -79,6 +79,7 @@ const emptyData = (): Persisted => ({
     theme: 'dark', language: navigator.language.startsWith('de') ? 'de' : 'en', autoImport: true, sidebarPinned: true, quickHotkey: 'CommandOrControl+Shift+Space', dock: defaultDock(), terminal: defaultTerminal(), accent: '#7c8cff', defaultProvider: 'claude', defaultCwd: '', binaries: {},
     providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {}, api: {} },
     updateChannel: 'release', autoCheckUpdate: true,
+    threed: { preferredTool: 'blockbench', defaultExportFormat: 'glb', autoExport: true },
   },
   recentProjects: [], projects: [], hidden: [], dismissed: [], sessions: [], multiRuns: [], presets: [],
 });

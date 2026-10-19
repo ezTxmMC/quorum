@@ -73,7 +73,9 @@ export class AntigravityParser implements LineParser {
         for (const d of (r.denied_actions ?? []) as { display_name?: string; action?: string }[]) {
           out.push({ type: 'notice', level: 'warn', text: `Aktion „${d.display_name ?? d.action}“ wurde abgelehnt (Headless). Wähle „Befehle & Edits erlauben“ oder Vollzugriff.` });
         }
-        if (r.status && r.status !== 'SUCCESS') out.push({ type: 'notice', level: 'error', text: `Status: ${r.status}` });
+        if (!this.seenText && r.status && r.status !== 'SUCCESS') {
+          out.push({ type: 'notice', level: 'error', text: String(r.error?.message ?? r.error ?? `Turn fehlgeschlagen (${r.status})`) });
+        }
         break;
       }
     }

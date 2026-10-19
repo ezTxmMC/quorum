@@ -14,7 +14,7 @@ import type { RunEvent } from './workflows/engine';
 import type { RunRecord } from './workflows/engine';
 import type { WorkflowDef, WorkflowNode } from '../shared/workflow';
 import type { BbModel, BbSummary } from '../shared/bbmodel';
-import type { ProjectInfo } from './3d/service';
+import type { ProjectInfo, WorkfileItem } from './3d/service';
 import type { LoopEvent } from './3d/loop';
 import type { ChatEngine } from './3d/llm';
 
@@ -141,6 +141,9 @@ const api = {
   threedViewerClose: (id: string): Promise<boolean> => ipcRenderer.invoke('3d:viewer-close', id),
   threedViewerStatus: (id: string): Promise<boolean> => ipcRenderer.invoke('3d:viewer-status', id),
   threedOpenWindow: (id: string): Promise<boolean> => ipcRenderer.invoke('3d:open-window', id),
+  threedOpenBlender: (id?: string): Promise<boolean> => ipcRenderer.invoke('3d:open-blender', id),
+  threedWorkfiles: (id: string): Promise<WorkfileItem[]> => ipcRenderer.invoke('3d:workfiles', id),
+  threedExport: (id: string, format: 'glb' | 'gltf' | 'obj' | 'fbx'): Promise<string> => ipcRenderer.invoke('3d:export', id, format),
   onThreedFrame: (cb: (f: { projectId: string; jpeg?: string; error?: string }) => void) => sub('3d:frame', cb),
   onChatProject: (cb: (p: { runId: string; projectId: string }) => void) => sub('chat:project', cb),
   onThreedEvent: (cb: (e: { projectId: string; event: LoopEvent | { type: 'log'; text: string } }) => void) => sub('3d:event', cb),

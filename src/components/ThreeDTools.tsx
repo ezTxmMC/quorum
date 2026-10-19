@@ -51,7 +51,7 @@ export function ThreeDTools({ onChange }: { onChange?: (s: ToolStatus[]) => void
               ? t('Installiert in den App-Ordner und läuft in einer bubblewrap-Sandbox: nur Werkzeug- und Projektordner sind sichtbar.')
               : t('bubblewrap ist nicht installiert: die Werkzeuge liegen im App-Ordner und laufen mit eigenem Profil, aber ohne Dateisystem-Sandbox.')}
           </p>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="flex flex-col gap-3">
             {tools.map((x) => {
               const info = INFO[x.id];
               const p = progress[x.id];

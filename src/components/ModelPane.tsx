@@ -5,6 +5,7 @@ import { imageUrl } from './MessageView';
 import { Icon } from '@/lib/icons';
 import { ModelAnimations, ModelTextures } from './ModelAssets';
 import { ModelViewer3D } from './ModelViewer3D';
+import { ModelWorkfiles } from './ModelWorkfiles';
 import { ThreeDTools } from './ThreeDTools';
 import { cx } from './ui';
 
@@ -18,7 +19,7 @@ export function ModelPane({ projectId, onProject, onClose }: { projectId?: strin
   const [live, setLive] = useState(false);
   const [frame, setFrame] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [tab, setTab] = useState<'preview' | 'textures' | 'animations' | 'history'>('preview');
+  const [tab, setTab] = useState<'preview' | 'workfiles' | 'textures' | 'animations' | 'history'>('preview');
   useEffect(() => {
     let alive = true;
     setDetail(null); setFrame(null); setErr(null); setLive(false);
@@ -68,13 +69,20 @@ export function ModelPane({ projectId, onProject, onClose }: { projectId?: strin
       {!projectId && <p className="rounded-lumen border border-dashed border-edge p-4 text-[12px] text-subtle">{t('Beschreibe dein Modell im Chat. Weitere Nachrichten überarbeiten dasselbe Projekt.')}</p>}
       {detail && <>
         <div className="text-[12px] text-muted">{detail.model.name} · {detail.summary.cubes} {t('Würfel')} · {detail.model.animations?.length ?? 0} {t('Animationen')}</div>
-        <div className="flex flex-wrap gap-1">{(['preview', 'textures', 'animations', 'history'] as const).map((value) => <button key={value} className={cx('rounded-lumen-sm px-2 py-1 text-[12px] hover:bg-hover', tab === value && 'bg-active')} onClick={() => setTab(value)}>
-          {t(value === 'preview' ? 'Vorschauen' : value === 'textures' ? 'Texturen' : value === 'animations' ? 'Animationen' : 'Verlauf')}
+        <div className="flex flex-wrap gap-1">{(['preview', 'workfiles', 'textures', 'animations', 'history'] as const).map((value) => <button key={value} className={cx('rounded-lumen-sm px-2 py-1 text-[12px] hover:bg-hover', tab === value && 'bg-active')} onClick={() => setTab(value)}>
+          {t(value === 'preview' ? 'Vorschauen' : value === 'workfiles' ? 'Dateien & Einstellungen' : value === 'textures' ? 'Texturen' : value === 'animations' ? 'Animationen' : 'Verlauf')}
         </button>)}</div>
         {tab === 'preview' && <>
           <div className="flex flex-wrap gap-2">
             <button className="btn" onClick={() => void toggle()}>{live ? t('Live aus') : t('Live an')}</button>
-            <button className="btn" onClick={() => void act(() => hub.threedOpenWindow(projectId!))}>{t('In Blockbench öffnen')}</button>
+            <button className="btn" onClick={() => void act(() => hub.threedOpenWindow(projectId!))}>
+              <Icon name="lucide:cuboid" size={13} />
+              <span>{t('In Blockbench öffnen')}</span>
+            </button>
+            <button className="btn" onClick={() => void act(() => hub.threedOpenBlender(projectId!))}>
+              <Icon name="lucide:box" size={13} />
+              <span>{t('In Blender öffnen')}</span>
+            </button>
           </div>
           {live && frame ? (
             <img src={frame} alt={detail.model.name} className="w-full rounded-lumen border border-edge" />
@@ -90,6 +98,7 @@ export function ModelPane({ projectId, onProject, onClose }: { projectId?: strin
             <p className="text-[12px] text-subtle">{t('Noch keine Vorschau.')}</p>
           )}
         </>}
+        {tab === 'workfiles' && <ModelWorkfiles projectId={projectId!} />}
         {tab === 'textures' && <ModelTextures model={detail.model} />}
         {tab === 'animations' && <ModelAnimations key={projectId} model={detail.model} previews={detail.animationPreviews} />}
         {tab === 'history' && <div className="space-y-2">{!detail.history.length && <p className="text-[12px] text-subtle">{t('Noch keine früheren Stände.')}</p>}{detail.history.map((version) => <div key={version.file} className="flex items-center gap-2 text-[12px]"><span className="flex-1 text-muted">{new Date(version.at).toLocaleString()}</span><button className="btn" onClick={() => void restore(version.file)}>{t('Wiederherstellen')}</button></div>)}</div>}

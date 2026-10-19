@@ -1,13 +1,13 @@
-// Blender als Werkzeug: startet `blender -b` mit dem festen Operationsskript (python/blender_ops.py) in einem eigenen Prozess.
-// Nur die Operationen aus dem Skript laufen; Pfade werden auf den Arbeitsordner des Jobs begrenzt.
+import { app } from 'electron';
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { managedBlender, sandboxed, toolsDir } from './tools';
 
 export interface BlenderOp {
-  op: 'load' | 'info' | 'decimate' | 'smooth' | 'export' | 'render' | 'pose' | 'bbmodel_to_scene';
+  op: 'load' | 'info' | 'decimate' | 'smooth' | 'export' | 'render' | 'pose' | 'bbmodel_to_scene' | 'save_blend';
   [key: string]: unknown;
 }
 
@@ -50,9 +50,13 @@ export function blenderVersion(bin: string): string | undefined {
   }
 }
 
+export function pythonDir(): string {
+  return app.isPackaged ? join(process.resourcesPath, 'python') : fileURLToPath(new URL('../python/', import.meta.url));
+}
+
 /** Operationsskript im Projekt (liegt neben dem Quellcode bzw. in den Zusatzressourcen). */
-export function blenderScript(pythonDir: string): string {
-  return join(pythonDir, 'blender_ops.py');
+export function blenderScript(dir = pythonDir()): string {
+  return join(dir, 'blender_ops.py');
 }
 
 /** Führt eine Folge von Operationen in `workdir` aus. Jeder Pfad muss im Arbeitsordner liegen. */

@@ -1,13 +1,12 @@
 // IPC für 3D-Projekte: Verwalten, Modellierungslauf mit einem wählbaren Modell, Verlauf, Blender-Status.
-import { app, ipcMain } from 'electron';
-import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { ipcMain } from 'electron';
+import { existsSync } from 'node:fs';
 import type { ProviderId } from '../../shared/types';
 import { describe, summarize } from '../../shared/bbmodel';
 import type { ChatEngine } from './llm';
-import { blenderScript, blenderVersion, findBlender } from './blender';
-import { animationPreviews, exportFile, cancelProjectRun, createProject, deleteProject, history, listProjects, projectDir, readModel, renders, restoreVersion, runProject } from './service';
-import { closeViewer, findBlockbench, hasViewer, openViewer, openWindow } from './viewer';
+import { blenderScript, blenderVersion, findBlender, pythonDir } from './blender';
+import { animationPreviews, exportFile, cancelProjectRun, createProject, deleteProject, exportProject, getWorkfiles, history, listProjects, projectDir, readModel, renders, restoreVersion, runProject } from './service';
+import { closeViewer, findBlockbench, hasViewer, openBlenderWindow, openViewer, openWindow } from './viewer';
 import { dataDir } from '../store';
 import { cancelInstall, installTool, setMcp, toolStatus, uninstallTool } from './tools';
 import type { ToolId } from '../../shared/threed';
@@ -15,9 +14,7 @@ import { join as joinPath } from 'node:path';
 
 type Send = (channel: string, payload: unknown) => void;
 
-export function pythonDir(): string {
-  return app.isPackaged ? join(process.resourcesPath, 'python') : fileURLToPath(new URL('../python/', import.meta.url));
-}
+export { pythonDir } from './blender';
 
 export function register3dIpc(send: Send, binaries: () => Partial<Record<ProviderId, string>>): void {
   ipcMain.handle('3d:list', () => listProjects());
@@ -53,6 +50,17 @@ export function register3dIpc(send: Send, binaries: () => Partial<Record<Provide
     openWindow(bin, joinPath(projectDir(id), 'model.bbmodel'), joinPath(dataDir(), 'blockbench-window'));
     return true;
   });
+  ipcMain.handle('3d:open-blender', (_e, id?: string) => {
+    const bin = findBlender();
+    if (!bin) throw new Error('Blender nicht gefunden – unter 3D → Werkzeuge installieren (oder QUORUM_BLENDER setzen).');
+    const blendFile = id ? joinPath(projectDir(id), 'model.blend') : undefined;
+    const glbFile = id ? joinPath(projectDir(id), 'exports', 'model.glb') : undefined;
+    const file = blendFile && existsSync(blendFile) ? blendFile : (glbFile && existsSync(glbFile) ? glbFile : undefined);
+    openBlenderWindow(bin, file, joinPath(dataDir(), 'blender-window'));
+    return true;
+  });
+  ipcMain.handle('3d:workfiles', (_e, id: string) => getWorkfiles(id));
+  ipcMain.handle('3d:export', (_e, id: string, format: 'glb' | 'gltf' | 'obj' | 'fbx') => exportProject(id, format));
   // Eigene (Sandbox-)Installation von Blender und Blockbench, je Werkzeug einzeln.
   const toolEmit = (p: unknown) => send('3d:tool-progress', p);
   ipcMain.handle('3d:tools', () => toolStatus());

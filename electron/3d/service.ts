@@ -5,7 +5,7 @@ import { promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import type { ChatEngine } from './llm';
 import { chatFor } from './llm';
-import { runBlenderOps, type BlenderOp, type BlenderResult } from './blender';
+import { findBlender, blenderScript, pythonDir, runBlenderOps, type BlenderOp, type BlenderResult } from './blender';
 import { bakeTexture, newModel, summarize, type BbModel } from '../../shared/bbmodel';
 import { encodePng, toBase64 } from '../../shared/png';
 import { runModelingLoop, type LoopEvent, type LoopResult } from './loop';
@@ -92,6 +92,12 @@ export async function writeModel(id: string, model: BbModel): Promise<void> {
   }
   bakeTexture(model, (w, h, rgba) => toBase64(encodePng(w, h, rgba)));
   await fsp.writeFile(current, JSON.stringify(model, null, 2));
+  if (model.textures?.[0]?.source?.startsWith('data:image/')) {
+    try {
+      const b64 = model.textures[0].source.replace(/^data:image\/\w+;base64,/, '');
+      await fsp.writeFile(join(dir, 'palette.png'), Buffer.from(b64, 'base64'));
+    } catch { /* texturdatei optional */ }
+  }
 }
 
 export async function history(id: string): Promise<{ file: string; at: number }[]> {
@@ -133,6 +139,69 @@ export async function animationPreviews(id: string): Promise<AnimationPreview[]>
 export async function exportFile(id: string): Promise<string | undefined> {
   const file = join(projectDir(id), 'exports', 'model.glb');
   try { await fsp.access(file); return file; } catch { return undefined; }
+}
+
+export interface WorkfileItem {
+  id: string;
+  name: string;
+  path: string;
+  type: 'bbmodel' | 'blend' | 'texture' | 'animation' | 'export';
+  format?: string;
+  size: number;
+  updatedAt: number;
+}
+
+export async function getWorkfiles(id: string): Promise<WorkfileItem[]> {
+  const dir = projectDir(id);
+  const items: WorkfileItem[] = [];
+
+  const checkFile = async (name: string, file: string, type: WorkfileItem['type'], format?: string) => {
+    try {
+      const st = await fsp.stat(file);
+      items.push({ id: `${type}-${name}`, name, path: file, type, format, size: st.size, updatedAt: st.mtimeMs });
+    } catch { /* Datei existiert nicht */ }
+  };
+
+  await checkFile('model.bbmodel', join(dir, 'model.bbmodel'), 'bbmodel', 'bbmodel');
+  await checkFile('model.blend', join(dir, 'model.blend'), 'blend', 'blend');
+  await checkFile('palette.png', join(dir, 'palette.png'), 'texture', 'png');
+  await checkFile('animations.json', join(dir, 'animations.json'), 'animation', 'json');
+
+  const expDir = join(dir, 'exports');
+  try {
+    const entries = await fsp.readdir(expDir);
+    for (const file of entries) {
+      const ext = file.split('.').pop() || '';
+      await checkFile(file, join(expDir, file), 'export', ext);
+    }
+  } catch { /* exports noch leer */ }
+
+  return items;
+}
+
+export async function exportProject(id: string, format: 'glb' | 'gltf' | 'obj' | 'fbx'): Promise<string> {
+  const dir = projectDir(id);
+  const blender = findBlender();
+  if (!blender) throw new Error('Blender ist nicht installiert (unter 3D → Werkzeuge installieren).');
+  const work = join(dir, 'work');
+  await fsp.mkdir(join(work, 'exports'), { recursive: true });
+  const modelFile = join(dir, 'model.bbmodel');
+  const ext = format === 'gltf' ? 'gltf' : format;
+  const targetFile = join(work, 'exports', `model.${ext}`);
+  const ops: BlenderOp[] = [
+    { op: 'bbmodel_to_scene', file: modelFile },
+    { op: 'export', format, file: targetFile },
+    { op: 'save_blend', file: join(work, 'model.blend') },
+  ];
+  const r = await runBlenderOps({ bin: blender, script: blenderScript(pythonDir()), workdir: work, ops });
+  if (!r.ok) throw new Error(r.error || 'Export fehlgeschlagen');
+  await fsp.mkdir(join(dir, 'exports'), { recursive: true });
+  const dst = join(dir, 'exports', `model.${ext}`);
+  await fsp.copyFile(targetFile, dst);
+  try {
+    await fsp.copyFile(join(work, 'model.blend'), join(dir, 'model.blend'));
+  } catch { /* ignore */ }
+  return dst;
 }
 
 const active = new Map<string, AbortController>();
@@ -190,12 +259,13 @@ export async function runProject(opts: RunOptions): Promise<LoopResult> {
           }
           previews.push(preview);
         }
-        // Export im Arbeitsordner (Blender darf nur dort schreiben); erst danach ins Projekt kopieren.
+        ops.push({ op: 'save_blend', file: join(work, 'model.blend') });
         ops.push({ op: 'export', format: 'glb', file: join(work, 'exports', 'model.glb') });
         const r: BlenderResult = await runBlenderOps({ bin: opts.blender, script: opts.script, workdir: work, ops, signal: ctl.signal });
         if (!r.ok) return { ok: false, error: r.error };
         await fsp.mkdir(join(dir, 'exports'), { recursive: true });
         await fsp.copyFile(join(work, 'exports', 'model.glb'), join(dir, 'exports', 'model.glb'));
+        try { await fsp.copyFile(join(work, 'model.blend'), join(dir, 'model.blend')); } catch { /* blend optional */ }
         // Renderings in den Bilderordner kopieren, damit die Oberfläche sie zeigen kann.
         const shown: string[] = [];
         for (const view of VIEWS) {

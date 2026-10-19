@@ -329,6 +329,18 @@ export const en: Record<string, string> = {
   'Links: Verschieben · Rechts: Drehen': 'Left: Pan · Right: Rotate',
   'Rad: Zoom': 'Wheel: Zoom',
   'Noch kein Render-Bild vorhanden.': 'No rendered image available yet.',
+  'Dateien & Einstellungen': 'Files & Settings',
+  'In Blender öffnen': 'Open in Blender',
+  '3D-Einstellungen & Werkzeuge': '3D Settings & Tools',
+  'Bevorzugtes 3D-Werkzeug': 'Preferred 3D tool',
+  'Standard-Exportformat': 'Default export format',
+  'Exportiere…': 'Exporting…',
+  'Als': 'As',
+  'exportieren': 'export',
+  'Exportiert:': 'Exported:',
+  'Arbeitsdateien (Workfiles)': 'Workfiles',
+  'Alle Modelldaten (.bbmodel, .blend), Texturen, Animationen und Exporte dieses Projekts.': 'All model data (.bbmodel, .blend), textures, animations and exports of this project.',
+  'Keine Dateien gefunden.': 'No files found.',
 };
 
 /** Übersetzt einen deutschen Text; unbekannte Texte bleiben unverändert. */
