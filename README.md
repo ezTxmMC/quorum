@@ -1,18 +1,18 @@
 # Quorum
 
-**Alle Modelle. Ein Tisch.** Desktop-App für **Claude Code**, **GPT Codex**, **Antigravity (Gemini)**, **OpenCode**, **ChatGPT (Plan)** und **Ollama** – mit Multi-Agent-Modus.
+**All models. One table.** A desktop app for **Claude Code**, **GPT Codex**, **Antigravity (Gemini)**, **OpenCode**, **Ollama**, **llama.cpp**, and **OpenAI-compatible APIs**, with a multi-agent mode.
 Electron · TypeScript · React · react-router · Tailwind CSS 4 · Iconify.
 
-Die CLIs (`claude`, `codex`, `agy`, `opencode`) werden headless gesteuert; es gelten deine bestehenden Logins. ChatGPT läuft als reiner Chat mit deinem
-Plus-/Pro-Plan über „Sign in with ChatGPT“ (`@siwc/local`, Anmeldung im Standardbrowser, kein API-Key), Ollama über die lokale HTTP-API.
+Quorum runs the CLIs (`claude`, `codex`, `agy`, `opencode`) headlessly using your existing logins. Ollama and llama.cpp support local models. You can also connect an OpenAI-compatible API using its base URL, optional API key, and model IDs in Settings.
 
-## Start
+## Getting started
+
 ```bash
 npm install
-node node_modules/electron/install.js   # falls das Electron-Binary fehlt
-npm run dev                             # Entwicklung
-npm run build && npm run start          # Produktions-Build starten
-npm run update:linux -- --build         # AppImage bauen, altes entfernen, neues installieren und starten
+node node_modules/electron/install.js  # If the Electron binary is missing
+npm run dev                            # Development
+npm run build && npm run start         # Build and run the production app
+npm run update:linux -- --build        # Build, replace, install, and launch the Linux AppImage
 ```
 
-Branding und Icons: siehe `branding/README.md` (`npm run icons`).
+For branding and icons, see [branding/README.md](branding/README.md). Regenerate icons with `npm run icons`.
