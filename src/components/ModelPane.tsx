@@ -104,7 +104,7 @@ export function ModelPane({ projectId, onProject, onClose }: { projectId?: strin
         {tab === 'history' && <div className="space-y-2">{!detail.history.length && <p className="text-[12px] text-subtle">{t('Noch keine früheren Stände.')}</p>}{detail.history.map((version) => <div key={version.file} className="flex items-center gap-2 text-[12px]"><span className="flex-1 text-muted">{new Date(version.at).toLocaleString()}</span><button className="btn" onClick={() => void restore(version.file)}>{t('Wiederherstellen')}</button></div>)}</div>}
         {detail.exportFile && <button className="btn" onClick={() => void act(() => hub.revealPath(detail.exportFile!))}><Icon name="lucide:folder-open" size={14} />{t('GLB im Ordner zeigen')}</button>}
       </>}
-      {err && <p className="text-[12px] text-bad">{err}</p>}
+      {err && <p className="text-[12px] text-bad">{t(err)}</p>}
     </div>
   </aside>;
 }

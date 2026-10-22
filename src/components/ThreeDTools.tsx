@@ -81,7 +81,7 @@ export function ThreeDTools({ onChange }: { onChange?: (s: ToolStatus[]) => void
                       <div className="text-[11px] text-subtle">{p?.step}{p?.percent !== undefined ? ` · ${p.percent} %` : ''}</div>
                     </div>
                   )}
-                  {p?.error && <div className="text-[12px] text-bad">{p.error}</div>}
+                  {p?.error && <div className="text-[12px] text-bad">{t(p.error)}</div>}
                   <div className="flex gap-2">
                     {busy
                       ? <button className="btn" onClick={() => void hub.threedToolCancel(x.id)}><Icon name="lucide:square" size={13} /> {t('Abbrechen')}</button>

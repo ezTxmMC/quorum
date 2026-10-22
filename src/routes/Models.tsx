@@ -105,7 +105,7 @@ function SearchPanel({ onDownloaded }: { onDownloaded: () => void }) {
         </select>
         <button className="btn" onClick={() => void search()} disabled={busy}>{t('Suchen')}</button>
       </div>
-      {err && <div className="rounded-lumen border border-bad/40 bg-bad/10 px-3 py-2 text-[12.5px] text-bad">{err}</div>}
+      {err && <div className="rounded-lumen border border-bad/40 bg-bad/10 px-3 py-2 text-[12.5px] text-bad">{t(err)}</div>}
       <div className="grid grid-cols-2 gap-3">
         <ul className="max-h-80 space-y-1 overflow-y-auto">
           {hits.map((h) => (
@@ -188,7 +188,7 @@ function ImageBox({ m }: { m: ModelRecord }) {
           <Icon name="lucide:image" size={14} /> {running ? t('Erzeugt …') : t('Bild erzeugen')}
         </button>
       </div>
-      {result?.error && <div className="whitespace-pre-wrap text-[12px] text-bad">{result.error}</div>}
+      {result?.error && <div className="whitespace-pre-wrap text-[12px] text-bad">{t(result.error)}</div>}
       {result?.path && <img src={imageUrl(result.path)} alt={prompt} className="max-h-96 rounded-lumen border border-edge" />}
     </div>
   );
@@ -241,9 +241,9 @@ function ModelCard({ m, loaded, onChanged }: { m: ModelRecord; loaded?: LoadedIn
             <span className="rounded-full bg-hover px-2 py-0.5">{m.format}</span>
             {m.quantization && <span className="rounded-full bg-hover px-2 py-0.5">{m.quantization}</span>}
             <span className="rounded-full bg-hover px-2 py-0.5">{size(m.sizeBytes)}</span>
-            {m.capabilities.map((c) => <span key={c} className="rounded-full bg-accent/15 px-2 py-0.5 text-accent">{CAPABILITY_LABELS[c]}</span>)}
+            {m.capabilities.map((c) => <span key={c} className="rounded-full bg-accent/15 px-2 py-0.5 text-accent">{t(CAPABILITY_LABELS[c])}</span>)}
             <span className={cx('rounded-full px-2 py-0.5', best?.level === 'likely' ? 'bg-ok/15 text-ok' : best ? 'bg-warn/15 text-warn' : 'bg-bad/15 text-bad')}>
-              {best ? `${best.runtime} · ${best.reason}` : t('Keine Runtime')}
+              {best ? `${best.runtime} · ${t(best.reason)}` : t('Keine Runtime')}
             </span>
           </div>
         </div>
@@ -280,7 +280,7 @@ function ModelCard({ m, loaded, onChanged }: { m: ModelRecord; loaded?: LoadedIn
         </div>
       )}
       {imageCapable && <ImageBox m={m} />}
-      {msg && <div className="mt-2 whitespace-pre-wrap text-[12px] text-bad">{msg}</div>}
+      {msg && <div className="mt-2 whitespace-pre-wrap text-[12px] text-bad">{t(msg)}</div>}
     </article>
   );
 }
@@ -343,7 +343,7 @@ export function ModelsPage() {
             <button className="btn" onClick={() => void importFile()}><Icon name="lucide:file-plus" size={14} /> {t('Datei importieren')}</button>
             <button className="btn" onClick={() => void importFolder()}><Icon name="lucide:folder-plus" size={14} /> {t('Ordner importieren')}</button>
           </div>
-          {err && <div className="rounded-lumen border border-bad/40 bg-bad/10 px-3 py-2 text-[12.5px] text-bad">{err}</div>}
+          {err && <div className="rounded-lumen border border-bad/40 bg-bad/10 px-3 py-2 text-[12.5px] text-bad">{t(err)}</div>}
           {models.length === 0 && <div className="text-[12.5px] text-subtle">{t('Noch keine Modelle. Suche oben oder importiere eine GGUF-Datei.')}</div>}
           {models.map((m) => (
             <ModelCard key={m.id} m={m} loaded={loaded.find((l) => l.modelId === m.id)} onChanged={reload} />

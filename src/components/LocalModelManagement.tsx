@@ -35,6 +35,6 @@ export function LocalModelManagement({ runtime }: { runtime?: RuntimeDetection }
     <p className="text-[11px] text-subtle">{t('Parameter gelten beim nächsten Start. Entfernen aus der Liste behält die Modelldateien.')}</p>
     {models.map((model) => <ModelRow key={model.id} model={model} loaded={loaded.find((m) => m.modelId === model.id)} backends={runtime?.backends ?? ['cpu']} busy={busy} act={act} />)}
     {!models.length && <p className="text-[12px] text-subtle">{t('Noch keine GGUF-Modelle importiert.')}</p>}
-    {error && <p role="alert" className="text-[12px] text-bad">{error}</p>}
+    {error && <p role="alert" className="text-[12px] text-bad">{t(error)}</p>}
   </section>;
 }

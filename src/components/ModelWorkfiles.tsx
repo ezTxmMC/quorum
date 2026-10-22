@@ -155,7 +155,7 @@ export function ModelWorkfiles({ projectId }: { projectId: string }) {
         </div>
 
         {success && <div className="text-[11.5px] text-ok">{success}</div>}
-        {err && <div className="text-[11.5px] text-bad">{err}</div>}
+        {err && <div className="text-[11.5px] text-bad">{t(err)}</div>}
       </div>
 
       {/* Workfiles Section */}
@@ -191,7 +191,7 @@ export function ModelWorkfiles({ projectId }: { projectId: string }) {
                   <span className="rounded-xs bg-active/60 px-1 text-[9.5px] text-subtle">{file.format?.toUpperCase()}</span>
                 </div>
                 <div className="text-[10.5px] text-subtle">
-                  <span>{TYPE_NAMES[file.type]}</span> · <span>{fmtBytes(file.size)}</span>
+                  <span>{t(TYPE_NAMES[file.type])}</span> · <span>{fmtBytes(file.size)}</span>
                 </div>
               </div>
 

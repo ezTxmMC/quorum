@@ -77,7 +77,7 @@ function LocalModelPicker({ localModel, capability, onChange }: { localModel?: s
       <Label hint={t('Ohne Werkzeuge: das Modell antwortet nur mit Text und ändert keine Dateien.')}>{t('Denkmodell')}</Label>
       <Select value={value} onChange={pick} options={[
         { value: '', label: t('CLI-Anbieter (mit Werkzeugen)') },
-        ...CAPABILITY_CHOICES,
+        ...CAPABILITY_CHOICES.map((c) => ({ ...c, label: t(c.label) })),
         ...list.map((m) => ({ value: m.id, label: m.name })),
       ]} />
     </div>

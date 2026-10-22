@@ -88,7 +88,7 @@ function getModeInfo(m: ChatMode): { label: string; icon: string } {
     case 'text': return { label: 'Text', icon: 'lucide:message-square' };
     case 'image': return { label: t('Bildgenerierung'), icon: 'lucide:image' };
     case 'model': return { label: t('3D-Modell'), icon: 'lucide:cuboid' };
-    default: return { label: 'Chat', icon: 'lucide:message-square' };
+    default: return { label: t('Chat'), icon: 'lucide:message-square' };
   }
 }
 

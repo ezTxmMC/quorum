@@ -63,6 +63,19 @@ export function ChatPage() {
     if (next) patchSession(session.id, { provider: next, options: { ...st.data.settings.providerDefaults[next], chatMode: chatMode(session.options) } });
   }, [providerGone, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Chat mit Prozent-Limit: Werte sofort beim Öffnen/Ändern und danach alle 90 s im Hintergrund auffrischen und prüfen.
+  const limitKey = session?.limit ? `${session.provider}:${session.limit.window}:${session.limit.percent}:${session.limit.action}` : '';
+  useEffect(() => {
+    if (!limitKey) return;
+    const provider = useHub.getState().data.sessions.find((x) => x.id === id)?.provider;
+    if (!provider) return;
+    const run = () => { const st = useHub.getState(); if (!st.isRunning(id)) void st.refreshLimits(provider).then(() => { if (!useHub.getState().isRunning(id)) void useHub.getState().checkLimit(id); }); };
+    void useHub.getState().checkLimit(id);
+    run();
+    const iv = setInterval(run, 90_000);
+    return () => clearInterval(iv);
+  }, [id, limitKey]);
+
   const setActiveCwd = useHub.getState().setActiveCwd;
   useEffect(() => { if (session) setActiveCwd(session.cwd); }, [session?.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
   const onStopRun = useCallback(() => cancel(id), [cancel, id]);

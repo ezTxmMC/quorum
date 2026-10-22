@@ -69,7 +69,7 @@ function WorkflowList() {
           <button className="btn" onClick={() => void importFile()}><Icon name="lucide:file-down" size={14} /> {t('Importieren')}</button>
           <button className="btn btn-primary" onClick={() => void create()}><Icon name="lucide:plus" size={14} /> {t('Neuer Workflow')}</button>
         </div>
-        {err && <div className="rounded-lumen border border-bad/40 bg-bad/10 px-3 py-2 text-[12.5px] text-bad">{err}</div>}
+        {err && <div className="rounded-lumen border border-bad/40 bg-bad/10 px-3 py-2 text-[12.5px] text-bad">{t(err)}</div>}
         {list.length === 0 && <div className="text-[12.5px] text-subtle">{t('Noch keine Workflows.')}</div>}
         <ul className="space-y-2">
           {list.map((w) => (
@@ -305,10 +305,10 @@ function WorkflowEditor({ id }: { id: string }) {
           <button className="icon-btn" title={t('Exportieren')} onClick={() => void exportNow()}><Icon name="lucide:file-up" size={14} /></button>
         </div>
 
-        {msg && <div className="text-[12px] text-subtle">{msg}</div>}
+        {msg && <div className="text-[12px] text-subtle">{t(msg)}</div>}
         {issues.length > 0 && (
           <div className="rounded-lumen border border-warn/40 bg-warn/10 px-3 py-2 text-[12.5px] text-warn">
-            {issues.map((i, k) => <div key={k}>{i.nodeId ? `${nodes.find((n) => n.id === i.nodeId)?.label ?? ''}: ` : ''}{i.message}</div>)}
+            {issues.map((i, k) => <div key={k}>{i.nodeId ? `${nodes.find((n) => n.id === i.nodeId)?.label ?? ''}: ` : ''}{t(i.message)}</div>)}
           </div>
         )}
 

@@ -77,7 +77,7 @@ export function LocalProviderSettings({ onApi }: { onApi?: () => void }) {
     </div>
     <Toggle checked={runtime.cpuFallback !== false} onChange={(cpuFallback) => configure({ cpuFallback })} label={t('CPU-Fallback bei GPU-Speichermangel')} />
     <p className="text-[11px] text-subtle">{t('Backend, GPU-Schichten und Kontextgröße lassen sich unten pro Modell einstellen.')}</p>
-    {error && <p className="text-bad">{error}</p>}
+    {error && <p className="text-bad">{t(error)}</p>}
     <LocalModelManagement runtime={rt} />
     <OptionsPanel provider="local" value={settings.providerDefaults.local} onChange={(patch) => useHub.getState().setProviderDefaults('local', patch)} />
   </div>;

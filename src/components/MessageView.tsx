@@ -123,7 +123,7 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop, o
           return null;
         })}
         {live && <ToolActivity live blocks={m.blocks} onStop={onStop} />}
-        {m.error && <div className="flex gap-2 whitespace-pre-wrap rounded-lumen border border-bad/30 bg-bad/10 px-3 py-2 text-[12.5px] text-bad"><Icon name="lucide:triangle-alert" size={14} className="mt-0.5 shrink-0" /><span>{m.error}</span></div>}
+        {m.error && <div className="flex gap-2 whitespace-pre-wrap rounded-lumen border border-bad/30 bg-bad/10 px-3 py-2 text-[12.5px] text-bad"><Icon name="lucide:triangle-alert" size={14} className="mt-0.5 shrink-0" /><span>{t(m.error)}</span></div>}
         {!live && m.blocks.some((b) => b.kind === 'text') && (
           <div className="-mb-1 flex opacity-0 transition-opacity group-hover/asst:opacity-100">
             <CopyButton title={t('Antwort kopieren')} text={() => m.blocks.filter((b) => b.kind === 'text').map((b) => (b as { text: string }).text).join('\n\n')} />

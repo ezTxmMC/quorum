@@ -68,7 +68,7 @@ export function OllamaProviderSettings() {
       </div>)}
       {state && !state.models.length && <p className="text-subtle">{t('Keine Modelle installiert.')}</p>}
     </div>
-    {error && <p role="alert" className="whitespace-pre-wrap text-[12px] text-bad">{error}</p>}
+    {error && <p role="alert" className="whitespace-pre-wrap text-[12px] text-bad">{t(error)}</p>}
     <OptionsPanel provider="ollama" value={settings.providerDefaults.ollama} onChange={(patch) => useHub.getState().setProviderDefaults('ollama', patch)} />
   </div>;
 }

@@ -3,7 +3,7 @@ import { useRef } from 'react';
 import { create } from 'zustand';
 import { DEFAULT_OPTIONS, DIRECT_MESSAGES, PROVIDERS, canonicalModel, defaultDock, defaultTerminal, isTextOnly, modelChoices, selectModelOptions } from '@shared/catalog';
 import type {
-  Attachment, ChatListSettings, CliUsage, DockPos, ImportedSession, ChatSession, HubEvent, PanelId, Message, MultiConfig, MultiEvent, MultiRunRecord, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunRequest, UpdateChannel, UpdateState,
+  Attachment, ChatListSettings, CliUsage, DockPos, ImportedSession, ChatSession, HubEvent, PanelId, Message, MultiConfig, MultiEvent, MultiRunRecord, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunRequest, UpdateChannel, UpdateState, UsageReport,
 } from '@shared/types';
 import { hub, uid } from './api';
 import { queryCliUsage } from './cliUsage';
@@ -86,6 +86,9 @@ interface State {
   switchToFallback: (sessionId: string, retry?: boolean) => boolean;
   /** Prüft das Prozent-Limit des Chats vor einem neuen Lauf. true = senden, false = gestoppt (Hinweis wurde gezeigt). */
   checkLimit: (sessionId: string) => Promise<boolean>;
+  refreshLimits: (provider: ProviderId) => Promise<void>;
+  codexLimits: UsageReport['codexLimits'] | null;
+  codexLimitsAt: number;
 }
 
 const emptyData = (): Persisted => ({
@@ -414,6 +417,8 @@ export const useHub = create<State>((set, get) => {
     },
     compacting: {},
     banners: {},
+    codexLimits: null,
+    codexLimitsAt: 0,
     setBanner(sessionId, banner) {
       set((st) => {
         const { [sessionId]: _old, ...rest } = st.banners;
@@ -497,20 +502,40 @@ export const useHub = create<State>((set, get) => {
       if (retry) get().send(sessionId, text, { images });
       return true;
     },
+    /** Liest die Limit-Werte des Anbieters im Hintergrund neu ein (Claude/Antigravity: /usage im PTY – dauert Sekunden, Codex: Rate-Limits). */
+    async refreshLimits(provider) {
+      if (provider === 'codex') {
+        const r = await hub.usage().catch(() => null);
+        if (r) set({ codexLimits: r.codexLimits, codexLimitsAt: Date.now() });
+      } else if (provider === 'claude' || provider === 'antigravity') {
+        // Läuft bereits eine Abfrage, auf deren Ende warten statt eine zweite zu starten.
+        if (get().cliUsageBusy[provider]) { for (let i = 0; i < 120 && get().cliUsageBusy[provider]; i++) await new Promise((r) => setTimeout(r, 250)); return; }
+        await get().refreshCliUsage(provider);
+      }
+    },
+    /** Entscheidet sofort anhand der zwischengespeicherten Werte – nie blockierend. Fehlen Werte ganz, wird einmal kurz gewartet. */
     async checkLimit(sessionId) {
-      const s = get().data.sessions.find((x) => x.id === sessionId);
-      if (!s?.limit) return true;
+      if (!get().data.sessions.find((x) => x.id === sessionId)?.limit) return true;
       const en = get().data.settings.language === 'en';
-      // Bis zu zwei Wechsel hintereinander: das nächste Modell kann beim anderen Anbieter ebenfalls über dem Limit liegen.
-      for (let i = 0; i < 3; i++) {
+      const stale = (p: ProviderId) => Date.now() - (p === 'codex' ? get().codexLimitsAt : get().cliUsage[p as 'claude' | 'antigravity']?.at ?? 0) > 60_000;
+      const read = (cur: ChatSession) => {
+        const meters = currentMeters(cur.provider, get().cliUsage[cur.provider as 'claude' | 'antigravity'], get().codexLimits);
+        return limitUsage(cur.limit!, meters);
+      };
+      // Mehrere Wechsel hintereinander sind möglich: das nächste Modell kann beim anderen Anbieter ebenfalls über dem Limit liegen.
+      for (let i = 0; i < 4; i++) {
         const cur = get().data.sessions.find((x) => x.id === sessionId);
-        if (!cur?.limit) return true;
-        const cliP = cur.provider === 'claude' || cur.provider === 'antigravity' ? cur.provider : undefined;
-        // Die gelesenen Limits sind höchstens ein paar Minuten alt, sonst vor der Entscheidung frisch einlesen.
-        if (cliP && Date.now() - (get().cliUsage[cliP]?.at ?? 0) > 3 * 60_000) await get().refreshCliUsage(cliP);
-        const codex = cur.provider === 'codex' ? await hub.usage().then((r) => r.codexLimits).catch(() => null) : null;
-        const used = limitUsage(cur.limit, currentMeters(cur.provider, get().cliUsage[cur.provider as 'claude' | 'antigravity'], codex));
-        if (used === undefined || used < cur.limit.percent) return true;
+        if (!cur?.limit || !['claude', 'codex', 'antigravity'].includes(cur.provider)) return true;
+        let used = read(cur);
+        if (used === undefined) {
+          // Noch keine Werte für diesen Anbieter: einmal einlesen (höchstens 30 s), damit das Limit von Anfang an greift.
+          get().setBanner(sessionId, { kind: 'info', text: en ? 'Reading usage limits …' : 'Limits werden eingelesen …' });
+          await Promise.race([get().refreshLimits(cur.provider), new Promise((r) => setTimeout(r, 30_000))]);
+          get().setBanner(sessionId, null);
+          used = read(cur);
+          if (used === undefined) return true;
+        } else if (stale(cur.provider)) void get().refreshLimits(cur.provider).then(() => { if (!get().isRunning(sessionId)) void get().checkLimit(sessionId); });
+        if (used < cur.limit.percent) return true;
         const what = `${Math.round(used)}% ≥ ${cur.limit.percent}%`;
         if (cur.limit.action === 'fallback' && get().switchToFallback(sessionId, false)) continue;
         get().setBanner(sessionId, { kind: 'error', text: cur.limit.action === 'fallback'
@@ -602,6 +627,12 @@ function flush() {
         else useHub.setState((x) => ({ queued: { ...x.queued, [sid]: [] } }));
       });
     }, 0);
+  }
+  // Nach jedem Lauf die Limits sofort im Hintergrund neu einlesen und prüfen – so ist die Entscheidung vor der nächsten Nachricht schon getroffen.
+  for (const sid of new Set([...finished, ...failed])) {
+    const st = useHub.getState();
+    const sess = st.data.sessions.find((x) => x.id === sid);
+    if (sess?.limit) void st.refreshLimits(sess.provider).then(() => { if (!useHub.getState().isRunning(sid)) void useHub.getState().checkLimit(sid); });
   }
   for (const sid of failed) setTimeout(() => { useHub.getState().switchToFallback(sid); }, 0);
 }

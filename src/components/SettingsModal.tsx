@@ -170,7 +170,7 @@ function ProviderCatalog({ p }: { p: ProviderId }) {
       {status?.models.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 border-b border-edge px-3 py-2 last:border-0"><span className="min-w-0"><span className="block text-[12px]">{m.label}</span><span className="block truncate font-mono text-[10px] text-subtle">{m.id}</span></span><span className="text-[10px] text-subtle">{m.efforts?.join(' · ')}</span></div>)}
       {!status?.models.length && <p className="p-3 text-muted">{t('Keine Modelle verfügbar')}</p>}
     </div>
-    {error && <p className="text-bad">{error}</p>}
+    {error && <p className="text-bad">{t(error)}</p>}
     {!['local', 'ollama', 'api'].includes(p) && <>
       <Label hint={t('Eine Modell-ID pro Zeile')}>{t('Eigene / ältere Modell-IDs')}</Label>
       <textarea className="field min-h-20 resize-y font-mono text-[12px]" value={draft} onChange={(e) => setDraft(e.target.value)} />
@@ -340,7 +340,7 @@ function UpdatesTab() {
           <Icon name="lucide:alert-circle" className="text-bad shrink-0 mt-0.5" size={18} />
           <div className="flex-1">
             <div className="font-medium text-bad">{t('Update-Fehler')}</div>
-            <div className="text-[12px] text-muted mt-0.5">{updaterState.error}</div>
+            <div className="text-[12px] text-muted mt-0.5">{t(updaterState.error ?? "")}</div>
           </div>
           <button className="btn btn-ghost !px-2.5 !py-1 text-[12px]" onClick={handleCheck}>
             {t('Erneut versuchen')}
