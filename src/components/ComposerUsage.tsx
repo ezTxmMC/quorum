@@ -4,7 +4,7 @@ import { hub } from '@/lib/api';
 import { useHub } from '@/lib/store';
 import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
-import { quotaMeters } from '@/lib/usageMeters';
+import { currentMeters } from '@/lib/usageMeters';
 import { Popover, cx } from './ui';
 
 const compact = (n: number) => Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
@@ -23,10 +23,7 @@ export function ComposerUsage({ session }: { session: ChatSession }) {
   const tokens = useHub((s) => (s.data.sessions.find((x) => x.id === session.id)?.messages ?? []).reduce((sum, m) => sum + (m.usage?.inputTokens ?? 0) + (m.usage?.outputTokens ?? 0), 0));
   if (!visible) return null;
   const limits = session.provider === 'codex' ? report?.codexLimits : undefined;
-  const meters = limits ? [limits.primary, limits.secondary].filter((w) => w !== null).map((w) => ({
-    label: w.window_minutes >= 1440 ? t('Wochenlimit') : `${Math.round(w.window_minutes / 60)} h`,
-    used: w.used_percent, reset: new Date(w.resets_at * 1000).toLocaleString(), expired: w.resets_at * 1000 <= Date.now(),
-  })) : quotaMeters(session.provider, cli?.ok ? cli.meters : []).map((m) => ({ label: [m.group, m.label].filter(Boolean).join(' · '), used: session.provider === 'antigravity' || m.kind === 'remaining' ? 100 - m.percent : m.percent, reset: m.reset, expired: false }));
+  const meters = currentMeters(session.provider, cli, limits).map((m) => ({ ...m, label: m.label === 'weekly' ? t('Wochenlimit') : m.label }));
   const active = meters.filter((m) => !m.expired && Number.isFinite(m.used));
   const used = active.length ? Math.max(0, Math.min(100, Math.max(...active.map((m) => m.used)))) : undefined;
   const remaining = used === undefined ? undefined : 100 - used;

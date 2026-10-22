@@ -376,6 +376,22 @@ export const en: Record<string, string> = {
   "Wird das Nutzungslimit erreicht, wechselt der Chat zum ersten Modell der Liste und wiederholt die letzte Anfrage.": "When the usage limit is reached, the chat switches to the first model in the list and repeats the last request.",
   "Keine Ausweich-Modelle gewählt.": "No fallback models selected.",
   "Modell hinzufügen": "Add model",
+  "Nach oben": "Move up",
+  "Beliebiges Fenster (höchster Wert)": "Any window (highest value)",
+  "5-Stunden- / Sitzungslimit": "5-hour / session limit",
+  "Fallback & Limit": "Fallback & limit",
+  "Ausweich-Modelle": "Fallback models",
+  "nur dieser Chat": "this chat only",
+  "global": "global",
+  "Global verwenden": "Use global",
+  "Global bearbeiten": "Edit global",
+  "Prozent-Limit dieses Chats": "Percent limit for this chat",
+  "Dann: zum Ausweich-Modell wechseln": "Then: switch to fallback model",
+  "Dann: Chat stoppen": "Then: stop the chat",
+  "Gilt für Claude, Codex und Antigravity (Werte aus der Nutzungsanzeige). Geprüft wird vor jeder neuen Nachricht.": "Applies to Claude, Codex and Antigravity (values from the usage display). Checked before every new message.",
+  "Kein Limit gesetzt.": "No limit set.",
+  "Ausweich-Modelle (global)": "Fallback models (global)",
+  "Gelten für alle Chats ohne eigene Liste. Ist das Nutzungslimit erreicht (oder das Prozent-Limit eines Chats), wird der Reihe nach das nächste Modell verwendet. Pro Chat lässt sich die Liste in der Chatbox überschreiben.": "Apply to all chats without their own list. When the usage limit (or a chat's percent limit) is reached, the next model is used in order. The list can be overridden per chat in the chat box.",
 };
 
 /** Übersetzt einen deutschen Text; unbekannte Texte bleiben unverändert. */

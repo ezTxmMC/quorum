@@ -6,6 +6,7 @@ import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { Dot } from './ModelPicker';
+import { FallbackList } from './FallbackModels';
 import { OptionsPanel } from './OptionsPanel';
 import { ApiProviderSettings } from './ApiProviderSettings';
 import { OllamaProviderSettings } from './OllamaProviderSettings';
@@ -79,6 +80,11 @@ function General() {
         <Toggle checked={!!settings.showOlderModels} onChange={(showOlderModels) => setSettings({ showOlderModels })} label={t('Ältere Modelle standardmäßig anzeigen')} hint={t('Zeigt zusätzlich von der CLI gelistete ältere und eigene Modelle')} />
         <div><Label>{t('Standard-Projektordner')}</Label><div className="flex gap-2"><input className="field" value={settings.defaultCwd} onChange={(e) => setSettings({ defaultCwd: e.target.value })} /><button className="btn" onClick={async () => { const d = await hub.pickFolder(); if (d) setSettings({ defaultCwd: d }); }}><Icon name="lucide:folder-open" /></button></div></div>
         <Toggle checked={settings.autoImport} onChange={(autoImport) => setSettings({ autoImport })} label={t('Neue Sessions automatisch importieren')} hint={t('Prüft alle 60 s auf neue Claude- und Codex-Sessions und legt sie als Chats an')} />
+      </section>
+      <section className="space-y-2">
+        <h3 className="text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Ausweich-Modelle (global)')}</h3>
+        <p className="text-[12px] text-subtle">{t('Gelten für alle Chats ohne eigene Liste. Ist das Nutzungslimit erreicht (oder das Prozent-Limit eines Chats), wird der Reihe nach das nächste Modell verwendet. Pro Chat lässt sich die Liste in der Chatbox überschreiben.')}</p>
+        <div className="rounded-lumen border border-edge p-1"><FallbackList value={settings.fallbacks ?? []} onChange={(fallbacks) => setSettings({ fallbacks })} /></div>
       </section>
       {hidden.length > 0 && (
         <section className="space-y-2">

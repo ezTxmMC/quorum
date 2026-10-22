@@ -7,6 +7,7 @@ import type {
 } from '@shared/types';
 import { hub, uid } from './api';
 import { queryCliUsage } from './cliUsage';
+import { currentMeters, limitUsage } from './usageMeters';
 import { applyEvent, messageText } from './reduce';
 
 interface RunRoute { sessionId: string; messageId: string; provider: ProviderId }
@@ -82,7 +83,9 @@ interface State {
   banners: Record<string, { kind: 'info' | 'error'; text: string }>;
   setBanner: (sessionId: string, banner: { kind: 'info' | 'error'; text: string } | null) => void;
   /** Bei erreichtem Limit: zum nächsten Ausweich-Modell wechseln und die letzte Anfrage wiederholen. */
-  switchToFallback: (sessionId: string) => boolean;
+  switchToFallback: (sessionId: string, retry?: boolean) => boolean;
+  /** Prüft das Prozent-Limit des Chats vor einem neuen Lauf. true = senden, false = gestoppt (Hinweis wurde gezeigt). */
+  checkLimit: (sessionId: string) => Promise<boolean>;
 }
 
 const emptyData = (): Persisted => ({
@@ -116,6 +119,8 @@ function contextPreamble(s: ChatSession): string {
 const collectors = new Map<string, (e: HubEvent) => void>();
 /** Fehlertexte, die auf ein erreichtes Nutzungs-/Ratenlimit hindeuten. */
 const LIMIT_RE = /usage limit|rate.?limit|limit (has been )?(reached|exceeded)|hit your (usage )?limit|out of (extra )?usage|quota|exceeded|too many requests|\b429\b|resource.?exhausted|insufficient[_ ]credits?|credit balance|overloaded|billing/i;
+
+const fallbackList = (s: ChatSession, settings: Persisted['settings']) => s.fallbacks ?? settings.fallbacks ?? [];
 
 let autoImporting = false;
 let lastRemote: Persisted | null = null;
@@ -353,7 +358,11 @@ export const useHub = create<State>((set, get) => {
     async submit(sessionId, text, opts = {}) {
       const s = get().data.sessions.find((x) => x.id === sessionId);
       if (!s) return;
-      if (!get().isRunning(sessionId)) { get().send(sessionId, text, { images: opts.images, attachments: opts.attachments }); return; }
+      if (!get().isRunning(sessionId)) {
+        if (!(await get().checkLimit(sessionId))) return;
+        get().send(sessionId, text, { images: opts.images, attachments: opts.attachments });
+        return;
+      }
       const route = Object.entries(get().runs).find(([, r]) => r.sessionId === sessionId);
       if ((chatMode(s.options) === 'text' || chatMode(s.options) === 'coding') && opts.mode === 'direct' && route && DIRECT_MESSAGES[s.provider] && s.options.liveInput !== false) {
         const full = opts.images?.length ? `${opts.images.map((p) => `@${p}`).join(' ')}\n\n${text}` : text;
@@ -460,26 +469,55 @@ export const useHub = create<State>((set, get) => {
       mutSession(sessionId, (x) => ({ ...x, messages: [summary, ...keep], providerSessions: {}, updatedAt: Date.now() }));
       get().setBanner(sessionId, { kind: 'info', text: en ? `Conversation compacted: ${replaced} messages summarized.` : `Verlauf kompaktiert: ${replaced} Nachrichten zusammengefasst.` });
     },
-    switchToFallback(sessionId) {
+    /** Wechselt auf das nächste Ausweich-Modell. retry: die fehlgeschlagene Anfrage wird neu gesendet; sonst gilt der Wechsel für die nächste Nachricht. */
+    switchToFallback(sessionId, retry = true) {
       const s = get().data.sessions.find((x) => x.id === sessionId);
-      const next = s?.fallbacks?.[0];
+      const list = s ? fallbackList(s, get().data.settings) : [];
+      const next = list[0];
       if (!s || !next || get().isRunning(sessionId)) return false;
-      const last = s.messages.at(-1);
-      const prev = s.messages.at(-2);
-      if (last?.role !== 'assistant' || prev?.role !== 'user') return false;
-      const text = messageText(prev);
-      const statuses = get().statuses;
+      let text = '';
+      let images: string[] | undefined;
+      if (retry) {
+        const last = s.messages.at(-1);
+        const prev = s.messages.at(-2);
+        if (last?.role !== 'assistant' || prev?.role !== 'user') return false;
+        text = messageText(prev);
+        images = prev.images?.filter((p) => /[\\/]/.test(p));
+      }
       const model = canonicalModel(next.provider, next.model) ?? next.model;
-      const info = modelChoices(next.provider, statuses).find((m) => m.id === model);
+      const info = modelChoices(next.provider, get().statuses).find((m) => m.id === model);
       const base = next.provider === s.provider ? s.options : { ...get().data.settings.providerDefaults[next.provider], chatMode: chatMode(s.options) };
       const en = get().data.settings.language === 'en';
       const label = `${PROVIDERS[next.provider].name} · ${info?.label ?? model}`;
-      // Die fehlgeschlagene Antwort samt Anfrage entfernen; send() legt die Anfrage mit dem neuen Modell neu an.
+      // Verbrauchter Eintrag fällt aus der Liste; ab jetzt hat der Chat seine eigene Restliste. Bei einem Retry verschwindet die fehlgeschlagene Anfrage, send() legt sie neu an.
       mutSession(sessionId, (x) => ({
-        ...x, provider: next.provider, options: selectModelOptions(base, model, info), fallbacks: x.fallbacks?.slice(1), messages: x.messages.slice(0, -2),
+        ...x, provider: next.provider, options: selectModelOptions(base, model, info), fallbacks: list.slice(1), messages: retry ? x.messages.slice(0, -2) : x.messages,
       }));
-      get().setBanner(sessionId, { kind: 'info', text: en ? `Usage limit reached – continuing with ${label}.` : `Nutzungslimit erreicht – weiter mit ${label}.` });
-      get().send(sessionId, text, { images: prev.images?.filter((p) => /[\\/]/.test(p)) });
+      get().setBanner(sessionId, { kind: 'info', text: en ? `${retry ? 'Usage limit reached' : 'Chat limit reached'} – continuing with ${label}.` : `${retry ? 'Nutzungslimit erreicht' : 'Chat-Limit erreicht'} – weiter mit ${label}.` });
+      if (retry) get().send(sessionId, text, { images });
+      return true;
+    },
+    async checkLimit(sessionId) {
+      const s = get().data.sessions.find((x) => x.id === sessionId);
+      if (!s?.limit) return true;
+      const en = get().data.settings.language === 'en';
+      // Bis zu zwei Wechsel hintereinander: das nächste Modell kann beim anderen Anbieter ebenfalls über dem Limit liegen.
+      for (let i = 0; i < 3; i++) {
+        const cur = get().data.sessions.find((x) => x.id === sessionId);
+        if (!cur?.limit) return true;
+        const cliP = cur.provider === 'claude' || cur.provider === 'antigravity' ? cur.provider : undefined;
+        // Die gelesenen Limits sind höchstens ein paar Minuten alt, sonst vor der Entscheidung frisch einlesen.
+        if (cliP && Date.now() - (get().cliUsage[cliP]?.at ?? 0) > 3 * 60_000) await get().refreshCliUsage(cliP);
+        const codex = cur.provider === 'codex' ? await hub.usage().then((r) => r.codexLimits).catch(() => null) : null;
+        const used = limitUsage(cur.limit, currentMeters(cur.provider, get().cliUsage[cur.provider as 'claude' | 'antigravity'], codex));
+        if (used === undefined || used < cur.limit.percent) return true;
+        const what = `${Math.round(used)}% ≥ ${cur.limit.percent}%`;
+        if (cur.limit.action === 'fallback' && get().switchToFallback(sessionId, false)) continue;
+        get().setBanner(sessionId, { kind: 'error', text: cur.limit.action === 'fallback'
+          ? (en ? `Limit reached (${what}) and no fallback model left – chat stopped.` : `Limit erreicht (${what}) und kein Ausweich-Modell mehr – Chat gestoppt.`)
+          : (en ? `Limit reached (${what}) – chat stopped. Change or remove the limit to continue.` : `Limit erreicht (${what}) – Chat gestoppt. Limit ändern oder entfernen, um fortzufahren.`) });
+        return false;
+      }
       return true;
     },
     setChatListSettings(patch) {
@@ -547,7 +585,7 @@ function flush() {
         else {
           const sess = data.sessions.find((x) => x.id === route.sessionId);
           const err = sess?.messages.find((m) => m.id === route.messageId)?.error ?? done.error ?? '';
-          if (sess?.fallbacks?.length && LIMIT_RE.test(err)) failed.push(route.sessionId);
+          if (sess && fallbackList(sess, data.settings).length && LIMIT_RE.test(err)) failed.push(route.sessionId);
         }
       }
     }
@@ -559,7 +597,10 @@ function flush() {
       const next = st.queued[sid]?.[0];
       if (!next || st.isRunning(sid)) return;
       useHub.setState({ queued: { ...st.queued, [sid]: st.queued[sid].slice(1) } });
-      st.send(sid, next.text, { images: next.images, attachments: next.attachments });
+      void st.checkLimit(sid).then((ok) => {
+        if (ok) useHub.getState().send(sid, next.text, { images: next.images, attachments: next.attachments });
+        else useHub.setState((x) => ({ queued: { ...x.queued, [sid]: [] } }));
+      });
     }, 0);
   }
   for (const sid of failed) setTimeout(() => { useHub.getState().switchToFallback(sid); }, 0);

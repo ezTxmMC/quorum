@@ -223,9 +223,20 @@ export interface Message {
   error?: string;
 }
 
+export interface FallbackModel { provider: ProviderId; model: string }
+
+/** Prozent-Limit eines Chats: ab diesem Verbrauch (im gewählten Zeitfenster) wechselt der Chat zum Ausweich-Modell oder stoppt. */
+export interface ChatLimit {
+  /** short = Sitzungs-/5-h-Fenster, weekly = Wochenlimit, any = das am stärksten ausgelastete Fenster */
+  window: 'any' | 'short' | 'weekly';
+  percent: number;
+  action: 'fallback' | 'stop';
+}
+
 export interface ChatSession {
-  /** Ausweich-Modelle für diese Sitzung: bei erreichtem Nutzungslimit wechselt der Chat zum ersten Eintrag und wiederholt die Anfrage. */
-  fallbacks?: { provider: ProviderId; model: string }[];
+  /** Ausweich-Modelle nur für diesen Chat (undefined = globale Liste aus den Einstellungen). Bei erreichtem Limit wechselt der Chat zum ersten Eintrag. */
+  fallbacks?: FallbackModel[];
+  limit?: ChatLimit;
   modeSettings?: Partial<Record<ChatMode, { provider: ProviderId; options: ProviderOptions }>>;
   modelProjectId?: string;
   id: string;
@@ -312,6 +323,8 @@ export interface ChatListSettings {
 }
 
 export interface Settings {
+  /** Globale Ausweich-Modelle für alle Chats ohne eigene Liste. */
+  fallbacks?: FallbackModel[];
   sidebarPinned: boolean;
   showOlderModels?: boolean;
   showUsageInComposer?: boolean;
