@@ -1,6 +1,6 @@
 import { chatMode, CHAT_MODES } from '@shared/chat-modes';
 import { getLang, t } from '@/lib/i18n';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { PROVIDERS, isTextOnly, modelEfforts, canonicalModel, selectModelOptions, modelChoices } from '@shared/catalog';
 import type { ProviderId } from '@shared/types';
@@ -11,7 +11,8 @@ import { OptionsPanel } from '@/components/OptionsPanel';
 import { ProviderMark, cx, usePresence } from '@/components/ui';
 import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
-import { useHub } from '@/lib/store';
+import { useHub, useHubEq } from '@/lib/store';
+import type { ChatSession } from '@shared/types';
 
 const ALIASES: Record<string, ProviderId> = { claude: 'claude', codex: 'codex', gpt: 'codex', agy: 'antigravity', gemini: 'antigravity', antigravity: 'antigravity' };
 
@@ -23,6 +24,12 @@ export function ChatPage() {
   const statuses = useHub((s) => s.statuses);
   const optionsOpen = useHub((s) => s.chatOptionsOpen);
   const { send, submit, cancel, patchSession, newSession } = useHub.getState();
+  const banner = useHub((s) => s.banners[id]);
+  // Eingabefeld bekommt nur die Teile der Sitzung, die es braucht – so rendert es beim Streamen nicht mit.
+  const composerSession = useHubEq(
+    (s) => s.data.sessions.find((x) => x.id === id),
+    (a: ChatSession | undefined, b: ChatSession | undefined) => a === b || (!!a && !!b && a.id === b.id && a.provider === b.provider && a.options === b.options && a.cwd === b.cwd && a.modeSettings === b.modeSettings && a.providerSessions === b.providerSessions && a.fallbacks === b.fallbacks),
+  );
   const panelPresence = usePresence(optionsOpen, 170);
   // Modell aus dem Chat: wird die Projekt-ID gemeldet, zeigt die Ansicht rechts das Modell.
   const [modelPaneOpen, setModelPaneOpen] = useState(() => !!session && chatMode(session.options) === 'model' && window.innerWidth >= 1100);
@@ -58,6 +65,11 @@ export function ChatPage() {
 
   const setActiveCwd = useHub.getState().setActiveCwd;
   useEffect(() => { if (session) setActiveCwd(session.cwd); }, [session?.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onStopRun = useCallback(() => cancel(id), [cancel, id]);
+  const onOpenModel = useCallback((projectId: string) => { patchSession(id, { modelProjectId: projectId }); setModelPaneOpen(true); }, [patchSession, id]);
+  const onSendMsg = useCallback((txt: string, imgs: string[], mode: 'direct' | 'queue', attachments: import('@shared/types').Attachment[]) => void submit(id, txt, { images: imgs, mode, attachments }), [submit, id]);
+  const commandRef = useRef<(cmd: string, arg: string) => boolean>(() => false);
+  const onCommandStable = useCallback((cmd: string, arg: string) => commandRef.current(cmd, arg), []);
   if (!session) return <Navigate to="/" replace />;
   const meta = PROVIDERS[session.provider];
   const mode = chatMode(session.options);
@@ -99,11 +111,14 @@ export function ChatPage() {
         if (session.provider === 'codex') send(id, '/review (Codex: uncommitted changes)', { review: { target: 'uncommitted' } });
         else send(id, getLang() === 'en' ? 'Review the current uncommitted changes in this project (git diff, git status) thoroughly as a code review. Name concrete bugs, risks and improvements with file references. Do not change anything.' : 'Prüfe die aktuellen, nicht committeten Änderungen in diesem Projekt (git diff, git status) gründlich als Code-Review. Nenne konkrete Fehler, Risiken und Verbesserungen mit Dateiverweisen. Ändere nichts.');
         return true;
+      case 'compact': void useHub.getState().compact(id); return true;
       case 'continue': send(id, arg || 'Fahre fort.', { continueLast: true }); return true;
       case 'fork': send(id, arg || 'Fahre fort.', { fork: true }); return true;
     }
     return false;
   };
+
+  commandRef.current = onCommand;
 
   const pickProject = async () => {
     const d = await hub.pickFolder();
@@ -130,7 +145,7 @@ export function ChatPage() {
             </div>
           ) : (
             <div className="mx-auto max-w-5xl xl:max-w-6xl space-y-6 px-4 py-6">
-              {session.messages.map((m) => <MessageView key={m.id} onOpenModel={(projectId) => { patchSession(id, { modelProjectId: projectId }); setModelPaneOpen(true); }} m={m} live={activeMessages.has(m.id)} onStop={() => cancel(id)} />)}
+              {session.messages.map((m) => <MessageView key={m.id} onOpenModel={onOpenModel} m={m} live={activeMessages.has(m.id)} onStop={onStopRun} />)}
             </div>
           )}
         </div>
@@ -141,7 +156,13 @@ export function ChatPage() {
           </div>
         )}
         {mode === 'model' && !modelPaneOpen && <button className="btn mx-auto mb-2" onClick={() => setModelPaneOpen(true)}><Icon name="lucide:cuboid" size={14} />{t('3D-Modell öffnen')}</button>}
-        <Composer session={session} running={running} onSend={(txt, imgs, mode, attachments) => void submit(id, txt, { images: imgs, mode, attachments })} onStop={() => cancel(id)} onCommand={onCommand} />
+        {banner && (
+          <div className={cx('mx-auto mb-2 flex w-full max-w-5xl items-center gap-2 rounded-lumen border px-3 py-2 text-[12.5px] xl:max-w-6xl', banner.kind === 'error' ? 'border-bad/30 bg-bad/10 text-bad' : 'border-accent/30 bg-accent/10 text-fg')}>
+            <Icon name={banner.kind === 'error' ? 'lucide:triangle-alert' : 'lucide:info'} size={14} className="shrink-0" /><span className="min-w-0 flex-1">{t(banner.text)}</span>
+            <button className="icon-btn !size-5" onClick={() => useHub.getState().setBanner(id, null)}><Icon name="lucide:x" size={12} /></button>
+          </div>
+        )}
+        <Composer session={composerSession ?? session} running={running} onSend={onSendMsg} onStop={onStopRun} onCommand={onCommandStable} />
       </div>
 
       {modelPaneOpen && (mode === 'model' || !!session.modelProjectId) && !panelPresence.mounted && <ModelPane projectId={session.modelProjectId} onProject={(projectId) => patchSession(id, { modelProjectId: projectId })} onClose={() => setModelPaneOpen(false)} />}

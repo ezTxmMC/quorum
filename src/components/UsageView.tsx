@@ -1,6 +1,7 @@
 import { startTransition, useEffect, useMemo, useState } from 'react';
 import { PROVIDERS } from '@shared/catalog';
-import type { Persisted, ProviderId, RateWindow, UsageReport } from '@shared/types';
+import { apiCost, fmtUsd } from '@shared/pricing';
+import type { Message, Persisted, ProviderId, RateWindow, UsageReport } from '@shared/types';
 import { hub } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
@@ -86,9 +87,9 @@ function CliLimits({ provider }: { provider: 'claude' | 'antigravity' }) {
 type Stats = Record<ProviderId, { msgs: number; input: number; output: number; cost: number }>;
 function computeStats(d: Persisted): Stats {
   const acc = Object.fromEntries((['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'] as ProviderId[]).map((p) => [p, { msgs: 0, input: 0, output: 0, cost: 0 }])) as Stats;
-  const add = (p: ProviderId | undefined, u: { inputTokens?: number; outputTokens?: number; costUsd?: number } | undefined) => { if (!p || !u) return; const a = acc[p]; a.msgs++; a.input += u.inputTokens ?? 0; a.output += u.outputTokens ?? 0; a.cost += u.costUsd ?? 0; };
-  for (const s of d.sessions) for (const m of s.messages) if (m.role === 'assistant') add(m.provider, m.usage);
-  for (const r of d.multiRuns) for (const tn of r.turns) add(tn.message.provider, tn.message.usage);
+  const add = (p: ProviderId | undefined, u: Message['usage'], model: string | undefined) => { if (!p || !u) return; const a = acc[p]; a.msgs++; a.input += u.inputTokens ?? 0; a.output += u.outputTokens ?? 0; a.cost += apiCost(u, model, p)?.usd ?? 0; };
+  for (const s of d.sessions) for (const m of s.messages) if (m.role === 'assistant') add(m.provider, m.usage, m.model ?? s.options.model);
+  for (const r of d.multiRuns) for (const tn of r.turns) add(tn.message.provider, tn.message.usage, tn.message.model ?? r.config.agents.find((a) => a.id === tn.agentId)?.options.model);
   return acc;
 }
 const idle = (fn: () => void) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 1500 }) : setTimeout(fn, 50));
@@ -186,10 +187,10 @@ export function UsageView() {
         <h3 className="mb-2 text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Im Hub gemessen')}</h3>
         <div className="overflow-hidden rounded-lumen-lg border border-edge">
           <table className="w-full text-left">
-            <thead className="bg-surface text-[11.5px] text-muted"><tr><th className="px-3 py-2 font-medium">{t('Anbieter')}</th><th className="px-3 py-2 font-medium">{t('Antworten')}</th><th className="px-3 py-2 font-medium">↑ {t('Eingabe')}</th><th className="px-3 py-2 font-medium">↓ {t('Ausgabe')}</th><th className="px-3 py-2 font-medium">{t('Kosten')}</th></tr></thead>
+            <thead className="bg-surface text-[11.5px] text-muted"><tr><th className="px-3 py-2 font-medium">{t('Anbieter')}</th><th className="px-3 py-2 font-medium">{t('Antworten')}</th><th className="px-3 py-2 font-medium">↑ {t('Eingabe')}</th><th className="px-3 py-2 font-medium">↓ {t('Ausgabe')}</th><th className="px-3 py-2 font-medium" title={t('Theoretische API-Kosten – so viel würde dieselbe Nutzung über die API kosten (Listenpreise, geschätzt).')}>{t('API-Kosten (theoretisch)')}</th></tr></thead>
             <tbody>
               {(['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'] as ProviderId[]).map((p) => (
-                <tr key={p} className="border-t border-edge"><td className="px-3 py-2"><span className="flex items-center gap-2"><Dot id={p} />{PROVIDERS[p].name}</span></td><td className="px-3 py-2">{hubStats ? hubStats[p].msgs : '…'}</td><td className="px-3 py-2">{hubStats ? fmt(hubStats[p].input) : '…'}</td><td className="px-3 py-2">{hubStats ? fmt(hubStats[p].output) : '…'}</td><td className="px-3 py-2">{hubStats?.[p].cost ? `$${hubStats[p].cost.toFixed(2)}` : '–'}</td></tr>
+                <tr key={p} className="border-t border-edge"><td className="px-3 py-2"><span className="flex items-center gap-2"><Dot id={p} />{PROVIDERS[p].name}</span></td><td className="px-3 py-2">{hubStats ? hubStats[p].msgs : '…'}</td><td className="px-3 py-2">{hubStats ? fmt(hubStats[p].input) : '…'}</td><td className="px-3 py-2">{hubStats ? fmt(hubStats[p].output) : '…'}</td><td className="px-3 py-2">{hubStats?.[p].cost ? `≈ ${fmtUsd(hubStats[p].cost)}` : '–'}</td></tr>
               ))}
             </tbody>
           </table>

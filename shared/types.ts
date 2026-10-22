@@ -214,6 +214,8 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   provider?: ProviderId;
   agentId?: string;
+  /** Modell, mit dem die Antwort erzeugt wurde (für die Kostenschätzung). */
+  model?: string;
   blocks: Block[];
   images?: string[];
   createdAt: number;
@@ -222,6 +224,8 @@ export interface Message {
 }
 
 export interface ChatSession {
+  /** Ausweich-Modelle für diese Sitzung: bei erreichtem Nutzungslimit wechselt der Chat zum ersten Eintrag und wiederholt die Anfrage. */
+  fallbacks?: { provider: ProviderId; model: string }[];
   modeSettings?: Partial<Record<ChatMode, { provider: ProviderId; options: ProviderOptions }>>;
   modelProjectId?: string;
   id: string;
@@ -287,6 +291,8 @@ export interface TerminalStyle {
   cursorStyle: 'block' | 'bar' | 'underline';
   cursorBlink: boolean;
   scrollback: number;
+  /** Standard-Shell (Pfad); leer = Login-Shell. */
+  shell?: string;
 }
 
 export interface ThreeDSettings {

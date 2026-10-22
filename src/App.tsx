@@ -112,7 +112,9 @@ function Shell() {
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const location = useLocation();
-  const enter = () => { clearTimeout(timer.current); setOpen(true); };
+  // Hover-Absicht: die Leiste öffnet erst, wenn die Maus kurz am Rand verweilt – beim bloßen Vorbeifahren springt sie nicht auf.
+  const enter = () => { clearTimeout(timer.current); if (!open) timer.current = setTimeout(() => setOpen(true), 220); };
+  const keep = () => { clearTimeout(timer.current); };
   const leave = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), 240); };
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => { if (pinned) setOpen(false); }, [pinned]);
@@ -177,7 +179,7 @@ function Shell() {
                 : 'none',
               transition: 'transform 300ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease, box-shadow 300ms ease',
             }}
-            onMouseEnter={enter}
+            onMouseEnter={keep}
             onMouseLeave={leave}
           >
             <Sidebar

@@ -1,7 +1,7 @@
 import { chatMode } from '@shared/chat-modes';
 import { useRef } from 'react';
 import { create } from 'zustand';
-import { DEFAULT_OPTIONS, DIRECT_MESSAGES, PROVIDERS, defaultDock, defaultTerminal, isTextOnly } from '@shared/catalog';
+import { DEFAULT_OPTIONS, DIRECT_MESSAGES, PROVIDERS, canonicalModel, defaultDock, defaultTerminal, isTextOnly, modelChoices, selectModelOptions } from '@shared/catalog';
 import type {
   Attachment, ChatListSettings, CliUsage, DockPos, ImportedSession, ChatSession, HubEvent, PanelId, Message, MultiConfig, MultiEvent, MultiRunRecord, Persisted, ProviderId, ProviderOptions, ProviderStatus, RunRequest, UpdateChannel, UpdateState,
 } from '@shared/types';
@@ -21,6 +21,9 @@ interface State {
   setActiveCwd: (cwd: string) => void;
   applyRemote: (d: Persisted) => void;
   togglePanel: (id: PanelId) => void;
+  /** Panel, das gerade als schwebende Insel im Vollbild angezeigt wird (nicht persistent). */
+  maximizedPanel: PanelId | null;
+  setMaximizedPanel: (id: PanelId | null) => void;
   movePanel: (id: PanelId, pos: DockPos) => void;
   resizeDock: (pos: DockPos, size: number) => void;
   data: Persisted;
@@ -72,6 +75,14 @@ interface State {
   downloadUpdate: () => Promise<boolean>;
   installUpdate: () => Promise<boolean>;
   setChatListSettings: (patch: Partial<ChatListSettings>) => void;
+  /** Verlauf des Chats vom aktuellen Modell zusammenfassen lassen und durch die Zusammenfassung ersetzen. */
+  compact: (sessionId: string) => Promise<void>;
+  compacting: Record<string, boolean>;
+  /** Kurze Hinweise über dem Eingabefeld (z. B. Wechsel auf ein Ausweich-Modell, Fehler beim Kompaktieren). */
+  banners: Record<string, { kind: 'info' | 'error'; text: string }>;
+  setBanner: (sessionId: string, banner: { kind: 'info' | 'error'; text: string } | null) => void;
+  /** Bei erreichtem Limit: zum nächsten Ausweich-Modell wechseln und die letzte Anfrage wiederholen. */
+  switchToFallback: (sessionId: string) => boolean;
 }
 
 const emptyData = (): Persisted => ({
@@ -92,13 +103,19 @@ const titleOf = (t: string) => (t.replace(/\s+/g, ' ').trim().slice(0, 56) || 'N
 function contextPreamble(s: ChatSession): string {
   const lines: string[] = [];
   for (const m of s.messages.slice(-12)) {
-    const t = m.role === 'user' ? messageText(m) : messageText(m);
+    const t = messageText(m);
     if (!t) continue;
+    if (m.role === 'system') { lines.push(`Zusammenfassung des früheren Verlaufs: ${t}`); continue; }
     lines.push(`${m.role === 'user' ? 'Nutzer' : `Assistent (${m.provider ?? '?'})`}: ${t.length > 1800 ? t.slice(0, 1800) + '…' : t}`);
   }
   if (!lines.length) return '';
   return `[Bisheriger Gesprächsverlauf mit einem anderen Assistenten – nur als Kontext:]\n${lines.join('\n\n')}\n\n[Aktuelle Nachricht des Nutzers:]\n`;
 }
+
+/** Läufe ohne Chat-Ziel (z. B. Zusammenfassung beim Kompaktieren): Events gehen direkt an den Sammler. */
+const collectors = new Map<string, (e: HubEvent) => void>();
+/** Fehlertexte, die auf ein erreichtes Nutzungs-/Ratenlimit hindeuten. */
+const LIMIT_RE = /usage limit|rate.?limit|limit (has been )?(reached|exceeded)|hit your (usage )?limit|out of (extra )?usage|quota|exceeded|too many requests|\b429\b|resource.?exhausted|insufficient[_ ]credits?|credit balance|overloaded|billing/i;
 
 let autoImporting = false;
 let lastRemote: Persisted | null = null;
@@ -172,7 +189,10 @@ export const useHub = create<State>((set, get) => {
         return { data: { ...remote, sessions, multiRuns } };
       });
     },
+    maximizedPanel: null,
+    setMaximizedPanel: (id) => set({ maximizedPanel: id }),
     togglePanel(id) {
+      if (get().maximizedPanel === id) set({ maximizedPanel: null });
       mutData((d) => ({ ...d, settings: { ...d.settings, dock: { ...d.settings.dock, panels: { ...d.settings.dock.panels, [id]: { ...d.settings.dock.panels[id], visible: !d.settings.dock.panels[id].visible } } } } }));
     },
     movePanel(id, pos) {
@@ -287,7 +307,7 @@ export const useHub = create<State>((set, get) => {
       if (!s || get().isRunning(sessionId)) return;
       const runId = uid();
       const userMsg: Message = { id: uid(), role: 'user', blocks: [{ kind: 'text', text }], images: [...(opts.images ?? []), ...(opts.attachments?.map((a) => a.name) ?? [])], createdAt: Date.now() };
-      const asst: Message = { id: uid(), role: 'assistant', provider: s.provider, blocks: [], createdAt: Date.now() };
+      const asst: Message = { id: uid(), role: 'assistant', provider: s.provider, model: s.options.imageGen ? undefined : s.options.model, blocks: [], createdAt: Date.now() };
       const mode = chatMode(s.options);
       if (mode === 'model') {
         mutSession(sessionId, (x) => ({ ...x, title: x.messages.length === 0 ? titleOf(text) : x.title, messages: [...x.messages, userMsg, asst], updatedAt: Date.now() }));
@@ -308,7 +328,7 @@ export const useHub = create<State>((set, get) => {
       const isApi = isTextOnly(s.provider);
       const prompt = !isApi && !providerSession && !opts.continueLast && s.messages.length ? contextPreamble(s) + text : text;
       // Ollama-Chat (API) hat keine eigene Session: der Verlauf kommt aus dem Hub.
-      const history = isApi ? s.messages.slice(-40).filter((m) => m.role !== 'system').map((m) => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: messageText(m) })).filter((m) => m.content) : undefined;
+      const history = isApi ? s.messages.slice(-40).map((m) => ({ role: m.role === 'assistant' ? 'assistant' as const : 'user' as const, content: m.role === 'system' ? `[Zusammenfassung des früheren Verlaufs]\n${messageText(m)}` : messageText(m) })).filter((m) => m.content) : undefined;
       mutSession(sessionId, (x) => ({
         ...x, title: x.messages.length === 0 ? titleOf(text) : x.title, messages: [...x.messages, userMsg, asst], updatedAt: Date.now(),
       }));
@@ -383,6 +403,85 @@ export const useHub = create<State>((set, get) => {
     async installUpdate() {
       return hub.updaterInstall();
     },
+    compacting: {},
+    banners: {},
+    setBanner(sessionId, banner) {
+      set((st) => {
+        const { [sessionId]: _old, ...rest } = st.banners;
+        return { banners: banner ? { ...rest, [sessionId]: banner } : rest };
+      });
+    },
+    async compact(sessionId) {
+      const s = get().data.sessions.find((x) => x.id === sessionId);
+      if (!s || get().isRunning(sessionId) || get().compacting[sessionId]) return;
+      const mode = chatMode(s.options);
+      if (mode === 'image' || mode === 'model') return;
+      const body = s.messages.filter((m) => messageText(m));
+      if (body.length < 4) { get().setBanner(sessionId, { kind: 'info', text: 'Der Verlauf ist noch zu kurz zum Kompaktieren.' }); return; }
+      get().setBanner(sessionId, null);
+      set((st) => ({ compacting: { ...st.compacting, [sessionId]: true } }));
+      const en = get().data.settings.language === 'en';
+      // Neueste Nachrichten zuerst auswählen, damit bei sehr langen Chats das Aktuelle erhalten bleibt.
+      let budget = 90_000;
+      const parts: string[] = [];
+      for (const m of [...body].reverse()) {
+        let t = messageText(m);
+        if (t.length > 6000) t = t.slice(0, 3500) + ' […] ' + t.slice(-2000);
+        const tools = m.blocks.filter((b) => b.kind === 'tool').length;
+        const line = `${m.role === 'user' ? (en ? 'User' : 'Nutzer') : m.role === 'system' ? (en ? 'Earlier summary' : 'Frühere Zusammenfassung') : (en ? 'Assistant' : 'Assistent')}: ${t}${tools ? ` [${tools} ${en ? 'tool calls' : 'Werkzeugaufrufe'}]` : ''}`;
+        if (budget - line.length < 0 && parts.length) break;
+        budget -= line.length;
+        parts.unshift(line);
+      }
+      const intro = en
+        ? "Summarize the following conversation so it can be continued in a fresh context without losing anything important. Keep: the user's goals, decisions made, files/paths/commands/identifiers mentioned, current state of the work, open tasks and constraints. Be dense and factual, use short bullet points, no preface. Do not use any tools."
+        : 'Fasse die folgende Unterhaltung so zusammen, dass sie in einem frischen Kontext ohne Verlust des Wichtigen fortgesetzt werden kann. Behalte: Ziele des Nutzers, getroffene Entscheidungen, genannte Dateien/Pfade/Befehle/Bezeichner, aktuellen Arbeitsstand, offene Aufgaben und Rahmenbedingungen. Kompakt und sachlich, kurze Stichpunkte, keine Einleitung. Nutze keine Werkzeuge.';
+      const prompt = [intro, en ? '--- CONVERSATION ---' : '--- UNTERHALTUNG ---', parts.join('\n\n')].join('\n\n');
+      const runId = uid();
+      const result = await new Promise<{ ok: boolean; text: string; error?: string }>((resolve) => {
+        let text = '';
+        collectors.set(runId, (e) => {
+          if (e.type === 'text') text += e.delta;
+          else if (e.type === 'text_full') text = e.text;
+          else if (e.type === 'done') { collectors.delete(runId); resolve({ ok: e.ok && !!text.trim(), text: text.trim(), error: e.error }); }
+        });
+        void hub.run({ runId, provider: s.provider, prompt, cwd: '', options: { ...s.options, chatMode: 'text', imageGen: undefined }, history: isTextOnly(s.provider) ? [] : undefined }).catch((err) => {
+          if (collectors.delete(runId)) resolve({ ok: false, text: '', error: String(err?.message ?? err) });
+        });
+      });
+      set((st) => ({ compacting: { ...st.compacting, [sessionId]: false } }));
+      if (!result.ok) { get().setBanner(sessionId, { kind: 'error', text: `${en ? 'Compacting failed' : 'Kompaktieren fehlgeschlagen'}${result.error ? `: ${result.error}` : ''}` }); return; }
+      const cur = get().data.sessions.find((x) => x.id === sessionId);
+      if (!cur) return;
+      // Die letzten zwei Nachrichten bleiben wörtlich erhalten, alles davor wird durch die Zusammenfassung ersetzt.
+      const keep = cur.messages.slice(-2).filter((m) => m.role !== 'system');
+      const replaced = cur.messages.length - keep.length;
+      const summary: Message = { id: uid(), role: 'system', provider: s.provider, blocks: [{ kind: 'text', text: result.text }], createdAt: Date.now(), usage: { turns: replaced } };
+      mutSession(sessionId, (x) => ({ ...x, messages: [summary, ...keep], providerSessions: {}, updatedAt: Date.now() }));
+      get().setBanner(sessionId, { kind: 'info', text: en ? `Conversation compacted: ${replaced} messages summarized.` : `Verlauf kompaktiert: ${replaced} Nachrichten zusammengefasst.` });
+    },
+    switchToFallback(sessionId) {
+      const s = get().data.sessions.find((x) => x.id === sessionId);
+      const next = s?.fallbacks?.[0];
+      if (!s || !next || get().isRunning(sessionId)) return false;
+      const last = s.messages.at(-1);
+      const prev = s.messages.at(-2);
+      if (last?.role !== 'assistant' || prev?.role !== 'user') return false;
+      const text = messageText(prev);
+      const statuses = get().statuses;
+      const model = canonicalModel(next.provider, next.model) ?? next.model;
+      const info = modelChoices(next.provider, statuses).find((m) => m.id === model);
+      const base = next.provider === s.provider ? s.options : { ...get().data.settings.providerDefaults[next.provider], chatMode: chatMode(s.options) };
+      const en = get().data.settings.language === 'en';
+      const label = `${PROVIDERS[next.provider].name} · ${info?.label ?? model}`;
+      // Die fehlgeschlagene Antwort samt Anfrage entfernen; send() legt die Anfrage mit dem neuen Modell neu an.
+      mutSession(sessionId, (x) => ({
+        ...x, provider: next.provider, options: selectModelOptions(base, model, info), fallbacks: x.fallbacks?.slice(1), messages: x.messages.slice(0, -2),
+      }));
+      get().setBanner(sessionId, { kind: 'info', text: en ? `Usage limit reached – continuing with ${label}.` : `Nutzungslimit erreicht – weiter mit ${label}.` });
+      get().send(sessionId, text, { images: prev.images?.filter((p) => /[\\/]/.test(p)) });
+      return true;
+    },
     setChatListSettings(patch) {
       mutData((d) => ({
         ...d,
@@ -407,28 +506,49 @@ function flush() {
   queue = [];
   if (!items.length) return;
   const finished: string[] = []; // Chats, deren Lauf erfolgreich endete -> wartende Nachrichten starten
+  const failed: string[] = []; // Chats, deren Lauf fehlschlug -> ggf. Ausweich-Modell
   useHub.setState((st) => {
     let data = st.data;
     let runs = st.runs;
+    // Events je Lauf bündeln: jede Nachricht und die Sitzungsliste werden pro Flush nur einmal neu aufgebaut.
+    const perRun = new Map<string, HubEvent[]>();
     for (const it of items) {
-      if (it.kind === 'run') {
-        const route = runs[it.runId];
-        if (!route) continue;
-        const ev = it.event;
-        data = {
-          ...data,
-          sessions: data.sessions.map((s) => {
-            if (s.id !== route.sessionId) return s;
-            // updatedAt nur am Ende ändern: sonst re-rendert die Sidebar bei jedem Token.
-            let next: ChatSession = { ...s, messages: s.messages.map((m) => (m.id === route.messageId ? applyEvent(m, ev) : m)), updatedAt: ev.type === 'done' ? Date.now() : s.updatedAt };
-            if (ev.type === 'model_project') next = { ...next, modelProjectId: ev.projectId };
-            if (ev.type === 'session') next = { ...next, providerSessions: { ...next.providerSessions, [route.provider]: ev.sessionId } };
-            return next;
-          }),
-        };
-        if (ev.type === 'done') { const { [it.runId]: _gone, ...rest } = runs; runs = rest; if (ev.ok) finished.push(route.sessionId); }
-      } else {
-        data = applyMulti(data, it.multiId, it.event);
+      if (it.kind === 'run') { const list = perRun.get(it.runId); if (list) list.push(it.event); else perRun.set(it.runId, [it.event]); }
+      else data = applyMulti(data, it.multiId, it.event);
+    }
+    for (const [runId, events] of perRun) {
+      const route = runs[runId];
+      if (!route) continue;
+      data = {
+        ...data,
+        sessions: data.sessions.map((s) => {
+          if (s.id !== route.sessionId) return s;
+          let next: ChatSession = s;
+          let msg = s.messages.find((m) => m.id === route.messageId);
+          if (!msg) return s;
+          let providerSessions = s.providerSessions;
+          let modelProjectId = s.modelProjectId;
+          for (const ev of events) {
+            msg = applyEvent(msg, ev);
+            if (ev.type === 'model_project') modelProjectId = ev.projectId;
+            if (ev.type === 'session') providerSessions = { ...providerSessions, [route.provider]: ev.sessionId };
+          }
+          const done = events.find((e) => e.type === 'done');
+          const m2 = msg;
+          // updatedAt nur am Ende ändern: sonst re-rendert die Sidebar bei jedem Token.
+          next = { ...s, messages: s.messages.map((m) => (m.id === route.messageId ? m2 : m)), providerSessions, modelProjectId, updatedAt: done ? Date.now() : s.updatedAt };
+          return next;
+        }),
+      };
+      const done = events.find((e): e is Extract<HubEvent, { type: 'done' }> => e.type === 'done');
+      if (done) {
+        const { [runId]: _gone, ...rest } = runs; runs = rest;
+        if (done.ok) finished.push(route.sessionId);
+        else {
+          const sess = data.sessions.find((x) => x.id === route.sessionId);
+          const err = sess?.messages.find((m) => m.id === route.messageId)?.error ?? done.error ?? '';
+          if (sess?.fallbacks?.length && LIMIT_RE.test(err)) failed.push(route.sessionId);
+        }
       }
     }
     return { data, runs };
@@ -442,6 +562,7 @@ function flush() {
       st.send(sid, next.text, { images: next.images, attachments: next.attachments });
     }, 0);
   }
+  for (const sid of failed) setTimeout(() => { useHub.getState().switchToFallback(sid); }, 0);
 }
 
 function applyMulti(data: Persisted, multiId: string, e: MultiEvent): Persisted {
@@ -459,7 +580,7 @@ function applyMulti(data: Persisted, multiId: string, e: MultiEvent): Persisted 
           ...r,
           turns: [...r.turns, {
             turnId: e.turnId, stageId: e.stageId, agentId: e.agentId, prompt: e.prompt, cwd: e.cwd, running: true,
-            message: { id: e.turnId, role: 'assistant', provider: agent?.provider, agentId: e.agentId, blocks: [], createdAt: Date.now() },
+            message: { id: e.turnId, role: 'assistant', provider: agent?.provider, model: agent?.options.model, agentId: e.agentId, blocks: [], createdAt: Date.now() },
           }],
         };
       });
@@ -478,11 +599,16 @@ function applyMulti(data: Persisted, multiId: string, e: MultiEvent): Persisted 
 function schedule() {
   if (scheduled) return;
   scheduled = true;
-  requestAnimationFrame(flush);
+  // ~20 Updates pro Sekunde reichen für flüssiges Streaming und halten Render-Last und Eingabe-Latenz niedrig.
+  setTimeout(flush, 50);
 }
 
 export function wireEvents(): () => void {
-  const a = hub.onRun((p) => { queue.push({ kind: 'run', runId: p.runId, event: p.event }); schedule(); });
+  const a = hub.onRun((p) => {
+    const collect = collectors.get(p.runId);
+    if (collect) { collect(p.event); return; }
+    queue.push({ kind: 'run', runId: p.runId, event: p.event }); schedule();
+  });
   const b = hub.onMulti((p) => { queue.push({ kind: 'multi', multiId: p.multiId, event: p.event }); schedule(); });
   const c = hub.onUpdaterStatus((s) => useHub.setState({ updaterState: s }));
   const d = hub.onUpdaterProgress((p) => {
@@ -493,19 +619,27 @@ export function wireEvents(): () => void {
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let saveSlow = false;
 export function wirePersistence(): () => void {
-  return useHub.subscribe((s, prev) => {
-    if (!s.ready || s.data === prev.data || s.data === lastRemote || (lastRemote && s.data.sessions === lastRemote.sessions && s.data.multiRuns === lastRemote.multiRuns && s.data.settings === lastRemote.settings)) return;
-    // Drosselung statt Entprellung: Beim Streaming wird höchstens alle paar Sekunden gespeichert (der Klon großer Daten kostet Zeit),
-    // im Leerlauf fast sofort. Das eigentliche Speichern läuft, wenn der Browser Luft hat.
-    if (saveTimer) return;
-    const busy = Object.keys(useHub.getState().runs).length > 0;
+  const arm = (ms: number) => {
+    saveSlow = ms > 1000;
     saveTimer = setTimeout(() => {
       saveTimer = undefined;
       const run = () => void hub.save(useHub.getState().data);
       if ('requestIdleCallback' in window) (window as unknown as { requestIdleCallback: (cb: () => void, o?: { timeout: number }) => void }).requestIdleCallback(run, { timeout: 2000 });
       else run();
-    }, busy ? 4000 : 700);
+    }, ms);
+  };
+  return useHub.subscribe((s, prev) => {
+    if (!s.ready) return;
+    const busy = Object.keys(s.runs).length > 0;
+    // Lauf beendet, aber ein langsamer Speichertimer aus der Streaming-Phase steht noch: jetzt zeitnah speichern.
+    if (saveTimer && saveSlow && !busy) { clearTimeout(saveTimer); arm(700); return; }
+    if (s.data === prev.data || s.data === lastRemote || (lastRemote && s.data.sessions === lastRemote.sessions && s.data.multiRuns === lastRemote.multiRuns && s.data.settings === lastRemote.settings)) return;
+    // Drosselung statt Entprellung: Beim Streaming wird nur selten gespeichert (der Klon großer Daten über IPC blockiert die Oberfläche),
+    // im Leerlauf fast sofort. Das eigentliche Speichern läuft, wenn der Browser Luft hat.
+    if (saveTimer) return;
+    arm(busy ? 15000 : 700);
   });
 }
 

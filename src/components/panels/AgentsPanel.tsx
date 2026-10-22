@@ -14,6 +14,13 @@ import { messageText } from '@/lib/reduce';
 type Tool = Extract<Block, { kind: 'tool' }>;
 
 const SUBAGENT = /(?:^|[:./])(?:task|agent|spawn_agent|invoke_subagent|browser_subagent|define_subagent|subagent)$/i;
+/** Hintergrund-Agenten melden sofort „gestartet“ zurück – das ist noch nicht das Ergebnis, der Agent arbeitet weiter, solange der Lauf aktiv ist. */
+const ASYNC_LAUNCH = /async agent launched|agent (was )?(launched|started|spawned)|running in the background|started in the background|spawn(ed)? (successfully|agent)/i;
+const isBackgroundLaunch = (b: Tool): boolean => {
+  if (b.isError) return false;
+  const i = (b.input ?? {}) as Record<string, unknown>;
+  return i.run_in_background === true || /spawn_agent$/i.test(b.name) || (b.output !== undefined && ASYNC_LAUNCH.test(b.output.slice(0, 400)));
+};
 const toolsOf = (messages: Message[]): Tool[] => messages.flatMap((m) => m.blocks.filter((b): b is Tool => b.kind === 'tool'));
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
 
@@ -82,11 +89,15 @@ export function AgentsPanel() {
     tools = toolsOf(session.messages);
     const messageIds = new Set(Object.values(activeRuns).filter((r) => r.sessionId === session.id).map((r) => r.messageId));
     liveTools = toolsOf(session.messages.filter((m) => messageIds.has(m.id)));
-    agents = tools.filter((b) => !b.parentId && SUBAGENT.test(b.name)).map((b) => ({
-      key: b.id, label: describe(b), running: b.running && liveTools.includes(b), failed: b.isError, stopped: !(b.running && liveTools.includes(b)) && b.output === undefined && !b.isError, output: b.output,
+    agents = tools.filter((b) => !b.parentId && SUBAGENT.test(b.name)).map((b) => {
+      const live = liveTools.includes(b);
+      const running = live && (b.running || isBackgroundLaunch(b));
+      return {
+      key: b.id, label: describe(b), running, failed: b.isError, stopped: !running && b.output === undefined && !b.isError, output: b.output,
       onStop: () => useHub.getState().cancel(session.id),
       sub: `${b.name} · ${tools.filter((c) => c.parentId === b.id).length} ${t('Schritte')}`,
-    }));
+      };
+    });
   } else if (run) {
     const all = run.turns;
     tools = toolsOf(all.map((x) => x.message));

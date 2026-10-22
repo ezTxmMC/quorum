@@ -20,8 +20,8 @@ export function ComposerUsage({ session }: { session: ChatSession }) {
     void hub.usage().then((r) => { if (alive) setReport(r); }).catch(() => {});
     return () => { alive = false; off(); };
   }, [session.provider, visible]);
+  const tokens = useHub((s) => (s.data.sessions.find((x) => x.id === session.id)?.messages ?? []).reduce((sum, m) => sum + (m.usage?.inputTokens ?? 0) + (m.usage?.outputTokens ?? 0), 0));
   if (!visible) return null;
-  const tokens = session.messages.reduce((sum, m) => sum + (m.usage?.inputTokens ?? 0) + (m.usage?.outputTokens ?? 0), 0);
   const limits = session.provider === 'codex' ? report?.codexLimits : undefined;
   const meters = limits ? [limits.primary, limits.secondary].filter((w) => w !== null).map((w) => ({
     label: w.window_minutes >= 1440 ? t('Wochenlimit') : `${Math.round(w.window_minutes / 60)} h`,

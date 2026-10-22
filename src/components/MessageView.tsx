@@ -2,6 +2,7 @@ import { t } from '@/lib/i18n';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PROVIDERS, imageEngineLabel } from '@shared/catalog';
+import { apiCost, fmtUsd } from '@shared/pricing';
 import { hub } from '@/lib/api';
 import type { Message } from '@shared/types';
 import { Icon } from '@/lib/icons';
@@ -67,6 +68,22 @@ function GeneratedImage({ path, engine }: { path: string; engine?: string }) {
   );
 }
 
+/** Zusammenfassung eines kompaktierten Verlaufs: eingeklappt, damit sie den Chat nicht dominiert. */
+function CompactedSummary({ m }: { m: Message }) {
+  const [open, setOpen] = useState(false);
+  const text = m.blocks.map((b) => (b.kind === 'text' ? b.text : '')).join('');
+  return (
+    <div className="fade-in rounded-lumen-lg border border-dashed border-edge-strong bg-surface/60 px-3.5 py-2.5 text-[12.5px]">
+      <button className="flex w-full items-center gap-2 text-left text-muted hover:text-fg" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Icon name="lucide:fold-vertical" size={14} />
+        <span className="flex-1 font-medium">{t('Verlauf kompaktiert')}{m.usage?.turns ? ` · ${m.usage.turns} ${t('Nachrichten zusammengefasst')}` : ''}</span>
+        <Icon name={open ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={12} />
+      </button>
+      <Collapse open={open}><div className="pt-2"><Markdown text={text} /></div></Collapse>
+    </div>
+  );
+}
+
 function fmtTok(n?: number) {
   if (n === undefined) return '';
   if (n >= 1_000_000_000) return `${Math.round(n / 1_000_000_000)}B`;
@@ -87,7 +104,9 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop, o
       </div>
     );
   }
+  if (m.role === 'system') return <CompactedSummary m={m} />;
   const lastIdx = m.blocks.length - 1;
+  const cost = apiCost(m.usage, m.model, m.provider);
   const empty = !m.blocks.some((b) => b.kind !== 'tool');
   if (!live && empty && !m.error) return null;
   return (
@@ -115,7 +134,7 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop, o
             {m.usage.inputTokens !== undefined && <span>↑ {fmtTok(m.usage.inputTokens)}</span>}
             {m.usage.outputTokens !== undefined && <span>↓ {fmtTok(m.usage.outputTokens)}</span>}
             {m.usage.cachedTokens ? <span>Cache {fmtTok(m.usage.cachedTokens)}</span> : null}
-            {m.usage.costUsd !== undefined && <span>${m.usage.costUsd.toFixed(4)}</span>}
+            {cost && <span title={t('Theoretische API-Kosten – so viel würde dieselbe Nutzung über die API kosten (Listenpreise, geschätzt).')}>≈ {fmtUsd(cost.usd)}</span>}
             {m.usage.durationMs !== undefined && <span>{(m.usage.durationMs / 1000).toFixed(1)}s</span>}
           </div>
         ) : null}

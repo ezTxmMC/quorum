@@ -25,7 +25,7 @@ import { register3dIpc } from './3d/ipc';
 import { cancelAllChatModeling, cancelChatModeling, runChatModeling } from './3d/chat-model';
 import { scheduler } from './runtimes/scheduler';
 import { dataDir, load, save } from './store';
-import { createTerminal, killTerminal, killTerminalsOf, resizeTerminal, writeTerminal } from './terminal';
+import { createTerminal, killAllTerminals, killTerminal, killTerminalsOf, listShells, resizeTerminal, writeTerminal } from './terminal';
 import { checkUpdate, downloadUpdate, getUpdateState, installUpdate, setUpdaterEmitter } from './updater';
 import type { UpdateChannel } from '../shared/types';
 
@@ -351,11 +351,12 @@ function registerIpc() {
 
   // Terminal (PTY über Python-Helfer) und Dateibaum für die Dock-Panels
   // Optional startet das Terminal direkt eine CLI (für die /usage-Abfrage im Hintergrund) statt der Shell.
-  ipcMain.handle('term:create', (e, id: string, cwd: string, cols: number, rows: number, provider?: ProviderId) => {
+  ipcMain.handle('term:create', (e, id: string, cwd: string, cols: number, rows: number, provider?: ProviderId, shell?: string) => {
     const bin = provider ? resolveBinary(provider, binaries()) : undefined;
     if (provider && !bin) return { mode: 'missing' as const };
-    return createTerminal(e.sender, id, cwd, cols, rows, dataDir(), bin ? { bin, args: [] } : undefined);
+    return createTerminal(e.sender, id, cwd, cols, rows, dataDir(), bin ? { bin, args: [] } : undefined, shell);
   });
+  ipcMain.handle('term:shells', () => listShells());
   ipcMain.handle('term:write', (_e, id: string, d: string) => writeTerminal(id, d));
   ipcMain.handle('term:resize', (_e, id: string, c: number, r: number) => resizeTerminal(id, c, r));
   ipcMain.handle('term:kill', (_e, id: string) => killTerminal(id));
@@ -405,8 +406,19 @@ app.setName('Quorum');
 // Linux: Taskleiste/Dock ordnen das Fenster über den Namen der .desktop-Datei zu (passt zu `desktopName` in package.json).
 if (process.platform === 'linux') app.setDesktopName('quorum.desktop');
 
+// Nur eine Quorum-Instanz: ein zweiter Start öffnet in der laufenden Instanz ein neues Fenster.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+else app.on('second-instance', () => {
+  if (!app.isReady()) return;
+  const w = createWindow();
+  if (w.isMinimized()) w.restore();
+  w.show(); w.focus();
+});
+
 registerImageScheme();
 app.whenReady().then(() => {
+  if (!gotLock) return;
   handleImageScheme();
   data = load();
   // Neustart: angedockte Panels (Terminal, Ordner, Agenten & Aufgaben, Änderungen) starten geschlossen.
@@ -432,6 +444,7 @@ app.on('before-quit', (event) => {
   shutdownStarted = true;
   cancelAllChatModeling();
   cancelAll();
+  killAllTerminals();
   void Promise.allSettled([shutdownOllama(), scheduler.shutdown()]).then(() => { shutdownComplete = true; app.quit(); });
 });
 // Signals use the same cleanup path as a normal quit, including owned local servers.

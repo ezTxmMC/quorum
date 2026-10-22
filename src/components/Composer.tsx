@@ -1,5 +1,5 @@
 import { getLang, t } from '@/lib/i18n';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { DIRECT_MESSAGES, PROVIDERS, isChatModel, canonicalModel, selectModelOptions, modelChoices, imageEngines } from '@shared/catalog';
 import type { Attachment, ChatMode, ChatSession } from '@shared/types';
 import { hub, uid } from '@/lib/api';
@@ -9,6 +9,7 @@ import { ModeButton, ModelButton, TuneButton, defaultModel } from './ModelPicker
 import { chatMode, switchChatMode } from '@shared/chat-modes';
 import { ChatModeButton } from './ChatModeButton';
 import { ComposerUsage } from './ComposerUsage';
+import { FallbackButton } from './FallbackModels';
 import { cx } from './ui';
 
 function arrayToB64(bytes: Uint8Array): string {
@@ -35,10 +36,19 @@ const BUILTIN = [
   { name: 'continue', desc: 'Letzte CLI-Session fortsetzen' },
   { name: 'fork', desc: 'Aktuelle Session verzweigen und weitermachen' },
   { name: 'diff', desc: 'Änderungsübersicht öffnen' },
+  { name: 'compact', desc: 'Verlauf zusammenfassen und kompaktieren' },
 ];
 
-export function Composer({ session, running, onSend, onStop, onCommand }: Props) {
-  const [text, setText] = useState('');
+/** Entwürfe je Chat: beim Wechsel zwischen Chats geht getippter Text nicht verloren und landet nicht im falschen Chat. */
+const drafts = new Map<string, string>();
+
+function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
+  const [text, setText] = useState(() => drafts.get(session.id) ?? '');
+  const textRef = useRef(text);
+  textRef.current = text;
+  useEffect(() => { const id = session.id; return () => { if (textRef.current.trim()) drafts.set(id, textRef.current); else drafts.delete(id); }; }, [session.id]);
+  const msgCount = useHub((s) => s.data.sessions.find((x) => x.id === session.id)?.messages.length ?? 0);
+  const compacting = useHub((s) => !!s.compacting[session.id]);
   const [images, setImages] = useState<string[]>([]);
   // Im Arbeitsspeicher gehaltene Anhänge (Screenshots aus der Zwischenablage etc.) – werden nirgends gespeichert.
   const [atts, setAtts] = useState<Attachment[]>([]);
@@ -234,6 +244,12 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
           {mode === 'coding' && <ModeButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} onMore={() => useHub.getState().toggleChatOptions(true)} />}
           {mode !== 'image' && <TuneButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} />}
           <div className="flex-1" />
+          {(mode === 'text' || mode === 'coding') && (
+            <button className="btn btn-ghost !gap-1 !px-2 text-subtle disabled:opacity-35" disabled={running || compacting || msgCount < 4} onClick={() => onCommand('compact', '')} title={compacting ? t('Verlauf wird kompaktiert …') : t('Verlauf kompaktieren (/compact)')}>
+              <Icon name={compacting ? 'lucide:loader-circle' : 'lucide:fold-vertical'} size={14} className={compacting ? 'spin' : ''} />
+            </button>
+          )}
+          {mode !== 'image' && <FallbackButton session={session} />}
           <ComposerUsage session={session} />
           {/* Reihenfolge: Einreihen · Stopp · Senden – alle drei gleich hoch (h-8), Stopp in sanftem Rot direkt neben „Senden“ */}
           {running && canDirect && (
@@ -251,3 +267,6 @@ export function Composer({ session, running, onSend, onStop, onCommand }: Props)
     </div>
   );
 }
+
+/** Der Chat-Verlauf ändert sich beim Streamen ständig – das Eingabefeld rendert nur neu, wenn sich seine eigenen Eingaben ändern. */
+export const Composer = memo(function Composer(props: Props) { return <ComposerInner key={props.session.id} {...props} />; });
