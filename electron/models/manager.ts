@@ -1,11 +1,12 @@
 // Modell-Manager: Downloads (Fortschritt, Pause, Abbruch, Wiederaufnahme), Import lokaler Modelle und Registrierung.
-import { rmSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { readdirSync, rmdirSync, rmSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 import type { ModelRecord } from '../../shared/models';
 import { describeModel, inspectLocal } from './inspect';
 import { loadablePath } from '../../shared/selection';
 import { downloadFile, modelInfo, resolveUrl, searchModels, type HfModelInfo } from './hf';
 import { dataDir } from '../store';
+import { listModels } from './registry';
 
 export const modelsDir = () => join(dataDir(), 'models');
 
@@ -87,12 +88,15 @@ export async function startDownload(info: HfModelInfo, paths: string[], emit: Em
     emit({ ...state, files: state.files.map((f) => ({ ...f })) });
   };
   push();
+  // Fortschritt höchstens alle 250 ms senden (sonst ein IPC-Ereignis je Netzwerk-Chunk).
+  let lastPush = 0;
   try {
     for (const f of state.files) {
       await downloadFile(resolveUrl(info.repo, f.path, info.revision), join(base, f.path), (p) => {
         f.received = p.received;
         f.size = f.size || p.total;
-        push();
+        const now = Date.now();
+        if (now - lastPush >= 250) { lastPush = now; push(); }
       }, ctl.signal, f.size);
       f.received = f.size || f.received;
       push();
@@ -103,6 +107,9 @@ export async function startDownload(info: HfModelInfo, paths: string[], emit: Em
     return toRecord(info, paths, base, state.total);
   } catch (e) {
     const aborted = ctl.signal.aborted;
+    // Abgebrochen/ersetzt: ein später Fehler eines alten Laufs darf keinen neueren Eintrag stören.
+    const current = active.get(id)?.state === state;
+    if (!current) return undefined;
     state.status = aborted ? 'paused' : 'error';
     state.error = aborted ? undefined : (e as Error).message;
     push();
@@ -182,6 +189,34 @@ export async function importLocal(path: string): Promise<ModelRecord> {
 /** Entfernt die Dateien eines Modells, sofern sie im Modellordner liegen. Liefert false bei Fremdpfaden (dann nur Registry-Eintrag entfernen). */
 export function deleteFiles(record: ModelRecord): boolean {
   if (!isManaged(record.path)) return false;
-  rmSync(record.path, { recursive: true, force: true });
+  if (record.source !== 'huggingface' || !record.repo) {
+    rmSync(record.path, { recursive: true, force: true });
+    return true;
+  }
+  const base = resolve(join(modelsDir(), record.repo.replace('/', '__')));
+  const others = listModels().filter((m) => m.id !== record.id && m.source === 'huggingface' && m.repo === record.repo);
+  const shared = new Set(others.flatMap((m) => m.files));
+  if (resolve(record.path) === base) {
+    // Ordnermodell: nur löschen, wenn kein anderes Modell denselben Ordner nutzt.
+    if (!others.length) rmSync(base, { recursive: true, force: true });
+    return true;
+  }
+  const dirs = new Set<string>();
+  for (const f of record.files) {
+    if (shared.has(f) || f.split(/[\\/]/).includes('..')) continue;
+    const target = resolve(join(base, f));
+    if (!target.startsWith(base + sep) || !isManaged(target)) continue;
+    rmSync(target, { force: true });
+    rmSync(target + '.part', { force: true });
+    dirs.add(dirname(target));
+  }
+  // Leere Unterordner bis zum Basisordner aufräumen.
+  for (let d of dirs) {
+    while (d.startsWith(base) && readdirSync(d).length === 0) {
+      rmdirSync(d);
+      if (d === base) break;
+      d = dirname(d);
+    }
+  }
   return true;
 }

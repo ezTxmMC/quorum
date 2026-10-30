@@ -53,6 +53,9 @@ function isNewer(remoteTag: string, curVer: string, targetChannel: UpdateChannel
   // Wenn aktuelle Version nicht geparst werden kann (z.B. dev build "1.0.0"), ist ein Release verfügbar
   if (!cur) return true;
 
+  // Gleicher Kanal: nur echte Fortschritte zählen (identischer Tag ist kein Update).
+  if (remote.channel === cur.channel) return remote.channel === 'dev' ? String(remote.id) !== String(cur.id) : (remote.id as number) > (cur.id as number);
+
   // Wenn wir auf dev-Kanal sind
   if (targetChannel === 'dev') {
     if (remote.channel === 'dev' && cur.channel === 'dev') {

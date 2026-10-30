@@ -148,7 +148,7 @@ export async function runWorkflow(wf: WorkflowDef, opts: RunOptions): Promise<Ru
         }
         // CLI-Anbieter: nur lesend, in einem leeren Arbeitsordner.
         const prompt = node.config.system ? `${node.config.system}\n\n---\n\n${user}` : user;
-        const options = engine.provider === 'codex' ? { sandbox: 'read-only' } : { permission: 'plan' };
+        const options = engine.provider === 'codex' ? { sandbox: 'read-only' } : engine.provider === 'opencode' ? { agent: 'plan' } : { permission: 'plan' };
         const res = await runCli({ runId: nodeRun, provider: engine.provider, cwd: scratchDir(), prompt, options }, () => {}, opts.binaries);
         if (!res.ok) throw new Error(`${engine.provider} fehlgeschlagen`);
         return { text: res.text.trim() };
@@ -204,7 +204,7 @@ export async function runWorkflow(wf: WorkflowDef, opts: RunOptions): Promise<Ru
     const retries = Math.max(0, node.config.retries ?? 0);
     const nodeRun = `${opts.runId}/${node.id}`;
     // Abbruch des Laufs stoppt auch den laufenden Prozess dieses Knotens (CLI oder Modell).
-    const stop = () => cancelRun(nodeRun);
+    const stop = () => { cancelRun(nodeRun); cancelWorkflowRun(nodeRun); };
     ctl.signal.addEventListener('abort', stop, { once: true });
     for (let attempt = 0; ; attempt++) {
       st.attempts = attempt + 1;

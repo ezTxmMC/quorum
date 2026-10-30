@@ -1,5 +1,16 @@
 import type { HubEvent, Message } from '@shared/types';
 
+// Werkzeug-Ein-/Ausgaben werden im Chat-Zustand begrenzt (sonst wächst hub.json auf viele MB).
+const MAX_OUT = 4096;
+const MAX_IN_STR = 2048;
+const capText = (s: string, max: number): string => (s.length <= max + 64 ? s : `${s.slice(0, max)}\n...[${s.length - max} chars cut]`);
+function capInput(v: unknown, depth = 0): unknown {
+  if (typeof v === 'string') return capText(v, MAX_IN_STR);
+  if (depth > 6 || v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) return v.slice(0, 50).map((x) => capInput(x, depth + 1));
+  return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, capInput(x, depth + 1)]));
+}
+
 /** Wendet ein normalisiertes Event auf eine Assistant-Nachricht an (immutabel). */
 export function applyEvent(m: Message, e: HubEvent): Message {
   switch (e.type) {
@@ -21,10 +32,10 @@ export function applyEvent(m: Message, e: HubEvent): Message {
       if (m.blocks.some((b) => b.kind === 'image' && b.path === e.path)) return m;
       return { ...m, blocks: [...m.blocks, { kind: 'image', path: e.path, engine: e.engine }] };
     case 'tool_start':
-      if (m.blocks.some((b) => b.kind === 'tool' && b.id === e.id)) return { ...m, blocks: m.blocks.map((b) => b.kind === 'tool' && b.id === e.id ? { ...b, name: e.name, input: e.input ?? b.input, parentId: e.parentId ?? b.parentId } : b) };
-      return { ...m, blocks: [...m.blocks, { kind: 'tool', id: e.id, name: e.name, input: e.input, running: true, parentId: e.parentId }] };
+      if (m.blocks.some((b) => b.kind === 'tool' && b.id === e.id)) return { ...m, blocks: m.blocks.map((b) => b.kind === 'tool' && b.id === e.id ? { ...b, name: e.name, input: e.input !== undefined ? (capInput(e.input) as typeof e.input) : b.input, parentId: e.parentId ?? b.parentId } : b) };
+      return { ...m, blocks: [...m.blocks, { kind: 'tool', id: e.id, name: e.name, input: e.input === undefined ? undefined : (capInput(e.input) as typeof e.input), running: true, parentId: e.parentId }] };
     case 'tool_end':
-      return { ...m, blocks: m.blocks.map((b) => (b.kind === 'tool' && b.id === e.id ? { ...b, output: e.output, isError: e.isError, running: false } : b)) };
+      return { ...m, blocks: m.blocks.map((b) => (b.kind === 'tool' && b.id === e.id ? { ...b, output: e.output === undefined ? undefined : capText(e.output, MAX_OUT), isError: e.isError, running: false } : b)) };
     case 'usage': {
       const { type: _t, ...u } = e;
       return { ...m, usage: { ...m.usage, ...u } };

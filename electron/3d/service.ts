@@ -183,24 +183,29 @@ export async function exportProject(id: string, format: 'glb' | 'gltf' | 'obj' |
   const dir = projectDir(id);
   const blender = findBlender();
   if (!blender) throw new Error('Blender ist nicht installiert (unter 3D → Werkzeuge installieren).');
-  const work = join(dir, 'work');
+  if (active.has(id)) throw new Error('Für dieses Projekt läuft bereits ein Auftrag.');
+  // Eigener Arbeitsordner je Export: Blender darf nur innerhalb des Workdirs lesen/schreiben,
+  // und work/model.bbmodel gehört dem laufenden Auftrag.
+  const work = join(dir, 'work', `export-${format}`);
+  await fsp.rm(work, { recursive: true, force: true });
   await fsp.mkdir(join(work, 'exports'), { recursive: true });
-  const modelFile = join(dir, 'model.bbmodel');
+  const modelFile = join(work, 'model.bbmodel');
+  await fsp.copyFile(join(dir, 'model.bbmodel'), modelFile);
   const ext = format === 'gltf' ? 'gltf' : format;
   const targetFile = join(work, 'exports', `model.${ext}`);
   const ops: BlenderOp[] = [
     { op: 'bbmodel_to_scene', file: modelFile },
     { op: 'export', format, file: targetFile },
-    { op: 'save_blend', file: join(work, 'model.blend') },
   ];
   const r = await runBlenderOps({ bin: blender, script: blenderScript(pythonDir()), workdir: work, ops });
   if (!r.ok) throw new Error(r.error || 'Export fehlgeschlagen');
   await fsp.mkdir(join(dir, 'exports'), { recursive: true });
   const dst = join(dir, 'exports', `model.${ext}`);
-  await fsp.copyFile(targetFile, dst);
-  try {
-    await fsp.copyFile(join(work, 'model.blend'), join(dir, 'model.blend'));
-  } catch { /* ignore */ }
+  // Alle Begleitdateien mitnehmen (.bin, .mtl, Texturen), sonst ist der Export unvollständig.
+  // model.blend des Projekts bleibt unangetastet (der Nutzer kann es in Blender bearbeiten).
+  for (const name of await fsp.readdir(join(work, 'exports'))) {
+    await fsp.copyFile(join(work, 'exports', name), join(dir, 'exports', name));
+  }
   return dst;
 }
 

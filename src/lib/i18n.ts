@@ -5,6 +5,11 @@ export const setLang = (l: Lang) => { current = l; };
 export const getLang = () => current;
 
 export const en: Record<string, string> = {
+  "Fortsetzen": "Resume",
+  "Ungespeicherte Änderungen verwerfen?": "Discard unsaved changes?",
+  "Vorlage": "Preset",
+  "Lokale Server suchen": "Find local servers",
+  "Keine lokalen Server gefunden.": "No local servers found.",
   "Zuerst den von Quorum gestarteten Server stoppen.": "Stop the server started by Quorum first.",
   "Bitte eine GGUF-Datei wählen.": "Please choose a GGUF file.",
   "Bestehenden Server nur per API verbinden": "Connect existing server through API only",

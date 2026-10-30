@@ -101,6 +101,11 @@ export class LlamaModel implements ChatHandle {
     this.proc.stderr?.on('data', (c: string) => { this.stderr = (this.stderr + c).slice(-8000); });
     this.proc.stdout?.resume();
     const pid = this.proc.pid;
+    // Dauerhafter Listener: ohne ihn wird ein fehlendes Binary zur unbehandelten Ausnahme im Hauptprozess.
+    this.proc.on('error', (e: NodeJS.ErrnoException) => {
+      if (!pid) this.dead = true;
+      this.stderr = e.code === 'ENOENT' ? `llama-server nicht gefunden: ${binaryPath()}` : `llama-server konnte nicht gestartet werden: ${e.message}`;
+    });
     if (pid) trackPid(pid);
     this.proc.on('exit', () => { this.dead = true; if (pid) untrackPid(pid); });
     const until = Date.now() + timeoutMs;

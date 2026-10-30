@@ -27,6 +27,7 @@ const sub = <T>(channel: string, cb: (p: T) => void) => {
 const api = {
   apiSetKey: (id: string, key: string): Promise<{ persistent: boolean }> => ipcRenderer.invoke('api:key', id, key),
   apiHasKey: (id: string): Promise<boolean> => ipcRenderer.invoke('api:has-key', id),
+  apiDiscover: (): Promise<{ name: string; baseUrl: string; models: string[]; needsKey: boolean }[]> => ipcRenderer.invoke('api:discover'),
   apiInspect: (connection: ApiConnection): Promise<string[]> => ipcRenderer.invoke('api:inspect', connection),
   ollamaManage: (): Promise<OllamaManagement> => ipcRenderer.invoke('ollama:manage'),
   ollamaAction: (action: 'load' | 'unload' | 'delete', model: string): Promise<void> => ipcRenderer.invoke('ollama:action', action, model),
@@ -90,6 +91,9 @@ const api = {
   onQuickWake: (cb: () => void) => sub('quick:wake', cb),
   onQuickShow: (cb: () => void) => sub('quick:show', cb),
   onOpenChat: (cb: (id: string) => void) => sub('app:open-chat', cb),
+  /** Ordner aus der Kommandozeile (quorum <Ordner>): beim Start abholen bzw. später per Ereignis. */
+  launchTake: (): Promise<string | null> => ipcRenderer.invoke('launch:take'),
+  onOpenFolder: (cb: (folder: string) => void) => sub('app:open-folder', cb),
   // Lokale Modelle
   models: (): Promise<ModelRecord[]> => ipcRenderer.invoke('models:list'),
   modelSearch: (q: string, filter?: string): Promise<HfSearchHit[]> => ipcRenderer.invoke('models:search', q, filter),

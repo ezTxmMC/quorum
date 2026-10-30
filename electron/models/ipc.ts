@@ -43,10 +43,11 @@ export function registerModelIpc(send: Send): void {
     const id = modelId(repo, primaryOf(files));
     if (downloads().some((d) => d.id === id && d.status === 'running')) throw new Error('Download läuft bereits');
     const info = await repoInfo(repo);
+    if (downloads().some((d) => d.id === id && d.status === 'running')) throw new Error('Download läuft bereits');
     // Läuft im Hintergrund; Fortschritt kommt als Ereignis, das fertige Modell wird registriert.
     void startDownload(info, files, (state) => send('models:download', state))
       .then((record) => { if (record) { putModel(record); send('models:registry', null); } })
-      .catch((err: Error) => send('models:download', { id, status: 'error', error: err.message }));
+      .catch((err: Error) => send('models:download', downloads().find((d) => d.id === id) ?? { id, repo, files: [], received: 0, total: 0, status: 'error', error: err.message }));
     return id;
   });
   ipcMain.handle('models:pause', (_e, id: string) => pauseDownload(id));
@@ -59,9 +60,10 @@ export function registerModelIpc(send: Send): void {
   });
 
   ipcMain.handle('models:remove', async (_e, id: string) => {
+    if (scheduler.isBusy(id)) throw new Error('Modell wird gerade verwendet. Zuerst den Chat stoppen.');
     await scheduler.unload(id);
     const record = removeModel(id);
-    if (record) deleteFiles(record);
+    if (record) { deleteFiles(record); send('models:registry', null); }
     return !!record;
   });
 

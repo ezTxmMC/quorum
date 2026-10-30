@@ -221,7 +221,6 @@ const MODE_MAP: Partial<Record<ProviderId, Partial<Record<ModeId, ProviderOption
     auto: { permission: 'auto' }, full: { fullAccess: true },
   },
   codex: {
-    ask: { sandbox: 'workspace-write', approvalPolicy: 'untrusted' },
     auto: { sandbox: 'workspace-write', approvalPolicy: 'on-request' }, full: { fullAccess: true },
   },
   antigravity: {

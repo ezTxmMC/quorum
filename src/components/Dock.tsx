@@ -22,10 +22,16 @@ const POS_LABELS: Record<DockPos, string> = { left: 'Links', right: 'Rechts', to
 const ISLAND_MARGIN = 16;
 const TOPBAR_H = 40;
 
+/** Letztes Dock-Terminal beendet: Panel nur zuklappen, wenn es sichtbar ist (sonst würde togglePanel es wieder öffnen). */
+function collapseDockTerminal() {
+  const st = useHub.getState();
+  if (st.data.settings.dock.panels.terminal.visible) st.togglePanel('terminal');
+}
+
 /** slot: Platz in der Kopfzeile des Docks – dort zeigt das Terminal seine Tabs direkt neben dem Panel-Namen. */
-export function PanelBody({ id, cwd, slot }: { id: PanelId; cwd: string; slot?: HTMLElement | null }) {
+export function PanelBody({ id, cwd, slot, popout }: { id: PanelId; cwd: string; slot?: HTMLElement | null; popout?: boolean }) {
   switch (id) {
-    case 'terminal': return <TerminalPanel cwd={cwd} slot={slot} onCloseAll={slot !== undefined ? () => useHub.getState().togglePanel('terminal') : undefined} />;
+    case 'terminal': return <TerminalPanel cwd={cwd} slot={slot} popout={popout} onCloseAll={popout ? undefined : collapseDockTerminal} />;
     case 'files': return <FilesPanel cwd={cwd} />;
     case 'agents': return <AgentsPanel />;
     case 'changes': return cwd ? <ChangesPanel cwd={cwd} /> : <div className="p-4 text-muted">{t('Kein Ordner gewählt.')}</div>;
@@ -120,7 +126,10 @@ function Zone({ pos, opened }: { pos: DockPos; opened: Set<PanelId> }) {
         )}
         <div className="relative min-h-0 flex-1">
           {mine.map((p) => (
-            <div key={p.id} className={cx('absolute inset-0', p.id !== cur?.id && 'hidden')}><PanelBody id={p.id} cwd={cwd} slot={p.id === cur?.id ? slot : undefined} /></div>
+            <div key={p.id} className={cx('absolute inset-0', p.id !== cur?.id && 'hidden')}>
+              {/* Nur das Terminal bleibt zugeklappt gemountet (PTYs); der Agenten-Tab läuft nur, solange er aktuell ist. */}
+              {(p.id === 'terminal' || (dock.panels[p.id].visible && (p.id !== 'agents' || p.id === cur?.id))) && <PanelBody id={p.id} cwd={cwd} slot={p.id === cur?.id ? slot : null} />}
+            </div>
           ))}
         </div>
       </section>

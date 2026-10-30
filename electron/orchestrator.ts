@@ -16,10 +16,14 @@ interface Ctx {
   binaries: Partial<Record<ProviderId, string>>;
   worktreeRoot: string;
   /** Welche Agenten haben einen eigenen Worktree? */
-  trees: Map<string, { dir: string; branch: string }>;
+  trees: Map<string, { dir: string; branch: string; keep?: boolean }>;
   stopped: boolean;
   activeRuns: Set<string>;
   activeTurns: Map<string, string>;
+  /** Turns, die der Nutzer einzeln gestoppt hat (zählen nicht als Fehler). */
+  userStopped: Set<string>;
+  /** Fehlgeschlagene Aufgaben/Reviews (für das Gesamtergebnis). */
+  failures: string[];
   stageSeq: number;
   /** Gemeinsames "Blackboard": Zusammenfassung der bisherigen Ergebnisse. */
   board: string[];
@@ -39,6 +43,7 @@ export function stopMulti(multiId: string) {
 export function stopMultiTurn(multiId: string, turnId: string): boolean {
   const runId = active.get(multiId)?.activeTurns.get(turnId);
   if (!runId) return false;
+  active.get(multiId)?.userStopped.add(turnId);
   cancelRun(runId);
   return true;
 }
@@ -55,8 +60,16 @@ function readOnly(agent: AgentSpec): ProviderOptions {
   const o: ProviderOptions = { ...agent.options, fullAccess: false };
   if (agent.provider === 'claude') o.permission = 'plan';
   else if (agent.provider === 'codex') o.sandbox = 'read-only';
+  else if (agent.provider === 'opencode') o.agent = 'plan';
   else o.permission = 'plan';
   return o;
+}
+
+/** Urteil des Reviewers: die LETZTE VERDICT-Zeile zählt (Markdown-Hervorhebung erlaubt, APPROVED_WITH_… zählt nicht). */
+export function parseVerdict(text: string): 'approved' | 'changes' | 'none' {
+  const all = [...text.matchAll(/VERDICT:?[\s*_`"]*(APPROVED|CHANGES_REQUESTED)\b(?!_)/gi)];
+  const last = all[all.length - 1]?.[1]?.toUpperCase();
+  return last === 'APPROVED' ? 'approved' : last === 'CHANGES_REQUESTED' ? 'changes' : 'none';
 }
 
 function writable(agent: AgentSpec, autonomous: boolean): ProviderOptions {
@@ -84,8 +97,8 @@ function clip(s: string, n = 9000): string {
   return s.length > n ? '…' + s.slice(-n) : s;
 }
 
-async function turn(c: Ctx, stageId: string, agent: AgentSpec, prompt: string, opts: { readonly?: boolean; cwd?: string; resume?: boolean } = {}): Promise<{ ok: boolean; output: string }> {
-  if (c.stopped) return { ok: false, output: '' };
+async function turn(c: Ctx, stageId: string, agent: AgentSpec, prompt: string, opts: { readonly?: boolean; cwd?: string; resume?: boolean } = {}): Promise<{ ok: boolean; output: string; stopped?: boolean }> {
+  if (c.stopped) return { ok: false, output: '', stopped: true };
   const turnId = randomUUID();
   const cwd = opts.cwd ?? c.trees.get(agent.id)?.dir ?? c.config.cwd;
   const runId = randomUUID();
@@ -109,7 +122,7 @@ async function turn(c: Ctx, stageId: string, agent: AgentSpec, prompt: string, o
     if (!local.ok) c.emit({ type: 'agent_event', turnId, agentId: agent.id, event: { type: 'done', ok: false, error: local.error } });
     const text = local.text.trim();
     c.emit({ type: 'agent_end', turnId, agentId: agent.id, ok: local.ok, output: text });
-    return { ok: local.ok, output: text };
+    return { ok: local.ok, output: text, stopped: c.stopped || c.userStopped.has(turnId) };
   }
   const options = opts.readonly ? readOnly(agent) : writable(agent, c.config.autonomous);
   const sysPrefix = `${systemFor(agent, c)}\n\n---\n\n`;
@@ -131,7 +144,7 @@ async function turn(c: Ctx, stageId: string, agent: AgentSpec, prompt: string, o
   if (res.sessionId) c.providerSessions.set(agent.id, res.sessionId);
   const output = res.text.trim();
   c.emit({ type: 'agent_end', turnId, agentId: agent.id, ok: res.ok, output });
-  return { ok: res.ok, output };
+  return { ok: res.ok, output, stopped: c.stopped || c.userStopped.has(turnId) };
 }
 
 const EN: [string, string][] = [
@@ -140,6 +153,9 @@ const EN: [string, string][] = [
   ['Worktree für', 'Worktree for'], ['Merge-Konflikte', 'Merge conflicts'], ['Merge ', 'Merge '], ['Review noch nicht freigegeben – maximale Runden erreicht.', 'Review not approved yet – max rounds reached.'],
   ['Abgebrochen.', 'Cancelled.'], ['Keine Agenten ausgewählt.', 'No agents selected.'], ['Planung fehlgeschlagen', 'Planning failed'], ['fehlgeschlagen', 'failed'],
   ['Interner Fehler im Orchestrator.', 'Internal orchestrator error.'], ['Nicht freigegeben nach', 'Not approved after'], ['Runden', 'rounds'], ['Review freigegeben.', 'Review approved.'],
+  ['übersprungen: Abhängigkeit fehlgeschlagen', 'skipped: dependency failed'], ['(übersprungen)', '(skipped)'], ['Review fehlgeschlagen', 'Review failed'], ['Fehlgeschlagen:', 'Failed:'],
+  ['Merge fehlgeschlagen', 'Merge failed'], ['bleibt erhalten', 'is kept'], ['Review ohne VERDICT-Zeile', 'Review without VERDICT line'], ['gilt als Änderungswunsch', 'counts as changes requested'], ['unbekannter Fehler', 'unknown error'],
+  ['Commit von', 'Commit by'], ['fehlgeschlagen – Änderungen bleiben in', 'failed – changes stay in'],
 ];
 const loc = (c: Ctx, s: string) => (c.config.lang === 'en' ? EN.reduce((acc, [de, en]) => acc.split(de).join(en), s) : s);
 
@@ -222,8 +238,22 @@ async function planExecute(c: Ctx) {
   // 2. Ausführung in Wellen
   await setupTrees(c, [...new Set(tasks.map((t) => t.assignee))]);
   const done = new Set<string>();
+  const failedIds = new Set<string>();
   let pending = [...tasks];
   while (pending.length && !c.stopped) {
+    // Aufgaben, die von fehlgeschlagenen abhängen, überspringen (auch transitiv).
+    for (let again = true; again;) {
+      again = false;
+      for (const t of pending) {
+        if (!failedIds.has(t.id) && t.dependsOn.some((d) => failedIds.has(d))) {
+          failedIds.add(t.id); again = true;
+          c.failures.push(`${t.title} (übersprungen)`);
+          c.emit({ type: 'log', level: 'error', text: `${t.title} übersprungen: Abhängigkeit fehlgeschlagen` });
+        }
+      }
+    }
+    pending = pending.filter((t) => !failedIds.has(t.id));
+    if (!pending.length) break;
     let wave = pending.filter((t) => t.dependsOn.every((d) => done.has(d) || !tasks.some((x) => x.id === d)));
     if (!wave.length) wave = [pending[0]]; // Zyklus auflösen
     pending = pending.filter((t) => !wave.includes(t));
@@ -238,7 +268,11 @@ async function planExecute(c: Ctx) {
       for (const t of ts) {
         const r = await turn(c, s, agent, `Gesamtziel:\n${c.config.goal}\n\nDeine Aufgabe (${t.id}: ${t.title}):\n${t.description}${boardText(c)}\n\nFühre die Aufgabe jetzt aus. Schließe mit einer kurzen Zusammenfassung deiner Änderungen ab.`);
         c.board.push(`### ${agent.name} · ${t.title}\n${clip(r.output, 2500)}`);
-        done.add(t.id);
+        if (!r.ok && !r.stopped) {
+          failedIds.add(t.id);
+          c.failures.push(`${agent.name} · ${t.title}`);
+          c.emit({ type: 'log', level: 'error', text: `${agent.name} · ${t.title} fehlgeschlagen` });
+        } else done.add(t.id);
       }
       await commitTree(c, agent, 'Aufgaben abgeschlossen');
     };
@@ -251,6 +285,7 @@ async function planExecute(c: Ctx) {
   await mergeTrees(c);
 
   // 3. Review (+ eine Korrekturrunde je Runde)
+  let reviewFailed = false;
   const reviewers = byRole(c, 'reviewer');
   for (let round = 1; round <= Math.max(0, c.config.rounds) && reviewers.length && !c.stopped; round++) {
     s = stage(c, `Review ${round}`, reviewers);
@@ -258,8 +293,16 @@ async function planExecute(c: Ctx) {
     const reviews = await Promise.all(reviewers.map((r) => turn(c, s, r,
       `Ziel:\n${c.config.goal}${boardText(c)}${snap}\n\nPrüfe den aktuellen Stand des Projekts (nur lesen). Beende deine Antwort mit genau einer Zeile: "VERDICT: APPROVED" oder "VERDICT: CHANGES_REQUESTED" und liste davor konkrete Mängel.`, { readonly: true })));
     endStage(c, s);
-    const rejected = reviews.filter((r) => /VERDICT:\s*CHANGES_REQUESTED/i.test(r.output));
+    const failedReviews = reviews.filter((r) => !r.ok && !r.stopped);
+    if (failedReviews.length) {
+      reviewFailed = true;
+      c.failures.push('Review fehlgeschlagen');
+      c.emit({ type: 'log', level: 'warn', text: 'Review fehlgeschlagen' });
+    }
+    // Reviewer ohne VERDICT-Zeile gelten nicht als Freigabe.
+    const rejected = reviews.filter((r) => r.ok && parseVerdict(r.output) !== 'approved');
     reviews.forEach((r, i) => c.board.push(`### Review ${reviewers[i].name}\n${clip(r.output, 2500)}`));
+    if (failedReviews.length && !rejected.length) break; // kein Feedback: Korrektur wäre leer
     if (!rejected.length) break;
     if (round === c.config.rounds) { c.emit({ type: 'log', level: 'warn', text: 'Review noch nicht freigegeben – maximale Runden erreicht.' }); break; }
     const fixer = exec[0];
@@ -272,7 +315,9 @@ async function planExecute(c: Ctx) {
   s = stage(c, 'Zusammenfassung', [planner]);
   const sum = await turn(c, s, planner, `Fasse das Ergebnis für den Nutzer zusammen: was wurde getan, was ist offen, wie kann man es prüfen?${boardText(c)}${await snapshot(c)}`, { readonly: true });
   endStage(c, s);
-  c.emit({ type: 'finished', ok: !c.stopped, summary: sum.output });
+  const ok = !c.stopped && !c.failures.length && !reviewFailed && sum.ok;
+  const summary = c.failures.length ? `${sum.output}\n\nFehlgeschlagen:\n${c.failures.map((f) => `- ${f}`).join('\n')}`.trim() : sum.output;
+  c.emit({ type: 'finished', ok, summary });
 }
 
 async function pipeline(c: Ctx) {
@@ -337,8 +382,12 @@ async function reviewLoop(c: Ctx) {
     const snap = await snapshot(c);
     const v = await turn(c, s, rev, `Aufgabe:\n${c.config.goal}\n\nUmsetzer-Bericht:\n${clip(w.output, 4000)}${snap}\n\nPrüfe den Ist-Zustand des Projekts (nur lesen). Ende mit "VERDICT: APPROVED" oder "VERDICT: CHANGES_REQUESTED" und liste davor konkrete Mängel.`, { readonly: true });
     endStage(c, s);
+    // Ein fehlgeschlagener Reviewer (leere Ausgabe) ist keine Freigabe und kein Feedback.
+    if (!v.ok || !v.output.trim()) { if (v.stopped) break; return fail(c, `${rev.name} fehlgeschlagen`); }
     feedback = v.output;
-    if (/VERDICT:\s*APPROVED/i.test(v.output)) { approved = true; break; }
+    const verdict = parseVerdict(v.output);
+    if (verdict === 'approved') { approved = true; break; }
+    if (verdict === 'none') c.emit({ type: 'log', level: 'warn', text: `Review ohne VERDICT-Zeile (${rev.name}) – gilt als Änderungswunsch.` });
   }
   c.emit({ type: 'finished', ok: approved, summary: approved ? 'Review freigegeben.' : `Nicht freigegeben nach ${c.config.rounds} Runden.\n\n${feedback}` });
 }
@@ -365,7 +414,14 @@ async function setupTrees(c: Ctx, agentIds: string[]) {
 
 async function commitTree(c: Ctx, agent: AgentSpec, msg: string) {
   const t = c.trees.get(agent.id);
-  if (t) await G.commitAll(t.dir, `${agent.name}: ${msg}`);
+  if (!t) return;
+  await G.commitAll(t.dir, `${agent.name}: ${msg}`);
+  // Commit fehlgeschlagen (Hook, Signierung)? Dann bleibt der Worktree samt Arbeit erhalten.
+  const st = await G.git(t.dir, ['status', '--porcelain']);
+  if (st.out.trim()) {
+    t.keep = true;
+    c.emit({ type: 'log', level: 'error', text: `Commit von ${agent.name} fehlgeschlagen – Änderungen bleiben in ${t.dir} (Branch ${t.branch}).` });
+  }
 }
 
 async function mergeTrees(c: Ctx) {
@@ -374,6 +430,13 @@ async function mergeTrees(c: Ctx) {
   for (const [id, t] of c.trees) {
     const res = await G.mergeBranch(c.config.cwd, t.branch);
     if (res.ok) { c.emit({ type: 'log', level: 'info', text: `Merge ${id}: ok` }); continue; }
+    if (!res.conflicts.length) {
+      // Kein inhaltlicher Konflikt (z. B. unsaubere Arbeitskopie, Signierung): kein Resolver-Turn, Branch bleibt erhalten.
+      if (await G.mergeInProgress(c.config.cwd)) await G.abortMerge(c.config.cwd);
+      t.keep = true;
+      c.emit({ type: 'log', level: 'error', text: `Merge fehlgeschlagen (${id}): ${res.message.trim() || 'unbekannter Fehler'} – Branch ${t.branch} bleibt erhalten.` });
+      continue;
+    }
     c.emit({ type: 'log', level: 'warn', text: `Merge-Konflikte (${id}): ${res.conflicts.join(', ')}` });
     await turn(c, s, lead(c), `Beim Mergen von Branch ${t.branch} sind Konflikte in diesen Dateien aufgetreten:\n${res.conflicts.join('\n')}\n\nLöse sie im Arbeitsverzeichnis (Konfliktmarker entfernen, beide Absichten erhalten), führe \`git add\` für die Dateien aus und schließe den Merge mit \`git commit --no-edit\` ab.`, { cwd: c.config.cwd });
     if (await G.mergeInProgress(c.config.cwd)) {
@@ -384,7 +447,8 @@ async function mergeTrees(c: Ctx) {
   }
   endStage(c, s);
   for (const [, t] of c.trees) {
-    // Nur aufräumen, wenn der Branch vollständig gemergt ist.
+    // Nur aufräumen, wenn der Branch vollständig gemergt ist und der Worktree sauber ist.
+    if (t.keep || (await G.git(t.dir, ['status', '--porcelain'])).out.trim()) continue;
     const merged = await G.git(c.config.cwd, ['branch', '--merged', 'HEAD', '--list', t.branch]);
     if (merged.out.includes(t.branch)) await G.removeWorktree(c.config.cwd, t.dir, t.branch);
   }
@@ -398,7 +462,7 @@ function fail(c: Ctx, msg: string) {
 export async function startMulti(multiId: string, config: MultiConfig, emit: Emit, binaries: Partial<Record<ProviderId, string>>, dataDir: string) {
   const c: Ctx = {
     multiId, config: { ...config, agents: config.agents.map((a) => ({ ...a })) }, emit: (e) => emit(e.type === 'log' ? { ...e, text: loc(c, e.text) } : e.type === 'finished' ? { ...e, summary: e.summary.replace(/^[^\n]{1,100}/, (first) => loc(c, first)) } : e), binaries,
-    worktreeRoot: join(dataDir, 'worktrees'), trees: new Map(), stopped: false, activeRuns: new Set(), activeTurns: new Map(), stageSeq: 0, board: [], providerSessions: new Map(),
+    worktreeRoot: join(dataDir, 'worktrees'), trees: new Map(), stopped: false, activeRuns: new Set(), activeTurns: new Map(), userStopped: new Set(), failures: [], stageSeq: 0, board: [], providerSessions: new Map(),
   };
   active.set(multiId, c);
   try {

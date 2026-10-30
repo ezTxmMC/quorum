@@ -1,11 +1,9 @@
 import { IMAGE_ENGINES } from '../shared/catalog';
-import { net, protocol } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import { copyFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { extname, join, resolve, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { extname, join } from 'node:path';
 import type { HubEvent, ProviderId } from '../shared/types';
 import { dataDir } from './store';
 
@@ -84,21 +82,6 @@ export class ImageCollector {
     await this.scan(true);
     if (this.provider === 'antigravity') { await new Promise((r) => setTimeout(r, 800)); await this.scan(true); }
   }
-}
-
-/** Vor app.ready aufrufen. */
-export function registerImageScheme() {
-  protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
-}
-
-/** quorum-img://local/<pfad> – liefert nur Dateien aus dem Bilderordner der App aus. */
-export function handleImageScheme() {
-  protocol.handle(SCHEME, (req) => {
-    // Pfad ist komplett URL-kodiert: quorum-img://local/%2Fhome%2F…
-    const p = resolve(decodeURIComponent(new URL(req.url).pathname.slice(1)));
-    if (!p.startsWith(resolve(imagesDir()) + sep)) return new Response('Forbidden', { status: 403 });
-    return net.fetch(pathToFileURL(p).toString());
-  });
 }
 
 // ---- Bildmodus: Prompt für die Engine ------------------------------------------------------------------------------

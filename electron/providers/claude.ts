@@ -1,7 +1,7 @@
 import { canonicalModel } from '../../shared/catalog.ts';
 import type { HubEvent, RunRequest } from '../../shared/types';
 import type { LineParser } from './runner';
-import { splitArgs } from './args.ts';
+import { splitArgs, splitRules } from './args.ts';
 
 export function buildClaude(req: RunRequest): { args: string[]; stdin: string; live: boolean } {
   const o = req.options;
@@ -15,8 +15,8 @@ export function buildClaude(req: RunRequest): { args: string[]; stdin: string; l
   else if (o.permission) args.push('--permission-mode', o.permission);
   for (const d of o.addDirs ?? []) args.push('--add-dir', d);
   if (o.systemPrompt) args.push('--append-system-prompt', o.systemPrompt);
-  if (o.allowedTools) args.push('--allowedTools', ...splitArgs(o.allowedTools.replace(/,/g, ' ')));
-  if (o.disallowedTools) args.push('--disallowedTools', ...splitArgs(o.disallowedTools.replace(/,/g, ' ')));
+  if (o.allowedTools) args.push('--allowedTools', ...splitRules(o.allowedTools));
+  if (o.disallowedTools) args.push('--disallowedTools', ...splitRules(o.disallowedTools));
   if (o.mcpConfig) args.push('--mcp-config', o.mcpConfig);
   if (o.agentsJson) args.push('--agents', o.agentsJson);
   if (o.maxBudgetUsd) args.push('--max-budget-usd', String(o.maxBudgetUsd));

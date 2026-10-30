@@ -57,7 +57,7 @@ interface State {
   /** Nachrichten, die auf das Ende des laufenden Laufs warten (je Chat). */
   queued: Record<string, { id: string; text: string; images?: string[]; attachments?: Attachment[] }[]>;
   /** Sendet auch während eines Laufs: direkt zustellen (wenn der Anbieter es kann) oder einreihen. */
-  submit: (sessionId: string, text: string, opts?: { images?: string[]; attachments?: Attachment[]; mode?: 'direct' | 'queue' }) => Promise<void>;
+  submit: (sessionId: string, text: string, opts?: { images?: string[]; attachments?: Attachment[]; mode?: 'direct' | 'queue' }) => Promise<boolean>;
   unqueue: (sessionId: string, id: string) => void;
   /** Chat-Optionen (Seitenpanel) – wird in der Titelleiste umgeschaltet. */
   chatOptionsOpen: boolean;
@@ -118,6 +118,17 @@ function contextPreamble(s: ChatSession): string {
   return `[Bisheriger Gesprächsverlauf mit einem anderen Assistenten – nur als Kontext:]\n${lines.join('\n\n')}\n\n[Aktuelle Nachricht des Nutzers:]\n`;
 }
 
+/** Nachrichten, die seit der letzten Antwort des aktuellen Anbieters von einem anderen Anbieter geschrieben wurden (sonst leer). */
+function missedMessages(s: ChatSession): Message[] {
+  let idx = -1;
+  for (let i = s.messages.length - 1; i >= 0; i--) {
+    const m = s.messages[i];
+    if (m.role === 'assistant' && (m.provider === undefined || m.provider === s.provider)) { idx = i; break; }
+  }
+  const rest = s.messages.slice(idx + 1);
+  return rest.some((m) => m.role === 'assistant' && m.provider !== undefined && m.provider !== s.provider) ? rest : [];
+}
+
 /** Läufe ohne Chat-Ziel (z. B. Zusammenfassung beim Kompaktieren): Events gehen direkt an den Sammler. */
 const collectors = new Map<string, (e: HubEvent) => void>();
 /** Fehlertexte, die auf ein erreichtes Nutzungs-/Ratenlimit hindeuten. */
@@ -128,6 +139,8 @@ const fallbackList = (s: ChatSession, settings: Persisted['settings']) => s.fall
 let autoImporting = false;
 let lastRemote: Persisted | null = null;
 const localMultiIds = new Set<string>();
+/** Zeitpunkt des letzten Leseversuchs der Limit-Werte je Anbieter (auch fehlgeschlagene) – verhindert Endlos-Nachlesen. */
+const limitsTriedAt = new Map<string, number>();
 
 export const useHub = create<State>((set, get) => {
   const mutData = (fn: (d: Persisted) => Persisted) => set((s) => ({ data: fn(s.data) }));
@@ -186,7 +199,6 @@ export const useHub = create<State>((set, get) => {
 
     applyRemote(remote) {
       // Änderungen aus einem anderen Fenster übernehmen – laufende lokale Läufe dabei nicht überschreiben.
-      lastRemote = remote;
       set((st) => {
         const running = new Set(Object.values(st.runs).map((r) => r.sessionId));
         const local = new Map(st.data.sessions.filter((s) => running.has(s.id)).map((s) => [s.id, s]));
@@ -194,7 +206,9 @@ export const useHub = create<State>((set, get) => {
         for (const [id, s] of local) if (!sessions.some((x) => x.id === id)) sessions.unshift(s);
         const localMulti = new Map(st.data.multiRuns.filter((r) => localMultiIds.has(r.id) && r.status === 'running').map((r) => [r.id, r]));
         const multiRuns = remote.multiRuns.map((r) => localMulti.get(r.id) ?? r);
-        return { data: { ...remote, sessions, multiRuns } };
+        const next = { ...remote, sessions, multiRuns };
+        lastRemote = next; // vor den Subscribern setzen, damit das Ergebnis nicht zurückgespeichert/-gesendet wird
+        return { data: next };
       });
     },
     maximizedPanel: null,
@@ -286,13 +300,14 @@ export const useHub = create<State>((set, get) => {
       const targets = only ? [only] : (['claude', 'antigravity'] as const);
       for (const p of targets) {
         const st = get().statuses[p];
-        if (!st?.installed || get().cliUsageBusy[p]) continue;
+        if (!st?.installed) { limitsTriedAt.set(p, Date.now()); continue; }
+        if (get().cliUsageBusy[p]) continue;
         set((s) => ({ cliUsageBusy: { ...s.cliUsageBusy, [p]: true } }));
         try {
           const res = await queryCliUsage(p, '');
           // Ein fehlgeschlagener Versuch überschreibt keine bereits gelesenen Werte.
           if (res.ok || !get().cliUsage[p]?.ok) set((s) => ({ cliUsage: { ...s.cliUsage, [p]: res } }));
-        } finally { set((s) => ({ cliUsageBusy: { ...s.cliUsageBusy, [p]: false } })); }
+        } finally { limitsTriedAt.set(p, Date.now()); set((s) => ({ cliUsageBusy: { ...s.cliUsageBusy, [p]: false } })); }
       }
     },
     async autoImport() {
@@ -334,7 +349,9 @@ export const useHub = create<State>((set, get) => {
       }
       const providerSession = s.providerSessions[s.provider];
       const isApi = isTextOnly(s.provider);
-      const prompt = !isApi && !providerSession && !opts.continueLast && s.messages.length ? contextPreamble(s) + text : text;
+      // Wurde zwischenzeitlich von einem anderen Anbieter geantwortet, bekommt die fortgesetzte Session die verpassten Nachrichten als Kontext.
+      const missed = providerSession && !opts.continueLast ? missedMessages(s) : [];
+      const prompt = !isApi && !opts.continueLast && s.messages.length && (!providerSession || missed.length) ? contextPreamble(missed.length ? { ...s, messages: missed } : s) + text : text;
       // Ollama-Chat (API) hat keine eigene Session: der Verlauf kommt aus dem Hub.
       const history = isApi ? s.messages.slice(-40).map((m) => ({ role: m.role === 'assistant' ? 'assistant' as const : 'user' as const, content: m.role === 'system' ? `[Zusammenfassung des früheren Verlaufs]\n${messageText(m)}` : messageText(m) })).filter((m) => m.content) : undefined;
       mutSession(sessionId, (x) => ({
@@ -360,21 +377,27 @@ export const useHub = create<State>((set, get) => {
     unqueue(sessionId, id) { set((st) => ({ queued: { ...st.queued, [sessionId]: (st.queued[sessionId] ?? []).filter((q) => q.id !== id) } })); },
     async submit(sessionId, text, opts = {}) {
       const s = get().data.sessions.find((x) => x.id === sessionId);
-      if (!s) return;
+      if (!s) return false;
       if (!get().isRunning(sessionId)) {
-        if (!(await get().checkLimit(sessionId))) return;
-        get().send(sessionId, text, { images: opts.images, attachments: opts.attachments });
-        return;
+        if (!(await get().checkLimit(sessionId))) return false;
+        // Währenddessen kann ein anderer Lauf gestartet sein – dann einreihen statt stillschweigend zu verwerfen.
+        if (!get().isRunning(sessionId)) {
+          get().send(sessionId, text, { images: opts.images, attachments: opts.attachments });
+          return true;
+        }
+        set((st) => ({ queued: { ...st.queued, [sessionId]: [...(st.queued[sessionId] ?? []), { id: uid(), text, images: opts.images, attachments: opts.attachments }] } }));
+        return true;
       }
       const route = Object.entries(get().runs).find(([, r]) => r.sessionId === sessionId);
       if ((chatMode(s.options) === 'text' || chatMode(s.options) === 'coding') && opts.mode === 'direct' && route && DIRECT_MESSAGES[s.provider] && s.options.liveInput !== false) {
         const full = opts.images?.length ? `${opts.images.map((p) => `@${p}`).join(' ')}\n\n${text}` : text;
         if (await hub.inject(route[0], full, opts.attachments)) {
           mutSession(sessionId, (x) => ({ ...x, messages: x.messages.map((m) => (m.id === route[1].messageId ? { ...m, blocks: [...m.blocks, { kind: 'inject' as const, text }] } : m)) }));
-          return;
+          return true;
         }
       }
       set((st) => ({ queued: { ...st.queued, [sessionId]: [...(st.queued[sessionId] ?? []), { id: uid(), text, images: opts.images, attachments: opts.attachments }] } }));
+      return true;
     },
 
     createMulti(config, title) {
@@ -506,6 +529,7 @@ export const useHub = create<State>((set, get) => {
     async refreshLimits(provider) {
       if (provider === 'codex') {
         const r = await hub.usage().catch(() => null);
+        limitsTriedAt.set('codex', Date.now());
         if (r) set({ codexLimits: r.codexLimits, codexLimitsAt: Date.now() });
       } else if (provider === 'claude' || provider === 'antigravity') {
         // Läuft bereits eine Abfrage, auf deren Ende warten statt eine zweite zu starten.
@@ -517,7 +541,7 @@ export const useHub = create<State>((set, get) => {
     async checkLimit(sessionId) {
       if (!get().data.sessions.find((x) => x.id === sessionId)?.limit) return true;
       const en = get().data.settings.language === 'en';
-      const stale = (p: ProviderId) => Date.now() - (p === 'codex' ? get().codexLimitsAt : get().cliUsage[p as 'claude' | 'antigravity']?.at ?? 0) > 60_000;
+      const stale = (p: ProviderId) => Date.now() - Math.max(p === 'codex' ? get().codexLimitsAt : get().cliUsage[p as 'claude' | 'antigravity']?.at ?? 0, limitsTriedAt.get(p) ?? 0) > 60_000;
       const read = (cur: ChatSession) => {
         const meters = currentMeters(cur.provider, get().cliUsage[cur.provider as 'claude' | 'antigravity'], get().codexLimits);
         return limitUsage(cur.limit!, meters);
@@ -623,7 +647,8 @@ function flush() {
       if (!next || st.isRunning(sid)) return;
       useHub.setState({ queued: { ...st.queued, [sid]: st.queued[sid].slice(1) } });
       void st.checkLimit(sid).then((ok) => {
-        if (ok) useHub.getState().send(sid, next.text, { images: next.images, attachments: next.attachments });
+        if (ok && useHub.getState().isRunning(sid)) useHub.setState((x) => ({ queued: { ...x.queued, [sid]: [next, ...(x.queued[sid] ?? [])] } }));
+        else if (ok) useHub.getState().send(sid, next.text, { images: next.images, attachments: next.attachments });
         else useHub.setState((x) => ({ queued: { ...x.queued, [sid]: [] } }));
       });
     }, 0);
@@ -693,26 +718,48 @@ export function wireEvents(): () => void {
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let saveSlow = false;
 export function wirePersistence(): () => void {
+  let dirty = false;
   const arm = (ms: number) => {
     saveSlow = ms > 1000;
+    dirty = true;
     saveTimer = setTimeout(() => {
       saveTimer = undefined;
+      dirty = false;
       const run = () => void hub.save(useHub.getState().data);
       if ('requestIdleCallback' in window) (window as unknown as { requestIdleCallback: (cb: () => void, o?: { timeout: number }) => void }).requestIdleCallback(run, { timeout: 2000 });
       else run();
     }, ms);
   };
-  return useHub.subscribe((s, prev) => {
+  // Beim Schließen/Verstecken des Fensters den gedrosselten Speicher nicht verlieren: ausstehende Events anwenden und sofort speichern.
+  const flushNow = () => {
+    if (!dirty || !useHub.getState().ready) return;
+    flush();
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = undefined; }
+    dirty = false;
+    void hub.save(useHub.getState().data);
+  };
+  const onVis = () => { if (document.visibilityState === 'hidden') flushNow(); };
+  window.addEventListener('beforeunload', flushNow);
+  window.addEventListener('pagehide', flushNow);
+  document.addEventListener('visibilitychange', onVis);
+  const unsub = useHub.subscribe((s, prev) => {
     if (!s.ready) return;
-    const busy = Object.keys(s.runs).length > 0;
+    // Nur lokal gestartete Läufe drosseln; ein Fenster, das einen fremden Multi-Lauf nur spiegelt, speichert normal.
+    const busy = Object.keys(s.runs).length > 0 || s.data.multiRuns.some((r) => r.status === 'running' && localMultiIds.has(r.id));
     // Lauf beendet, aber ein langsamer Speichertimer aus der Streaming-Phase steht noch: jetzt zeitnah speichern.
     if (saveTimer && saveSlow && !busy) { clearTimeout(saveTimer); arm(700); return; }
-    if (s.data === prev.data || s.data === lastRemote || (lastRemote && s.data.sessions === lastRemote.sessions && s.data.multiRuns === lastRemote.multiRuns && s.data.settings === lastRemote.settings)) return;
+    if (s.data === prev.data || s.data === lastRemote) return;
     // Drosselung statt Entprellung: Beim Streaming wird nur selten gespeichert (der Klon großer Daten über IPC blockiert die Oberfläche),
     // im Leerlauf fast sofort. Das eigentliche Speichern läuft, wenn der Browser Luft hat.
     if (saveTimer) return;
     arm(busy ? 15000 : 700);
   });
+  return () => {
+    unsub();
+    window.removeEventListener('beforeunload', flushNow);
+    window.removeEventListener('pagehide', flushNow);
+    document.removeEventListener('visibilitychange', onVis);
+  };
 }
 
 export const providerName = (id: ProviderId) => PROVIDERS[id].name;

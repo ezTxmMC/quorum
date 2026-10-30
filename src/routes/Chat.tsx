@@ -28,7 +28,7 @@ export function ChatPage() {
   // Eingabefeld bekommt nur die Teile der Sitzung, die es braucht – so rendert es beim Streamen nicht mit.
   const composerSession = useHubEq(
     (s) => s.data.sessions.find((x) => x.id === id),
-    (a: ChatSession | undefined, b: ChatSession | undefined) => a === b || (!!a && !!b && a.id === b.id && a.provider === b.provider && a.options === b.options && a.cwd === b.cwd && a.modeSettings === b.modeSettings && a.providerSessions === b.providerSessions && a.fallbacks === b.fallbacks),
+    (a: ChatSession | undefined, b: ChatSession | undefined) => a === b || (!!a && !!b && a.id === b.id && a.provider === b.provider && a.options === b.options && a.cwd === b.cwd && a.limit === b.limit && a.modeSettings === b.modeSettings && a.providerSessions === b.providerSessions && a.fallbacks === b.fallbacks),
   );
   const panelPresence = usePresence(optionsOpen, 170);
   // Modell aus dem Chat: wird die Projekt-ID gemeldet, zeigt die Ansicht rechts das Modell.
@@ -80,7 +80,7 @@ export function ChatPage() {
   useEffect(() => { if (session) setActiveCwd(session.cwd); }, [session?.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
   const onStopRun = useCallback(() => cancel(id), [cancel, id]);
   const onOpenModel = useCallback((projectId: string) => { patchSession(id, { modelProjectId: projectId }); setModelPaneOpen(true); }, [patchSession, id]);
-  const onSendMsg = useCallback((txt: string, imgs: string[], mode: 'direct' | 'queue', attachments: import('@shared/types').Attachment[]) => void submit(id, txt, { images: imgs, mode, attachments }), [submit, id]);
+  const onSendMsg = useCallback((txt: string, imgs: string[], mode: 'direct' | 'queue', attachments: import('@shared/types').Attachment[]) => submit(id, txt, { images: imgs, mode, attachments }), [submit, id]);
   const commandRef = useRef<(cmd: string, arg: string) => boolean>(() => false);
   const onCommandStable = useCallback((cmd: string, arg: string) => commandRef.current(cmd, arg), []);
   if (!session) return <Navigate to="/" replace />;

@@ -1,6 +1,6 @@
 import { t } from '@/lib/i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useBlocker, useNavigate, useParams } from 'react-router-dom';
 import type { ModelRecord } from '@shared/models';
 import { KIND_LABEL, validateWorkflow, type NodeKind, type WorkflowDef, type WorkflowNode } from '@shared/workflow';
 import type { RunEvent, NodeState, RunRecord } from '../../electron/workflows/engine';
@@ -172,7 +172,7 @@ function NodeEditor({ node, nodes, models, workflows, selfId, onChange, onRemove
         </Field>
       )}
 
-      {node.kind !== 'output' && node.kind !== 'input' && (
+      {node.kind !== 'input' && (
         <div>
           <div className="mb-1 text-[11.5px] text-subtle">{t('Eingänge')}</div>
           <div className="flex flex-wrap gap-2">
@@ -238,6 +238,12 @@ function WorkflowEditor({ id }: { id: string }) {
   const [name, setName] = useState('');
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
   const [dirty, setDirty] = useState(false);
+  // Ungespeicherte Änderungen nicht stillschweigend verwerfen (nur In-App-Navigation).
+  const blocker = useBlocker(dirty);
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    if (window.confirm(t('Ungespeicherte Änderungen verwerfen?'))) blocker.proceed(); else blocker.reset();
+  }, [blocker]);
   const [models, setModels] = useState<ModelRecord[]>([]);
   const [all, setAll] = useState<WorkflowDef[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -282,6 +288,7 @@ function WorkflowEditor({ id }: { id: string }) {
     } catch (e) { setMsg((e as Error).message); }
   };
   const restore = async (version: number) => {
+    if (dirty && !window.confirm(t('Ungespeicherte Änderungen verwerfen?'))) return;
     const w = await hub.wfRestore(id, version);
     if (w) { setWf(w); setName(w.name); setNodes(w.nodes); setDirty(false); setMsg(`${t('Version')} ${version} ${t('wiederhergestellt')} → v${w.version}`); }
   };

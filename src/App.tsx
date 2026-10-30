@@ -78,7 +78,16 @@ export default function App() {
     void take();
     const a = hub.onQuickWake(() => void take());
     const b = hub.onOpenChat((id) => { location.hash = `#/chat/${id}`; });
-    return () => { a(); b(); };
+    // quorum <Ordner>: neuer (bzw. leerer) Chat im Ordner.
+    const openFolder = (folder: string) => {
+      const st = useHub.getState();
+      st.addProject(folder); st.touchProject(folder);
+      const id = st.newSession({ cwd: folder });
+      location.hash = `#/chat/${id}`;
+    };
+    void hub.launchTake().then((f) => { if (f) openFolder(f); });
+    const d = hub.onOpenFolder(openFolder);
+    return () => { a(); b(); d(); };
   }, [ready]);
 
   // Tastenkürzel: Strg+N neues Fenster, Strg+B Seitenleiste, Strg+` Terminal
@@ -206,7 +215,7 @@ function PopoutPage() {
   return (
     <div className="flex h-full flex-col">
       <TopBar minimal />
-      <div className="min-h-0 flex-1 bg-surface"><PanelBody id={panel as PanelId} cwd={sp.get('cwd') ?? ''} /></div>
+      <div className="min-h-0 flex-1 bg-surface"><PanelBody id={panel as PanelId} cwd={sp.get('cwd') ?? ''} popout /></div>
     </div>
   );
 }

@@ -1,12 +1,21 @@
-import { app } from 'electron';
-import { existsSync, mkdirSync, readFileSync, promises as fsp } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_OPTIONS, defaultDock, defaultTerminal } from '../shared/catalog';
 import type { Persisted } from '../shared/types';
 
+/** Datenordner: QUORUM_DATA_DIR, sonst derselbe Ordner wie in der App (~/.config/ai-hub bzw. Application Support / APPDATA). Kein Electron nötig. */
+function defaultDataDir(): string {
+  if (process.env.QUORUM_DATA_DIR) return process.env.QUORUM_DATA_DIR;
+  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Application Support', 'ai-hub');
+  if (process.platform === 'win32') return join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'ai-hub');
+  return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'ai-hub');
+}
+let resolver: () => string = defaultDataDir;
+/** Der Hauptprozess setzt hier app.getPath('userData') (berücksichtigt --user-data-dir). */
+export const setDataDirResolver = (fn: () => string) => { resolver = fn; };
 export const dataDir = () => {
-  const d = app.getPath('userData');
+  const d = resolver();
   mkdirSync(d, { recursive: true });
   return d;
 };
@@ -17,7 +26,7 @@ export function defaults(): Persisted {
     version: 1,
     settings: {
       theme: 'dark',
-      language: 'de',
+      language: /^de/i.test(process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || Intl.DateTimeFormat().resolvedOptions().locale) ? 'de' : 'en',
       sidebarPinned: true,
       quickHotkey: 'CommandOrControl+Shift+Space',
       dock: defaultDock(),
@@ -49,6 +58,8 @@ export function load(): Persisted {
     const raw = JSON.parse(readFileSync(file(), 'utf8')) as Partial<Persisted>;
     return { ...base, ...raw, settings: { ...base.settings, ...raw.settings, providerDefaults: { ...base.settings.providerDefaults, ...raw.settings?.providerDefaults } } };
   } catch {
+    // Unlesbare hub.json: Kopie sichern, bevor der nächste Speichervorgang sie durch Standardwerte ersetzt.
+    try { copyFileSync(file(), join(dataDir(), `hub.corrupt-${Date.now()}.json`)); } catch { /* nichts zu sichern */ }
     return base;
   }
 }
@@ -74,4 +85,16 @@ async function flushSave(): Promise<void> {
 export function save(data: Persisted): void {
   pending = data;
   if (!writing) void flushSave();
+}
+
+/** Beim Beenden: den neuesten Stand synchron schreiben, damit nichts aus der Warteschlange verloren geht. */
+export function flushSaveSync(latest?: Persisted): void {
+  const d = latest ?? pending;
+  pending = null;
+  if (!d) return;
+  try {
+    const tmp = file() + '.sync.tmp';
+    writeFileSync(tmp, JSON.stringify(d));
+    renameSync(tmp, file());
+  } catch { /* beim Beenden nichts mehr zu tun */ }
 }

@@ -96,7 +96,7 @@ function TerminalView({ cwd, shell, active, onExit }: { cwd: string; shell?: str
 interface Tab { key: string; title: string; exited: boolean; shell?: string }
 
 /** Mehrere Terminals als Tabs (je mit eigener Shell); jedes weitere kann auch in einem eigenen Fenster geöffnet werden. */
-export function TerminalPanel({ cwd, slot, onCloseAll }: { cwd: string; slot?: HTMLElement | null; onCloseAll?: () => void }) {
+export function TerminalPanel({ cwd, slot, popout, onCloseAll }: { cwd: string; slot?: HTMLElement | null; popout?: boolean; onCloseAll?: () => void }) {
   const counter = useRef(1);
   const [tabs, setTabs] = useState<Tab[]>([{ key: uid(), title: 'Terminal 1', exited: false }]);
   const [cur, setCur] = useState(tabs[0].key);
@@ -113,7 +113,7 @@ export function TerminalPanel({ cwd, slot, onCloseAll }: { cwd: string; slot?: H
       // Letztes Terminal geschlossen: Panel zuklappen (im eigenen Fenster: Fenster schließen) und beim nächsten Öffnen frisch starten.
       const n = fresh(tabs[0]?.shell);
       setTabs([n]); setCur(n.key);
-      if (onCloseAll) onCloseAll(); else if (slot === undefined) window.close();
+      if (onCloseAll) onCloseAll(); else if (popout) window.close();
       return;
     }
     if (k === cur) setCur(rest[Math.max(0, tabs.findIndex((y) => y.key === k) - 1)].key);
@@ -156,7 +156,7 @@ export function TerminalPanel({ cwd, slot, onCloseAll }: { cwd: string; slot?: H
     </>
   );
   // Im Dock: Tabs inline in der Panel-Kopfzeile direkt neben „Terminal“. Im eigenen Fenster: eigene Leiste.
-  const docked = slot !== undefined;
+  const docked = !popout;
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ background: termBackground(style) }}>
       {docked ? (slot ? createPortal(<div className="flex min-w-0 flex-1 items-center gap-0.5"><span className="mx-1 h-4 w-px shrink-0 bg-edge" /><div className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">{tabStrip}</div>{controls}</div>, slot) : null)

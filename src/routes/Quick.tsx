@@ -51,7 +51,7 @@ export function QuickPage() {
     const p = prompt.trim();
     if (!p) return;
     const base = settings.providerDefaults[choice.provider] ?? {};
-    void hub.quickSubmit({ provider: choice.provider, cwd, options: { ...base, ...choice.options }, prompt: p });
+    void hub.quickSubmit({ provider: choice.provider, cwd, options: { ...base, ...choice.options, chatMode: choice.options.imageGen ? 'image' : choice.cwd ? 'coding' : 'text' }, prompt: p });
     setPrompt('');
   };
 

@@ -21,7 +21,7 @@ function arrayToB64(bytes: Uint8Array): string {
 interface Props {
   session: ChatSession;
   running: boolean;
-  onSend: (text: string, images: string[], mode: 'direct' | 'queue', attachments: Attachment[]) => void;
+  onSend: (text: string, images: string[], mode: 'direct' | 'queue', attachments: Attachment[]) => void | Promise<boolean | void>;
   onStop: () => void;
   onCommand: (cmd: string, arg: string) => boolean;
 }
@@ -175,10 +175,20 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
         if (onCommand(cmd, rest.join(' '))) { setText(''); return; }
       }
     }
-    onSend(t, images, canDirect && !forceQueue ? 'direct' : 'queue', atts);
+    const snap = { images, atts };
+    const res = onSend(t, images, canDirect && !forceQueue ? 'direct' : 'queue', atts);
     setText('');
     setImages([]);
     setAtts([]);
+    // Blockiert das Limit den Versand, kommen Text und Anhänge zurück ins Eingabefeld.
+    if (res) {
+      void res.then((ok) => {
+        if (ok !== false) return;
+        setText((cur) => (cur ? `${t}\n\n${cur}` : t));
+        setImages((cur) => (cur.length ? cur : snap.images));
+        setAtts((cur) => (cur.length ? cur : snap.atts));
+      });
+    }
   };
 
   const onKey = (e: React.KeyboardEvent) => {
@@ -191,6 +201,7 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
   };
 
   const onDrop = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return; // Text-Drops macht das Textfeld selbst
     e.preventDefault();
     void ingest([...e.dataTransfer.files]);
   };
@@ -198,7 +209,7 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
   const meta = PROVIDERS[session.provider];
 
   return (
-    <div className="mx-auto w-full max-w-5xl xl:max-w-6xl px-4 pb-4" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+    <div className="mx-auto w-full max-w-5xl xl:max-w-6xl px-4 pb-4" onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={onDrop}>
       <div className="relative rounded-[18px] border border-edge-strong bg-surface shadow-lg transition-colors focus-within:border-accent/60">
         {items.length > 0 && (
           <div data-state="open" className="pop absolute bottom-full left-0 right-0 z-30 mb-2 max-h-64 overflow-auto rounded-lumen border border-edge-strong bg-overlay p-1 shadow-2xl">

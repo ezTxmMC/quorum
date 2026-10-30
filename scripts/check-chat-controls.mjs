@@ -52,6 +52,12 @@ assert.deepEqual(modelEfforts('codex', { id: 'test', label: 'Test', efforts: ['l
 assert.deepEqual(modelEfforts('codex', { id: 'test', label: 'Test', efforts: [] }), []);
 assert.deepEqual(modelEfforts('antigravity'), ['low', 'medium', 'high']);
 assert(buildClaude(req('claude', { effort: 'xhigh' })).args.includes('xhigh'));
+{
+  const r = buildCodex({ ...req('codex', { sandbox: 'read-only', profile: 'p', oss: true, localProvider: 'ollama', addDirs: ['/tmp'], approvalPolicy: 'untrusted' }), resume: { sessionId: 'abc' } }).args;
+  const ri = r.indexOf('resume');
+  for (const f of ['-s', '-p', '--oss', '--local-provider', '--add-dir', '-C']) assert(r.indexOf(f) >= 0 && r.indexOf(f) < ri, f);
+  assert(!r.join(' ').includes('untrusted'));
+}
 assert(buildCodex(req('codex', { effort: 'ultra' })).args.includes('model_reasoning_effort="ultra"'));
 const agy = buildAntigravity(req('antigravity', { model: 'a-model', effort: 'low' })).args;
 assert(agy.includes('a-model'));
@@ -174,4 +180,17 @@ try {
     assert.deepEqual(payload.messages, [{ role: 'system', content: prompt }, { role: 'user', content: 'Earlier question' }, { role: 'assistant', content: 'Earlier answer' }, { role: 'user', content: 'Hello' }]);
   }
 } finally { globalThis.fetch = originalFetch; }
+// Review: Ziel-Flag ohne '-'-Prompt; ohne Ziel mit stdin-Prompt.
+{
+  const t = buildCodex({ ...req('codex', {}), review: { target: 'uncommitted' } });
+  assert(!t.args.includes('-') && t.stdin === undefined);
+  const n = buildCodex({ ...req('codex', {}), review: { target: 'custom' } });
+  assert.equal(n.args.at(-1), '-');
+  assert.equal(n.stdin, 'Hello');
+  assert.deepEqual(buildClaude(req('claude', { allowedTools: 'Bash(git *) Edit' })).args.slice(buildClaude(req('claude', { allowedTools: 'Bash(git *) Edit' })).args.indexOf('--allowedTools') + 1, -0 || undefined).slice(0, 2), ['Bash(git *)', 'Edit']);
+  assert.deepEqual(buildCodex(req('codex', { extraArgs: '--flag="a b" -c k=\'x y\'' })).args.slice(-4, -1), ['--flag=a b', '-c', 'k=x y']);
+  const p = new CodexParser();
+  assert.deepEqual(p.push(JSON.stringify({ type: 'error', message: 'Reconnecting... 1/5' })), []);
+  assert.equal(p.push(JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 5, reasoning_output_tokens: 3 } }))[0].outputTokens, 5);
+}
 console.log('Chat control checks passed: modes, CLI arguments, effort capabilities, model naming, image targets, activity lifecycle, Ollama tags and system prompts.');

@@ -128,6 +128,11 @@ def chat(req):
                 model.generate(**kwargs)
         except Exception as e:  # wird unten gemeldet
             errors.append(e)
+            # Iterator entsperren, sonst blockiert die Schleife unten für immer
+            try:
+                streamer.end()
+            except Exception:
+                streamer.text_queue.put(streamer.stop_signal)
 
     t = threading.Thread(target=run, daemon=True)
     t.start()

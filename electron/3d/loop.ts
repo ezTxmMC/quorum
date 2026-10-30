@@ -68,7 +68,14 @@ export async function runModelingLoop(start: BbModel, goal: string, deps: LoopDe
       feedback ? `Rückmeldung aus der letzten Runde:\n${feedback}` : '',
       'Gib jetzt die nächsten Änderungen als JSON aus.',
     ].filter(Boolean).join('\n\n');
-    const reply = await deps.chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: user }]);
+    let reply: string;
+    try {
+      reply = await deps.chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: user }]);
+    } catch (e) {
+      // Bereits akzeptierte Runden nicht verwerfen: Teilergebnis zurückgeben.
+      const reason = deps.signal?.aborted ? 'Abgebrochen' : (e as Error).message;
+      return { model, iterations: n - 1, ok: false, reason };
+    }
     if (deps.signal?.aborted) return { model, iterations: n - 1, ok: false, reason: 'Abgebrochen' };
     const plan = parsePlan(reply);
     const candidate = structuredClone(model);
@@ -81,7 +88,8 @@ export async function runModelingLoop(start: BbModel, goal: string, deps: LoopDe
     // Nur ein fehlerfreier Stand wird übernommen; sonst bleibt der letzte gültige und die Fehler gehen als Rückmeldung zurück.
     const hard = validate(candidate).filter((i) => i.level === 'error');
     if (hard.length === 0 && applied.applied > 0) model = candidate;
-    const render = await deps.render(model, n);
+    let render: Awaited<ReturnType<LoopDeps['render']>>;
+    try { render = await deps.render(model, n); } catch (e) { render = { ok: false, error: (e as Error).message } as typeof render; }
     deps.emit({ type: 'render', n, ok: render.ok, png: render.png, error: render.error });
     feedback = [
       errors.length ? `Fehler: ${errors.join('; ')}` : 'Keine Fehler bei den Änderungen.',

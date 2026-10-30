@@ -21,7 +21,7 @@ function walk(dir: string, match: (n: string) => boolean, since: number, out: Fi
 
 // Ergebnis je Datei zwischenspeichern: unveränderte Verläufe (gleiche Größe + mtime) werden nicht erneut gelesen.
 type ClaudeMsg = { t: string; i: number; o: number; c: number };
-type CodexFile = { last: ClaudeMsg | null; limits: UsageReport['codexLimits']; limitsAt: number };
+type CodexFile = { days: [string, ClaudeMsg][]; limits: UsageReport['codexLimits']; limitsAt: number };
 const fileCache = new Map<string, { mtime: number; size: number; claude?: Map<string, ClaudeMsg>; codex?: CodexFile }>();
 const fresh = (f: FileInfo) => { const c = fileCache.get(f.path); return c && c.mtime === f.mtime && c.size === f.size ? c : null; };
 
@@ -66,7 +66,7 @@ export async function scanUsage(): Promise<UsageReport> {
   for (const f of walk(join(homedir(), '.codex', 'sessions'), (n) => n.startsWith('rollout-') && n.endsWith('.jsonl'), since)) {
     let info = fresh(f)?.codex;
     if (!info) {
-    let last: ClaudeMsg | null = null;
+    const perDay = new Map<string, ClaudeMsg>(); // letzter kumulativer Stand je lokalem Tag
     let fLimits: UsageReport['codexLimits'] = null;
     let fAt = 0;
     let content = '';
@@ -78,7 +78,7 @@ export async function scanUsage(): Promise<UsageReport> {
         const p = d.payload;
         if (d.type !== 'event_msg' || p?.type !== 'token_count') continue;
         const u = p.info?.total_token_usage;
-        if (u) last = { t: d.timestamp, i: u.input_tokens ?? 0, o: (u.output_tokens ?? 0) + (u.reasoning_output_tokens ?? 0), c: u.cached_input_tokens ?? 0 };
+        if (u) perDay.set(day(d.timestamp), { t: d.timestamp, i: u.input_tokens ?? 0, o: u.output_tokens ?? 0, c: u.cached_input_tokens ?? 0 });
         const rl = p.rate_limits;
         const ts = Date.parse(d.timestamp);
         if (rl?.primary && ts > fAt) {
@@ -87,12 +87,23 @@ export async function scanUsage(): Promise<UsageReport> {
         }
       } catch { /* defekte Zeile */ }
     }
-    info = { last, limits: fLimits, limitsAt: fAt };
+    info = { days: [...perDay.entries()].sort(([a], [b]) => a.localeCompare(b)), limits: fLimits, limitsAt: fAt };
     fileCache.set(f.path, { mtime: f.mtime, size: f.size, codex: info });
     }
-    const last = info.last;
+    // Die Zähler sind kumulativ je Session: je Tag nur den Zuwachs gegenüber dem Vortagsstand buchen.
     if (info.limits && info.limitsAt > limitsAt) { limitsAt = info.limitsAt; limits = info.limits; }
-    if (last) { const b = byDay[day(last.t)]; if (b) { b.codex.input += last.i; b.codex.output += last.o; b.codex.cached += last.c; b.codex.sessions++; } }
+    let prev = { i: 0, o: 0, c: 0 };
+    for (const [dd, cur] of info.days) {
+      const b = byDay[dd];
+      if (b) {
+        // Zähler-Reset (cur < prev): den neuen Stand als Zuwachs werten.
+        b.codex.input += cur.i >= prev.i ? cur.i - prev.i : cur.i;
+        b.codex.output += cur.o >= prev.o ? cur.o - prev.o : cur.o;
+        b.codex.cached += cur.c >= prev.c ? cur.c - prev.c : cur.c;
+        b.codex.sessions++;
+      }
+      prev = { i: cur.i, o: cur.o, c: cur.c };
+    }
   }
 
   const days = Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).map(([date, v]) => ({ date, ...v }));

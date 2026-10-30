@@ -1,6 +1,6 @@
 // Hugging-Face-Hub-Client: Suche, Modell-Metadaten und Downloads mit Fortschritt, Abbruch und Wiederaufnahme.
 // Downloads landen zuerst als `<datei>.part` und werden erst nach vollständigem Empfang umbenannt.
-import { createWriteStream, existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -101,6 +101,15 @@ export async function downloadFile(
 ): Promise<void> {
   mkdirSync(dirname(dest), { recursive: true });
   const part = dest + '.part';
+  // Bereits vollständig vorhandene Zieldatei (Fortsetzen/Neustart): nicht erneut laden.
+  if (existsSync(dest)) {
+    const size = statSync(dest).size;
+    if (expectedSize === 0 || size === expectedSize) {
+      rmSync(part, { force: true });
+      onProgress({ received: size, total: size });
+      return;
+    }
+  }
   const have = existsSync(part) ? statSync(part).size : 0;
   if (have > 0 && expectedSize > 0 && have >= expectedSize) {
     renameSync(part, dest);

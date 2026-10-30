@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiBaseUrl, type ApiConnection } from '@shared/connections';
+import { API_PRESETS } from '@shared/api-presets';
 import { hub, uid } from '@/lib/api';
 import { useHub } from '@/lib/store';
 import { t } from '@/lib/i18n';
@@ -45,6 +46,7 @@ export function ApiProviderSettings() {
   return <div className="space-y-4">
     <div className="flex items-center justify-between"><h2 className="text-[16px] font-semibold">API</h2><button className="btn" disabled={busy} onClick={() => edit(empty())}><Icon name="lucide:plus" size={13} />{t('API hinzufügen')}</button></div>
     <p className="text-[12px] text-muted">{t('OpenAI-kompatible API verbinden: Basis-URL inklusive /v1, optionaler API-Key und Modell-IDs. Ohne lokale Installation.')}</p>
+    <div className="flex flex-wrap items-center gap-1.5"><span className="text-[11px] text-subtle">{t('Vorlage')}:</span>{API_PRESETS.map((p) => <button key={p.name} className="btn !px-2 !py-0.5 text-[11px]" disabled={busy} onClick={() => { edit({ ...empty(), name: p.name, baseUrl: p.baseUrl }); }}>{p.name}</button>)}<button className="btn !px-2 !py-0.5 text-[11px]" disabled={busy} onClick={() => void act(async () => { const list = await hub.apiDiscover(); if (!list.length) { setMessage(t('Keine lokalen Server gefunden.')); return; } const f = list[0]; edit({ ...empty(), name: f.name, baseUrl: f.baseUrl, models: f.models }); setMessage(list.map((x) => `${x.name} ${x.baseUrl}${x.needsKey ? ' (Key nötig)' : ''}`).join(' · ')); })}><Icon name="lucide:radar" size={12} />{t('Lokale Server suchen')}</button></div>
     <div className="flex flex-wrap gap-2">{connections.map((c) => <button key={c.id} className={cx('btn', c.id === draft.id && 'border-accent text-accent')} disabled={busy} onClick={() => edit(c)}>{c.name}{!c.enabled && ` · ${t('Aus')}`}</button>)}</div>
     <div className="grid grid-cols-2 gap-3"><div><Label>{t('Name')}</Label><input className="field" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Local server" /></div><div><Label>{t('Basis-URL')}</Label><input className="field" value={draft.baseUrl} onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })} placeholder="http://127.0.0.1:8080/v1" /></div></div>
     <div><Label hint={hasKey ? t('Key vorhanden; leer lassen zum Beibehalten') : t('Optional bei lokalen Servern')}>API Key</Label><input className="field" type="password" autoComplete="new-password" value={key} onChange={(e) => setKey(e.target.value)} />{hasKey && <button disabled={busy} className="mt-1 text-[11px] text-muted hover:text-bad" onClick={() => void act(async () => { await hub.apiSetKey(draft.id, ''); setHasKey(false); })}>{t('Gespeicherten Key entfernen')}</button>}</div>

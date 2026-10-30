@@ -87,22 +87,34 @@ export async function runCli(
   // Anhänge aus dem Speicher: Claude (Live-Modus) bekommt Bilder direkt als Base64 im Nachrichtenstrom – ohne Datei.
   // Alle anderen CLIs können nur Dateien lesen: dafür kurzlebige Temp-Dateien, die nach dem Lauf sofort wieder gelöscht werden.
   let tmpDir: string | undefined;
+  const cleanup = () => { if (tmpDir) { void fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {}); tmpDir = undefined; } };
   const atts = req.attachments ?? [];
   const inline = req.provider === 'claude' && !!req.live && req.options.liveInput !== false;
   if (atts.length && !inline) {
-    tmpDir = await fsp.mkdtemp(join(tmpdir(), 'quorum-att-'));
-    const paths: string[] = [];
-    for (let i = 0; i < atts.length; i++) {
-      const a = atts[i];
-      const p = join(tmpDir, `${i + 1}-${a.name.replace(/[^\w.\- ]/g, '_')}`);
-      await fsp.writeFile(p, Buffer.from(a.data, 'base64'));
-      paths.push(p);
+    try {
+      tmpDir = await fsp.mkdtemp(join(tmpdir(), 'quorum-att-'));
+      const paths: string[] = [];
+      for (let i = 0; i < atts.length; i++) {
+        const a = atts[i];
+        const p = join(tmpDir, `${i + 1}-${a.name.replace(/[^\w.\- ]/g, '_')}`);
+        await fsp.writeFile(p, Buffer.from(a.data, 'base64'));
+        paths.push(p);
+      }
+      req = { ...req, images: [...(req.images ?? []), ...paths] };
+    } catch (e) {
+      cleanup();
+      emit({ type: 'done', ok: false, error: (e as Error).message });
+      return { ok: false, text: '' };
     }
-    req = { ...req, images: [...(req.images ?? []), ...paths] };
   }
-  const cleanup = () => { if (tmpDir) { void fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {}); tmpDir = undefined; } };
   return new Promise((resolve) => {
-    const built = build(req);
+    let built: ReturnType<typeof build>;
+    try { built = build(req); } catch (e) {
+      cleanup();
+      emit({ type: 'done', ok: false, error: (e as Error).message });
+      resolve({ ok: false, text: '' });
+      return;
+    }
     let sessionId: string | undefined;
     let text = '';
     let finished = false;
@@ -122,12 +134,22 @@ export async function runCli(
       emit(e);
     };
 
-    const child = spawn(bin, built.args, {
-      cwd: req.cwd,
-      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', TERM: 'dumb' },
-      stdio: ['pipe', 'pipe', 'pipe'],
-      detached: process.platform !== 'win32',
-    });
+    let child: import('node:child_process').ChildProcessWithoutNullStreams;
+    try {
+      child = spawn(bin, built.args, {
+        cwd: req.cwd,
+        env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', TERM: 'dumb' },
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
+      });
+    } catch (e) {
+      // Synchroner Spawn-Fehler (z. B. E2BIG): trotzdem „done“ melden, damit der Chat nicht hängt.
+      wrapped({ type: 'done', ok: false, error: (e as Error).message });
+      resolve({ ok: false, text: '' });
+      return;
+    }
+    // EPIPE, wenn die CLI endet/abgebrochen wird, bevor sie stdin gelesen hat; „close“ meldet das Ende.
+    child.stdin.on('error', () => {});
     procs.set(req.runId, child);
     if (built.live) lives.set(req.runId, child);
 
@@ -143,7 +165,7 @@ export async function runCli(
       while ((i = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, i).trim();
         buf = buf.slice(i + 1);
-        if (line) { lastEventAt = Date.now(); for (const e of built.parser.push(line)) wrapped(e); }
+        if (line) { lastEventAt = Date.now(); try { for (const e of built.parser.push(line)) wrapped(e); } catch { /* defekte Zeile überspringen */ } }
       }
       // Live-Modus: Nach einem abgeschlossenen Turn kurz warten; kommt nichts Neues (z. B. eine zugestellte Nachricht), stdin schließen -> Prozess endet.
       if (built.live && (built.parser.results ?? 0) > seenResults) {
@@ -161,16 +183,18 @@ export async function runCli(
     child.on('close', (code, signal) => {
       procs.delete(req.runId);
       lives.delete(req.runId);
-      if (buf.trim()) for (const e of built.parser.push(buf.trim())) wrapped(e);
-      for (const e of built.parser.end()) wrapped(e);
+      try { if (buf.trim()) for (const e of built.parser.push(buf.trim())) wrapped(e); } catch { /* ignorieren */ }
+      try { for (const e of built.parser.end()) wrapped(e); } catch { /* ignorieren */ }
       const ok = code === 0;
       if (!ok && stderr.trim() && !signal) wrapped({ type: 'notice', level: 'error', text: tail(stderr) });
       wrapped({ type: 'done', ok, code, error: ok ? undefined : signal ? `Abgebrochen (${signal})` : `Beendet mit Code ${code}` });
       resolve({ ok, sessionId, text });
     });
 
-    if (built.stdin !== undefined) child.stdin.write(built.live ? built.stdin + '\n' : built.stdin);
-    if (!built.live) child.stdin.end();
+    try {
+      if (built.stdin !== undefined) child.stdin.write(built.live ? built.stdin + '\n' : built.stdin);
+      if (!built.live) child.stdin.end();
+    } catch { /* close-Handler meldet das Ergebnis */ }
   });
 }
 

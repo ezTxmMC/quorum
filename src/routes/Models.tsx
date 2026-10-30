@@ -1,5 +1,5 @@
 import { t } from '@/lib/i18n';
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { CAPABILITY_LABELS, type ChatMessage, type ModelRecord } from '@shared/models';
 import { compatibleRuntimes } from '@shared/compat';
 import { defaultSelection, expandShards } from '@shared/selection';
@@ -144,7 +144,7 @@ function SearchPanel({ onDownloaded }: { onDownloaded: () => void }) {
   );
 }
 
-function Downloads({ list, onChanged }: { list: DownloadState[]; onChanged: () => void }) {
+function Downloads({ list, onChanged, onError }: { list: DownloadState[]; onChanged: () => void; onError: (m: string) => void }) {
   if (!list.length) return null;
   return (
     <section className="space-y-2">
@@ -157,6 +157,7 @@ function Downloads({ list, onChanged }: { list: DownloadState[]; onChanged: () =
               <div className="min-w-0 flex-1 truncate font-mono text-[12.5px]">{d.repo}</div>
               <span className="text-[11.5px] text-subtle">{d.status === 'running' ? `${gb(d.received)} / ${gb(d.total)} GB` : d.status === 'paused' ? t('pausiert') : d.status === 'error' ? d.error : t('fertig')}</span>
               {d.status === 'running' && <button className="icon-btn" title={t('Pausieren')} onClick={() => void hub.modelPause(d.id).then(onChanged)}><Icon name="lucide:pause" size={14} /></button>}
+              {(d.status === 'paused' || d.status === 'error') && d.repo && !!d.files?.length && <button className="icon-btn" title={t('Fortsetzen')} onClick={() => void hub.modelDownload(d.repo, d.files.map((f) => f.path)).then(onChanged).catch((e: Error) => onError(e.message))}><Icon name="lucide:play" size={14} /></button>}
               {d.status !== 'done' && <button className="icon-btn" title={t('Abbrechen')} onClick={() => void hub.modelCancel(d.id).then(onChanged)}><Icon name="lucide:x" size={14} /></button>}
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-hover"><div className="h-full bg-accent transition-[width]" style={{ width: `${p}%` }} /></div>
@@ -285,6 +286,11 @@ function ModelCard({ m, loaded, onChanged }: { m: ModelRecord; loaded?: LoadedIn
   );
 }
 
+// Memo: Download-Fortschritt rendert sonst die ganze Seite pro Chunk neu.
+const PythonCardM = memo(PythonCard);
+const SearchPanelM = memo(SearchPanel);
+const ModelCardM = memo(ModelCard);
+
 export function ModelsPage() {
   const [models, setModels] = useState<ModelRecord[]>([]);
   const [loaded, setLoaded] = useState<LoadedInfo[]>([]);
@@ -301,7 +307,7 @@ export function ModelsPage() {
   useEffect(() => {
     reload();
     const iv = setInterval(() => { void hub.modelLoaded().then(setLoaded); }, 2000);
-    const a = hub.onModelDownload((d) => setDownloads((list) => [...list.filter((x) => x.id !== d.id), d]));
+    const a = hub.onModelDownload((d) => setDownloads((list) => (list.some((x) => x.id === d.id) ? list.map((x) => (x.id === d.id ? { ...x, ...d } : x)) : [...list, d])));
     const b = hub.onModelRegistry(() => reload());
     const c = hub.onModelEvent(() => void hub.modelLoaded().then(setLoaded));
     return () => { clearInterval(iv); a(); b(); c(); };
@@ -326,16 +332,16 @@ export function ModelsPage() {
           <p className="text-muted">{t('Lokale Modelle von Hugging Face suchen, laden und ausführen. Ressourcen werden live überwacht.')}</p>
         </div>
 
-        <PythonCard />
+        <PythonCardM />
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <h2 className="flex-1 text-[12px] font-medium uppercase tracking-wide text-subtle">{t('Suche & Download')}</h2>
           </div>
-          <SearchPanel onDownloaded={reload} />
+          <SearchPanelM onDownloaded={reload} />
         </section>
 
-        <Downloads list={downloads} onChanged={reload} />
+        <Downloads list={downloads} onChanged={reload} onError={setErr} />
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
@@ -346,7 +352,7 @@ export function ModelsPage() {
           {err && <div className="rounded-lumen border border-bad/40 bg-bad/10 px-3 py-2 text-[12.5px] text-bad">{t(err)}</div>}
           {models.length === 0 && <div className="text-[12.5px] text-subtle">{t('Noch keine Modelle. Suche oben oder importiere eine GGUF-Datei.')}</div>}
           {models.map((m) => (
-            <ModelCard key={m.id} m={m} loaded={loaded.find((l) => l.modelId === m.id)} onChanged={reload} />
+            <ModelCardM key={m.id} m={m} loaded={loaded.find((l) => l.modelId === m.id)} onChanged={reload} />
           ))}
         </section>
       </div>

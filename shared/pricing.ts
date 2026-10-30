@@ -7,10 +7,16 @@ const p = (i: number, o: number, c = i / 10): Price => ({ in: i, out: o, cache: 
 
 /** Erste passende Zeile gewinnt – spezifischere Muster stehen oben. */
 const TABLE: [RegExp, Price][] = [
+  // Claude-Preise geprüft gegen platform.claude.com/docs/en/about-claude/pricing (Stand 2026-10).
+  [/fable-?5[-.]1/i, p(10, 50, 0.25)],
   [/fable/i, p(10, 50, 1)],
-  [/opus-?(4-?[0-4]|4\.[0-4]|3)\b|claude-3-opus/i, p(15, 75, 1.5)],
+  [/opus-?5[-.]5/i, p(4, 20, 0.2)],
+  [/opus-?(4-?[0-4]|4\.[0-4]|3)\b|claude-3-opus|claude-opus-4$/i, p(15, 75, 1.5)],
   [/opus/i, p(5, 25, 0.5)],
+  [/sonnet-?5[-.]5/i, p(2, 10, 0.1)],
+  [/sonnet-?5\b/i, p(2, 10, 0.2)],
   [/sonnet/i, p(3, 15, 0.3)],
+  [/haiku-?5[-.]5/i, p(0.1, 0.5, 0.01)], // gilt bis 100k Prompt-Token; darüber 0,50/2,50
   [/haiku-?(3-?5|3\.5)/i, p(0.8, 4, 0.08)],
   [/haiku/i, p(1, 5, 0.1)],
   [/gpt-?5(\.\d+)?-?nano|gpt-?4\.1-?nano/i, p(0.05, 0.4, 0.005)],

@@ -7,7 +7,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && vite build -c vite.cli.config.ts",
     "typecheck": "tsc --noEmit",
     "test:providers": "node --experimental-strip-types scripts/check-provider-management.mjs",
     "test:chat-controls": "node --experimental-strip-types scripts/check-chat-controls.mjs",
@@ -15,17 +15,19 @@
     "test:chat-modes": "node --experimental-strip-types scripts/check-chat-modes.mjs",
     "test:3d": "node --experimental-strip-types scripts/check-3d.mjs",
     "start": "electron . --no-sandbox",
-    "dist": "vite build && electron-builder --publish never",
+    "dist": "vite build && vite build -c vite.cli.config.ts && electron-builder --publish never",
     "update:linux": "bash scripts/update-linux.sh",
     "icons": "node scripts/make-icons.ts",
-    "dist:linux": "npm run icons && vite build && electron-builder --linux AppImage deb --x64 --publish never",
-    "dist:win": "npm run icons && vite build && electron-builder --win zip --x64 --publish never",
-    "dist:mac": "npm run icons && vite build && electron-builder --mac zip --arm64 --publish never",
+    "dist:linux": "npm run icons && vite build && vite build -c vite.cli.config.ts && electron-builder --linux AppImage deb --x64 --publish never",
+    "dist:win": "npm run icons && vite build && vite build -c vite.cli.config.ts && electron-builder --win zip --x64 --publish never",
+    "dist:mac": "npm run icons && vite build && vite build -c vite.cli.config.ts && electron-builder --mac zip --arm64 --publish never",
     "dist:all": "npm run dist:linux && npm run dist:win && npm run dist:mac",
     "release": "node scripts/release.ts",
     "release:dev": "node scripts/release.ts dev",
     "release:beta": "node scripts/release.ts beta",
-    "release:stable": "node scripts/release.ts release"
+    "release:stable": "node scripts/release.ts release",
+    "build:cli": "vite build -c vite.cli.config.ts",
+    "test:cli": "node --experimental-strip-types scripts/check-cli.mjs"
   },
   "dependencies": {
     "@types/three": "^0.186.0",
@@ -64,6 +66,7 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "dist-cli/**/*",
       "package.json"
     ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
@@ -107,5 +110,8 @@
     "email": "admin@bluenet-hosting.com"
   },
   "homepage": "https://localhost",
-  "desktopName": "quorum.desktop"
+  "desktopName": "quorum.desktop",
+  "bin": {
+    "quorum": "bin/quorum.mjs"
+  }
 }

@@ -1,5 +1,8 @@
 import { chatMode } from '../shared/chat-modes';
 import { configureApi, inspectApi } from './providers/api';
+import { discoverLocalServers } from './providers/discover';
+import { drainInbox, watchInbox } from './inbox';
+import { applyInbox, type InboxEntry } from '../shared/inbox';
 import { apiKey, setApiKey } from './api-keys';
 import { setOllamaSettings } from './providers/ollama';
 import { ollamaManagement, ollamaModelAction, ollamaPullList, pullOllama, cancelOllamaPull, startOllama, stopOllama, shutdownOllama } from './providers/ollama-management';
@@ -13,7 +16,8 @@ import { PROVIDERS } from '../shared/catalog';
 import { rasterize } from '../shared/brand';
 import type { UsageReport, Attachment, FsEntry, MultiStart, Persisted, ProviderId, RunRequest } from '../shared/types';
 import { gitDiff, gitStatus } from './git';
-import { handleImageScheme, imagesDir, registerImageScheme } from './images';
+import { imagesDir } from './images';
+import { handleImageScheme, registerImageScheme } from './images-scheme';
 import { listImportable, loadImportable } from './importer';
 import { startMulti, stopMulti, stopMultiTurn } from './orchestrator';
 import { Worker } from 'node:worker_threads';
@@ -24,7 +28,9 @@ import { registerWorkflowIpc } from './workflows/ipc';
 import { register3dIpc } from './3d/ipc';
 import { cancelAllChatModeling, cancelChatModeling, runChatModeling } from './3d/chat-model';
 import { scheduler } from './runtimes/scheduler';
-import { dataDir, load, save } from './store';
+import { dataDir, flushSaveSync, load, save, setDataDirResolver } from './store';
+import { HELP, isTerminalMode, parseArgs, type CliArgs } from '../cli/args';
+import { execFile, spawn } from 'node:child_process';
 import { createTerminal, killAllTerminals, killTerminal, killTerminalsOf, listShells, resizeTerminal, writeTerminal } from './terminal';
 import { checkUpdate, downloadUpdate, getUpdateState, installUpdate, setUpdaterEmitter } from './updater';
 import type { UpdateChannel } from '../shared/types';
@@ -233,10 +239,60 @@ function refreshUsage(): Promise<UsageReport> {
   return usageRunning;
 }
 
+// ---- Kommandozeile: quorum [Ordner] / --tray / --tui / -p ----------------------------------------------------------------
+/** Argumente ohne Programm (und ohne App-Pfad bei `electron .`). */
+const argvOf = (argv: string[]) => (process.defaultApp ? argv.slice(2) : argv.slice(1));
+/** Ordner, den ein neues Fenster beim Start öffnen soll (Fenster holt ihn per launch:take ab). */
+const pendingFolder = new Map<number, string>();
+
+function openFolderWindow(folder: string, reuse: boolean) {
+  const existing = reuse ? mainWindow() : undefined;
+  if (existing) {
+    if (existing.isMinimized()) existing.restore();
+    existing.show(); existing.focus();
+    sendTo(existing.webContents, 'app:open-folder', folder);
+    return;
+  }
+  const w = createWindow();
+  pendingFolder.set(w.webContents.id, folder);
+}
+
+/** Zweiter Start bei laufender Instanz: Ordner öffnen, sonst (wie bisher) ein neues Fenster; `--tray` ist dann ein Nichtstun. */
+function handleSecondLaunch(a: CliArgs) {
+  if (a.folder) { openFolderWindow(a.folder, a.reuseWindow && !a.newWindow); return; }
+  if (a.tray) return;
+  const w = a.reuseWindow ? showMain() : createWindow();
+  if (w.isMinimized()) w.restore();
+  w.show(); w.focus();
+}
+
+/** Linux: Ein Tray-Symbol erscheint nur, wenn ein StatusNotifierWatcher läuft (z. B. nicht in GNOME ohne AppIndicator). */
+function trayVisible(): Promise<boolean> {
+  if (process.platform !== 'linux') return Promise.resolve(true);
+  return new Promise((resolve) => {
+    execFile('busctl', ['--user', 'status', 'org.kde.StatusNotifierWatcher'], { timeout: 1500 }, (err) => {
+      // Ohne busctl lässt sich das nicht prüfen: dann vom Tray ausgehen.
+      resolve(!err || (err as NodeJS.ErrnoException).code === 'ENOENT');
+    });
+  });
+}
+
+let recentInbox: { entry: InboxEntry; at: number }[] = [];
+/** Posteingang der Kommandozeile in die Chats übernehmen und allen Fenstern melden. */
+function ingestInbox() {
+  const entries = drainInbox();
+  if (!entries.length || !data) return;
+  for (const entry of entries) { data = applyInbox(data, entry); recentInbox.push({ entry, at: Date.now() }); }
+  save(data);
+  for (const w of BrowserWindow.getAllWindows()) sendTo(w.webContents, 'store:sync', data);
+}
+
 function registerIpc() {
+  ipcMain.handle('launch:take', (e) => { const f = pendingFolder.get(e.sender.id); pendingFolder.delete(e.sender.id); return f ?? null; });
   configureApi(() => data.settings.apiConnections ?? [], apiKey);
   setOllamaSettings(() => data.settings.ollama ?? {});
   ipcMain.handle('api:key', (_e, id: string, key: string) => setApiKey(id, key));
+  ipcMain.handle('api:discover', () => discoverLocalServers());
   ipcMain.handle('api:has-key', async (_e, id: string) => !!await apiKey(id));
   ipcMain.handle('api:inspect', (_e, connection: import('../shared/connections').ApiConnection) => inspectApi(connection));
   ipcMain.handle('ollama:manage', () => ollamaManagement());
@@ -253,11 +309,18 @@ function registerIpc() {
   scheduler.configure(data.settings.localRuntime);
   ipcMain.handle('store:load', () => data);
   ipcMain.handle('store:save', (e, d: Persisted) => {
+    // Turns aus der Kommandozeile, die gerade übernommen wurden, dürfen durch einen älteren Stand des Fensters nicht verloren gehen.
+    const cutoff = Date.now() - 60_000;
+    recentInbox = recentInbox.filter((r) => r.at > cutoff);
+    let merged = d;
+    for (const r of recentInbox) merged = applyInbox(merged, r.entry);
+    const changed = merged !== d;
+    d = merged;
     data = d; save(d);
     scheduler.configure(data.settings.localRuntime);
     registerHotkey();
-    // Andere Fenster bekommen den neuen Stand (gleiche Daten in allen Fenstern).
-    for (const w of BrowserWindow.getAllWindows()) if (w.webContents !== e.sender) sendTo(w.webContents, 'store:sync', d);
+    // Andere Fenster bekommen den neuen Stand (gleiche Daten in allen Fenstern); bei Ergänzungen auch das speichernde.
+    for (const w of BrowserWindow.getAllWindows()) if (changed || w.webContents !== e.sender) sendTo(w.webContents, 'store:sync', d);
   });
   ipcMain.handle('app:isPrimary', (e) => BrowserWindow.fromWebContents(e.sender)?.id === primaryId);
 
@@ -403,17 +466,37 @@ if (process.platform === 'linux') app.commandLine.appendSwitch('no-sandbox');
 // (außer er wird per --user-data-dir überschrieben).
 if (!app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', join(app.getPath('appData'), 'ai-hub'));
 app.setName('Quorum');
+setDataDirResolver(() => app.getPath('userData'));
 // Linux: Taskleiste/Dock ordnen das Fenster über den Namen der .desktop-Datei zu (passt zu `desktopName` in package.json).
 if (process.platform === 'linux') app.setDesktopName('quorum.desktop');
 
-// Nur eine Quorum-Instanz: ein zweiter Start öffnet in der laufenden Instanz ein neues Fenster.
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) app.quit();
-else app.on('second-instance', () => {
+// Kommandozeile auswerten, bevor irgendetwas startet.
+let detaching = false;
+const launch = parseArgs(argvOf(process.argv), process.cwd());
+if (launch.help) { process.stdout.write(HELP); app.exit(0); }
+else if (launch.version) { process.stdout.write(app.getVersion() + '\n'); app.exit(0); }
+else if (launch.errors.length) { process.stderr.write(launch.errors.map((e) => `quorum: ${e}`).join('\n') + '\n'); app.exit(2); }
+else if (isTerminalMode(launch)) {
+  // --tui / -p: das Terminal-Bundle läuft als reines Node (Electron-Binary im ELECTRON_RUN_AS_NODE-Modus) und übernimmt das Terminal.
+  const child = spawn(process.execPath, [join(here, '../dist-cli/quorum.mjs'), ...argvOf(process.argv).filter((x) => !/^--(no-sandbox|ozone-|user-data-dir)/.test(x))], { stdio: 'inherit', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+  child.on('exit', (code, sig) => app.exit(code ?? (sig ? 1 : 0)));
+  child.on('error', (err) => { process.stderr.write(`quorum: ${err.message}\n`); app.exit(1); });
+}
+else if (app.isPackaged && process.stdin.isTTY && !process.env.QUORUM_DETACHED && process.platform !== 'win32') {
+  // Aus dem Terminal gestartet (`quorum .`): vom Terminal lösen wie `code .`, damit die Shell frei bleibt. Beim AppImage ist der Mount nach Ende des Elternprozesses weg – dort die .AppImage-Datei neu starten.
+  const self = process.env.APPIMAGE || process.execPath;
+  spawn(self, argvOf(process.argv), { detached: true, stdio: 'ignore', env: { ...process.env, QUORUM_DETACHED: '1' } }).unref();
+  detaching = true;
+  app.exit(0);
+}
+
+// Nur eine Quorum-Instanz: ein zweiter Start öffnet in der laufenden Instanz ein Fenster bzw. den übergebenen Ordner.
+const terminalOnly = detaching || launch.help || launch.version || launch.errors.length > 0 || isTerminalMode(launch);
+const gotLock = terminalOnly ? false : app.requestSingleInstanceLock();
+if (!gotLock) { if (!terminalOnly) app.quit(); }
+else app.on('second-instance', (_e, argv, workingDirectory) => {
   if (!app.isReady()) return;
-  const w = createWindow();
-  if (w.isMinimized()) w.restore();
-  w.show(); w.focus();
+  handleSecondLaunch(parseArgs(argvOf(argv), workingDirectory || process.cwd()));
 });
 
 registerImageScheme();
@@ -424,10 +507,16 @@ app.whenReady().then(() => {
   // Neustart: angedockte Panels (Terminal, Ordner, Agenten & Aufgaben, Änderungen) starten geschlossen.
   if (data.settings.dock?.panels) for (const p of Object.values(data.settings.dock.panels)) p.visible = false;
   registerIpc();
-  createWindow();
+  ingestInbox();
+  watchInbox(ingestInbox);
   createQuickWindow();
   setupTray();
   registerHotkey();
+  if (launch.folder) openFolderWindow(launch.folder, false);
+  else if (launch.tray) {
+    // Nur im Tray starten. Ist das Tray-Symbol nicht sichtbar, würde die App unsichtbar laufen: dann ein minimiertes Fenster zeigen.
+    void trayVisible().then((ok) => { if (!tray || !ok) createWindow().once('ready-to-show', function (this: BrowserWindow) { this.minimize(); }); });
+  } else createWindow();
   // Nach dem Start im Hintergrund prüfen (wenn aktiviert)
   setTimeout(() => {
     if (data?.settings.autoCheckUpdate !== false) void checkUpdate(data?.settings.updateChannel).catch(() => {});
@@ -441,6 +530,7 @@ app.on('before-quit', (event) => {
   if (shutdownComplete) return;
   event.preventDefault();
   if (shutdownStarted) return;
+  flushSaveSync(data);
   shutdownStarted = true;
   cancelAllChatModeling();
   cancelAll();
