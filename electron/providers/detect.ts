@@ -1,4 +1,5 @@
 import { apiStatus } from './api';
+import { acpModels } from './acp';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -12,7 +13,7 @@ import type { CliCommandResult, ModelInfo, ProviderId, ProviderStatus } from '..
 const EXTRA_DIRS = [join(homedir(), '.opencode', 'bin'), join(homedir(), '.local', 'bin'), join(homedir(), '.npm-global', 'bin'), '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin'];
 
 export function resolveBinary(id: ProviderId, overrides: Partial<Record<ProviderId, string>> = {}): string | undefined {
-  if (id === 'ollama' || id === 'local' || id === 'api') return undefined; // laufen über HTTP-APIs, keine CLI
+  if (id === 'ollama' || id === 'local' || id === 'api' || id === 'acp') return undefined; // laufen über HTTP-APIs, keine CLI
   const custom = overrides[id];
   if (custom && existsSync(custom)) return custom;
   const name = PROVIDERS[id].bin + (process.platform === 'win32' ? '.cmd' : '');
@@ -94,6 +95,7 @@ export async function providerStatus(id: ProviderId, overrides: Partial<Record<P
   }
   if (id === 'local') return localStatus();
   if (id === 'api') return apiStatus();
+  if (id === 'acp') { const models = acpModels(); return { id, installed: models.length > 0, models, error: models.length ? undefined : 'Kein ACP-Agent installiert (z. B. gemini, kimi, copilot, qwen, goose).' }; }
   const hit = cache.get(id);
   if (hit && !refresh) return hit;
   const bin = resolveBinary(id, overrides);

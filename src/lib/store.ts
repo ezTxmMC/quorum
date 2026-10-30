@@ -95,7 +95,7 @@ const emptyData = (): Persisted => ({
   version: 1,
   settings: {
     theme: 'dark', language: navigator.language.startsWith('de') ? 'de' : 'en', autoImport: true, sidebarPinned: true, quickHotkey: 'CommandOrControl+Shift+Space', dock: defaultDock(), terminal: defaultTerminal(), accent: '#7c8cff', defaultProvider: 'claude', defaultCwd: '', binaries: {},
-    providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {}, api: {} },
+    providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {}, api: {}, acp: { permission: 'readonly' } },
     updateChannel: 'release', autoCheckUpdate: true,
     threed: { preferredTool: 'blockbench', defaultExportFormat: 'glb', autoExport: true },
     chatList: { groupBy: 'project', sortBy: 'updated', sortOrder: 'desc' },

@@ -1,5 +1,6 @@
 import { chatMode, textOptions } from '../../shared/chat-modes';
 import { cancelAllApi, cancelApi, runApi } from './api';
+import { cancelAcp, cancelAllAcp, runAcp } from './acp';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { promises as fsp } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -48,6 +49,7 @@ export function injectMessage(runId: string, text: string, attachments: Attachme
 function build(req: RunRequest): Built {
   switch (req.provider) {
     case 'api':
+    case 'acp':
     case 'ollama': throw new Error(`${req.provider} läuft ohne CLI`);
     case 'local': throw new Error('Lokale Modelle laufen ohne CLI');
     case 'opencode': return { ...buildOpenCode(req), parser: new OpenCodeParser() };
@@ -68,6 +70,7 @@ export async function runCli(
   if (chatMode(req.options) === 'text') req = { ...req, options: textOptions(req.provider, req.options), review: undefined };
   if (req.imageGen) return runImage(req, emit, binaries);
   if (req.provider === 'api') return runApi(req, emit);
+  if (req.provider === 'acp') return runAcp(req, emit);
   if (req.provider === 'ollama') return runOllama(req, emit);
   if (req.provider === 'local') return runLocalText(req, emit);
   if (req.provider === 'antigravity' && req.options.model) {
@@ -226,7 +229,7 @@ function tail(s: string): string {
 }
 
 export function cancelRun(runId: string): void {
-  if (cancelApi(runId) || cancelOllama(runId) || cancelLocalChat(runId)) return;
+  if (cancelApi(runId) || cancelAcp(runId) || cancelOllama(runId) || cancelLocalChat(runId)) return;
   const p = procs.get(runId);
   if (!p || p.pid === undefined) return;
   try {
@@ -247,6 +250,7 @@ export function cancelRun(runId: string): void {
 
 export function cancelAll(): void {
   cancelAllApi();
+  cancelAllAcp();
   cancelAllOllama();
   for (const id of [...procs.keys()]) cancelRun(id);
 }

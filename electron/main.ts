@@ -1,6 +1,7 @@
 import { chatMode } from '../shared/chat-modes';
 import { configureApi, inspectApi } from './providers/api';
 import { discoverLocalServers } from './providers/discover';
+import { configureAcp } from './providers/acp';
 import { drainInbox, watchInbox } from './inbox';
 import { applyInbox, type InboxEntry } from '../shared/inbox';
 import { apiKey, setApiKey } from './api-keys';
@@ -290,6 +291,7 @@ function ingestInbox() {
 function registerIpc() {
   ipcMain.handle('launch:take', (e) => { const f = pendingFolder.get(e.sender.id); pendingFolder.delete(e.sender.id); return f ?? null; });
   configureApi(() => data.settings.apiConnections ?? [], apiKey);
+  configureAcp(() => data.settings.acpAgents ?? []);
   setOllamaSettings(() => data.settings.ollama ?? {});
   ipcMain.handle('api:key', (_e, id: string, key: string) => setApiKey(id, key));
   ipcMain.handle('api:discover', () => discoverLocalServers());

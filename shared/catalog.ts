@@ -4,7 +4,7 @@ import type { DockState, ModelInfo, TerminalStyle, ProviderId, ProviderOptions }
 export interface Choice { value: string; label: string; hint?: string }
 
 /** Anbieter, die Nachrichten mitten im Lauf annehmen (Steuern). Alle anderen: nur einreihen (Queue). */
-export const DIRECT_MESSAGES: Record<ProviderId, boolean> = { claude: true, codex: false, antigravity: false, opencode: false, ollama: false, local: false, api: false };
+export const DIRECT_MESSAGES: Record<ProviderId, boolean> = { claude: true, codex: false, antigravity: false, opencode: false, ollama: false, local: false, api: false, acp: false };
 
 /** Reine Text-Chats über eine HTTP-API: kein Projektordner, keine Tools, der Verlauf kommt aus dem Hub. */
 export const TEXT_ONLY: ProviderId[] = ['ollama', 'local', 'api'];
@@ -27,6 +27,13 @@ export interface ProviderMeta {
 }
 
 export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
+  acp: {
+    id: 'acp', name: 'ACP-Agenten', vendor: 'Agent Client Protocol · Gemini, Kimi, Copilot, Cursor, Qwen, Goose …', bin: '', color: '#34d399', icon: 'lucide:plug-zap',
+    permissionLabel: 'Modus',
+    permissions: [{ value: 'readonly', label: 'Nur lesen', hint: 'Rückfragen des Agenten werden abgelehnt' }, { value: 'allow', label: 'Aktionen erlauben', hint: 'Rückfragen werden automatisch bestätigt' }],
+    efforts: [], commands: [],
+    features: ['Ein Client für viele Agenten (ACP)', 'Streaming', 'Tool-Aufrufe', 'Sitzung fortsetzen (wenn der Agent es kann)', 'Nur selbst installierte Programme'],
+  },
   api: {
     id: 'api', name: 'API', vendor: 'Externe API', bin: '', color: '#a78bfa', icon: 'lucide:cloud',
     permissionLabel: 'Modus', permissions: [], efforts: [], commands: [],
@@ -192,6 +199,7 @@ export const EFFORT_LABELS: Record<string, string> = {
 };
 
 export const DEFAULT_OPTIONS: Record<ProviderId, ProviderOptions> = {
+  acp: { permission: 'readonly' },
   claude: { permission: 'acceptEdits', model: 'claude-sonnet-5-5' },
   codex: { sandbox: 'workspace-write' },
   antigravity: { permission: 'allow-commands' },

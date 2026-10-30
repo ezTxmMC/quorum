@@ -12,6 +12,7 @@ import { providerStatus } from '../electron/providers/detect';
 import { cancelAll, cancelRun, runCli } from '../electron/providers/runner';
 import { configureApi } from '../electron/providers/api';
 import { setOllamaSettings } from '../electron/providers/ollama';
+import { configureAcp } from '../electron/providers/acp';
 
 const color = !process.env.NO_COLOR && process.stderr.isTTY;
 const c = (code: number, s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -62,6 +63,7 @@ function setup() {
   const data = load();
   configureApi(() => data.settings.apiConnections ?? [], async (id) => process.env[`QUORUM_API_KEY_${id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`]);
   setOllamaSettings(() => data.settings.ollama ?? {});
+  configureAcp(() => data.settings.acpAgents ?? []);
   return data;
 }
 

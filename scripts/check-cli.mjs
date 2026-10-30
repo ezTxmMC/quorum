@@ -54,5 +54,37 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"Hallo vom 
   assert.match(r.stdout, /Hallo vom Fake/);
   assert.equal(spawnSync(process.execPath, [bundle, '-p', ''], { env, input: '', encoding: 'utf8' }).status, 2, 'empty prompt exits 2');
   console.log('Print-mode check passed (fake provider).');
+
+  // ACP: ein Fake-Agent spricht JSON-RPC über stdio (initialize, session/new, Updates, Berechtigungsfrage, prompt-Ergebnis).
+  const agentPath = join(tmp, 'fake-acp.mjs');
+  writeFileSync(agentPath, `#!/usr/bin/env node
+import { createInterface } from 'node:readline';
+const out = (o) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...o }) + '\\n');
+let promptId = null, permId = 900;
+createInterface({ input: process.stdin }).on('line', (l) => {
+  const m = JSON.parse(l);
+  if (m.method === 'initialize') out({ id: m.id, result: { protocolVersion: 1, agentCapabilities: {} } });
+  else if (m.method === 'session/new') out({ id: m.id, result: { sessionId: 'acp-1' } });
+  else if (m.method === 'session/prompt') {
+    promptId = m.id;
+    out({ method: 'session/update', params: { sessionId: 'acp-1', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hallo ACP' } } } });
+    out({ method: 'session/update', params: { sessionId: 'acp-1', update: { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Datei lesen', kind: 'read', status: 'pending' } } });
+    out({ id: permId, method: 'session/request_permission', params: { sessionId: 'acp-1', toolCall: { toolCallId: 't1', title: 'Datei schreiben' }, options: [{ optionId: 'yes', name: 'Ja', kind: 'allow_once' }, { optionId: 'no', name: 'Nein', kind: 'reject_once' }] } });
+  } else if (m.id === permId) {
+    out({ method: 'session/update', params: { sessionId: 'acp-1', update: { sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'ok:' + m.result.outcome.optionId } }] } } });
+    out({ id: promptId, result: { stopReason: 'end_turn' } });
+  }
+});
+`);
+  chmodSync(agentPath, 0o755);
+  writeFileSync(join(tmp, 'hub.json'), JSON.stringify({ settings: { acpAgents: [{ id: 'fake', name: 'Fake', command: agentPath, args: [] }] } }));
+  const acp = spawnSync(process.execPath, [bundle, '-p', 'hi', '-P', 'acp', '-m', 'fake', '--json'], { env, encoding: 'utf8', input: '', timeout: 30000 });
+  assert.equal(acp.status, 0, acp.stderr);
+  const ev = acp.stdout.trim().split('\n').map((x) => JSON.parse(x));
+  assert.ok(ev.some((e) => e.type === 'text' && e.delta === 'Hallo ACP'), 'agent text arrives');
+  assert.ok(ev.some((e) => e.type === 'tool_start' && e.id === 't1'), 'tool call arrives');
+  assert.ok(ev.some((e) => e.type === 'tool_end' && e.output === 'ok:no'), 'permission request is rejected in read-only mode');
+  assert.ok(ev.some((e) => e.type === 'session' && e.sessionId === 'acp-1'));
+  console.log('ACP check passed (fake agent).');
 }
 console.log('CLI checks passed: argument parsing, folder/file resolution, chromium switches, prompt words.');

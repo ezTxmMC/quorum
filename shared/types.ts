@@ -2,7 +2,7 @@ import type { Capability } from './models';
 // Gemeinsame Typen für Main-Prozess und Renderer.
 
 /** `local`: Modelle aus der Modell-Verwaltung (GGUF/Transformers), ohne Werkzeuge, nur Text. */
-export type ProviderId = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'ollama' | 'local' | 'api';
+export type ProviderId = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'ollama' | 'local' | 'api' | 'acp';
 export type ChatMode = 'text' | 'coding' | 'image' | 'model';
 
 export interface ProviderOptions {
@@ -323,6 +323,8 @@ export interface ChatListSettings {
 }
 
 export interface Settings {
+  /** Eigene ACP-Agenten (zusätzlich zu den Vorlagen in shared/acp.ts). */
+  acpAgents?: import('./acp').AcpAgent[];
   /** Globale Ausweich-Modelle für alle Chats ohne eigene Liste. */
   fallbacks?: FallbackModel[];
   sidebarPinned: boolean;
