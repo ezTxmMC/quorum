@@ -80,7 +80,7 @@ export function ChatPage() {
   useEffect(() => { if (session) setActiveCwd(session.cwd); }, [session?.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
   const onStopRun = useCallback(() => cancel(id), [cancel, id]);
   const onOpenModel = useCallback((projectId: string) => { patchSession(id, { modelProjectId: projectId }); setModelPaneOpen(true); }, [patchSession, id]);
-  const onSendMsg = useCallback((txt: string, imgs: string[], mode: 'direct' | 'queue', attachments: import('@shared/types').Attachment[]) => submit(id, txt, { images: imgs, mode, attachments }), [submit, id]);
+  const onSendMsg = useCallback((txt: string, imgs: string[], mode: 'direct' | 'queue', attachments: import('@shared/types').Attachment[], files: import('@shared/types').MessageFile[]) => submit(id, txt, { images: imgs, mode, attachments, files }), [submit, id]);
   const commandRef = useRef<(cmd: string, arg: string) => boolean>(() => false);
   const onCommandStable = useCallback((cmd: string, arg: string) => commandRef.current(cmd, arg), []);
   if (!session) return <Navigate to="/" replace />;

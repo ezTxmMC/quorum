@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { recallInput } from '../shared/input-history.ts';
+const history = ['neu\nzweite Zeile', 'alt'];
+const draft = { index: -1, text: ' ', draft: '' };
+const first = recallInput(history, draft, 1, 1, 1);
+assert.equal(first.text, history[0]);
+assert.equal(recallInput(history, first, 1, first.text.length, first.text.length), undefined, 'normal multiline cursor movement');
+const second = recallInput(history, first, 1, 0, 0);
+assert.equal(second.text, 'alt');
+assert.equal(recallInput(history, second, 1, 0, 0).text, 'alt');
+const newer = recallInput(history, second, -1, 3, 3);
+assert.equal(newer.text, history[0]);
+assert.equal(recallInput(history, newer, -1, newer.text.length, newer.text.length).text, ' ', 'restore draft');
+assert.equal(recallInput(history, draft, -1, 1, 1), undefined);
+assert.equal(recallInput(history, { ...draft, text: 'Entwurf' }, 1, 0, 0), undefined, 'do not replace typed drafts');
+assert.equal(recallInput(history, first, 1, 0, 3), undefined, 'preserve selection');
+assert.equal(recallInput([], draft, 1, 0, 0), undefined);
+console.log('Input history: ordering, boundaries, draft restoration and selections passed.');

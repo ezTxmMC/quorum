@@ -1,12 +1,24 @@
 import { execFile } from 'node:child_process';
 import type { GitStatus } from '../shared/types';
 
-export function git(cwd: string, args: string[], timeout = 60000): Promise<{ ok: boolean; out: string; err: string }> {
-  return new Promise((resolve) => {
-    execFile('git', args, { cwd, timeout, maxBuffer: 16 * 1024 * 1024 }, (e, stdout, stderr) => {
-      resolve({ ok: !e, out: String(stdout), err: String(stderr) });
-    });
-  });
+export async function git(cwd: string, args: string[], timeout = 60000): Promise<{ ok: boolean; out: string; err: string }> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await new Promise((resolve) => {
+        execFile('git', args, { cwd, timeout, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+          resolve({ ok: !error, out: String(stdout), err: String(stderr).trim() || (error?.message ?? '') });
+        });
+      });
+    } catch (error) {
+      // libuv can reject the spawn synchronously, before any Git command has started.
+      if (attempt === 0 && (error as NodeJS.ErrnoException).code === 'ENOTCONN') {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        continue;
+      }
+      throw new Error(`Git konnte in „${cwd}“ nicht gestartet werden: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
+  }
+  throw new Error('Unreachable Git launch state');
 }
 
 export async function isRepo(cwd: string): Promise<boolean> {

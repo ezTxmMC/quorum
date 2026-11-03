@@ -95,6 +95,7 @@ const api = {
   slash: (cwd: string): Promise<{ name: string; source: string }[]> => ipcRenderer.invoke('fs:slash', cwd),
   openPath: (p: string): Promise<string> => ipcRenderer.invoke('shell:open', p),
   revealPath: (p: string): Promise<void> => ipcRenderer.invoke('shell:reveal', p),
+  previewImage: (p: string): Promise<string> => ipcRenderer.invoke('image:preview', p),
   copyImage: (p: string): Promise<void> => ipcRenderer.invoke('image:copy', p),
   saveImageAs: (p: string): Promise<boolean> => ipcRenderer.invoke('image:saveAs', p),
   openExternal: (u: string): Promise<void> => ipcRenderer.invoke('shell:external', u),

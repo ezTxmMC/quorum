@@ -444,6 +444,14 @@ function registerIpc() {
   ipcMain.handle('shell:reveal', (_e, p: string) => shell.showItemInFolder(p));
   // Erzeugte Bilder: nur Dateien aus dem Bilderordner der App.
   const ownImage = (p: string) => p.startsWith(imagesDir()) && existsSync(p);
+  ipcMain.handle('image:preview', async (_e, p: string) => {
+    if (typeof p !== 'string' || !/\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(p)) { throw new Error('Keine unterstützte Bilddatei'); }
+    const stat = await fsp.stat(p);
+    if (!stat.isFile() || stat.size > 20_000_000) { throw new Error('Bild ist zu groß (max. 20 MB)'); }
+    const image = nativeImage.createFromPath(p);
+    if (image.isEmpty()) { throw new Error('Bild konnte nicht geladen werden'); }
+    return image.toDataURL();
+  });
   ipcMain.handle('image:copy', async (_e, p: string) => {
     if (!ownImage(p)) return;
     const png = nativeImage.createFromPath(p).toPNG();

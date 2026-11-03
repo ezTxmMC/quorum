@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import type { FsEntry } from '@shared/types';
 import { hub } from '@/lib/api';
@@ -34,32 +35,22 @@ function FileRow({ path, name, depth, onOpen }: { path: string; name: string; de
 
 export function FilesPanel({ cwd }: { cwd: string }) {
   const [cache, setCache] = useState<Record<string, FsEntry[]>>({});
-  const [file, setFile] = useState<{ path: string; text: string; binary: boolean; truncated: boolean } | null>(null);
-  const load = useCallback((d: string) => { void hub.fsList(d).then((l) => setCache((c) => ({ ...c, [d]: l }))); }, []);
-  useEffect(() => { setCache({}); setFile(null); if (cwd) load(cwd); }, [cwd, load]);
+  const navigate = useNavigate();
+  const [error, setError] = useState('');
+  const load = useCallback((d: string) => { void hub.ideList(cwd, d === cwd ? undefined : d.slice(cwd.length).replace(/^[\\/]/, '')).then((entries) => setCache((c) => ({ ...c, [d]: entries.map((entry) => ({ name: entry.name, isDir: entry.isDirectory })) }))).catch((reason: unknown) => setError(String(reason))); }, [cwd]);
+  useEffect(() => { setCache({}); setError(''); if (cwd) load(cwd); }, [cwd, load]);
 
-  const open = async (p: string) => setFile({ path: p, ...(await hub.fsRead(p)) });
-  const rel = (p: string) => (cwd && p.startsWith(cwd) ? p.slice(cwd.length).replace(/^[\\/]/, '') : p);
+  const open = (path: string) => navigate('/plan', { state: { ideOpen: { root: cwd, path: path.slice(cwd.length).replace(/^[\\/]/, '') } } });
+  if (!cwd) { return <div className="p-4 text-muted">{t('Kein Ordner gewählt.')}</div>; }
 
-  if (!cwd) return <div className="p-4 text-muted">{t('Kein Ordner gewählt.')}</div>;
-  if (file) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="flex items-center gap-1 border-b border-edge px-2 py-1.5">
-          <button className="icon-btn" onClick={() => setFile(null)} title={t('Zurück')}><Icon name="lucide:arrow-left" size={14} /></button>
-          <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">{rel(file.path)}</span>
-          <button className="btn !px-2 !py-0.5 text-[11.5px]" onClick={() => window.dispatchEvent(new CustomEvent('hub:insert', { detail: `@${file.path} ` }))}><Icon name="lucide:at-sign" size={12} /> {t('In Chat einfügen')}</button>
-        </div>
-        <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11.5px] leading-[1.55] text-muted">{file.binary ? t('Binärdatei') : file.text}{file.truncated ? '\n…' : ''}</pre>
-      </div>
-    );
-  }
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1 border-b border-edge px-2 py-1.5">
         <Icon name="lucide:folder" size={14} className="text-muted" /><span className="min-w-0 flex-1 truncate font-medium" title={cwd}>{cwd.split(/[\\/]/).filter(Boolean).pop()}</span>
         <button className="icon-btn" onClick={() => { setCache({}); load(cwd); }} title={t('Aktualisieren')}><Icon name="lucide:refresh-cw" size={13} /></button>
       </div>
+      <p className="border-b border-edge px-3 py-2 text-xs text-muted">Dateien öffnen im IDE-Editor.</p>
+      {error && <p role="alert" className="p-2 text-xs text-bad">{error}</p>}
       <div className="min-h-0 flex-1 overflow-auto p-1 text-[12.5px]">
         {cache[cwd]?.map((e) => (e.isDir
           ? <Node key={e.name} dir={cwd} name={e.name} depth={0} onOpen={open} cache={cache} load={load} />

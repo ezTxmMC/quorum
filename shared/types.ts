@@ -214,7 +214,11 @@ export type Block =
   | { kind: 'image'; path: string; engine?: string }
   | { kind: 'tool'; id: string; name: string; input: unknown; output?: string; isError?: boolean; running: boolean; parentId?: string };
 
+export interface MessageFile { name: string; path?: string; text?: string }
+
 export interface Message {
+  attachments?: Attachment[];
+  files?: MessageFile[];
   workerDone?: boolean;
   workerRunId?: string;
   workerSequence?: number;  id: string;

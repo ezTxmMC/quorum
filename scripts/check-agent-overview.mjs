@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { agentOverview } from '../shared/agent-overview.ts';
+const makeTurn = (id, running, ok, usage) => ({ agentId: id, running, ok, message: { createdAt: 1000, usage } });
+const run = { status: 'running', turns: [makeTurn('a', false, true, { inputTokens: 100, outputTokens: 30, durationMs: 200 }), makeTurn('a', true, undefined, undefined), makeTurn('b', false, false, undefined)] };
+assert.equal(agentOverview(run, 'a', 2000).state, 'running');
+assert.equal(agentOverview(run, 'a', 2000).tokens, 130);
+assert.equal(agentOverview(run, 'a', 2000).durationMs, 1200);
+assert.equal(agentOverview(run, 'b', 2000).state, 'failed');
+assert.equal(agentOverview(run, 'b', 2000).tokens, undefined);
+assert.equal(agentOverview(run, 'missing', 2000).state, 'waiting');
+const stopped = { ...run, status: 'stopped' };
+assert.equal(agentOverview(stopped, 'a', 4000).state, 'interrupted');
+assert.equal(agentOverview(stopped, 'a', 4000).durationMs, 200);
+assert.equal(agentOverview({ status: 'done', turns: [makeTurn('a', false, true, { inputTokens: 0 })] }, 'a', 4000).tokens, 0);
+console.log('Agent overview: live/terminal states, per-agent aggregation and unavailable metrics passed.');

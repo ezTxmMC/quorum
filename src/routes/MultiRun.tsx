@@ -1,3 +1,4 @@
+import { AgentOverview } from '@/components/agents/AgentOverview';
 import { t, t as tr } from '@/lib/i18n';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
@@ -49,6 +50,7 @@ export function MultiRunPage() {
   const run = useHub((s) => s.data.multiRuns.find((r) => r.id === id));
   const { startMulti, stopMulti, createMulti } = useHub.getState();
   const [filter, setFilter] = useState<string | null>(null);
+  const [showAgents, setShowAgents] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const diffPresence = usePresence(showDiff, 170);
   const box = useRef<HTMLDivElement>(null);
@@ -69,6 +71,7 @@ export function MultiRunPage() {
 
   return (
     <div className="flex h-full min-h-0">
+      {showAgents && <AgentOverview run={run} onClose={() => setShowAgents(false)} onShowHistory={setFilter} />}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center gap-3 border-b border-edge px-4 pb-2.5">
           <Icon name={strat?.icon ?? 'lucide:network'} size={18} className="text-accent" />
@@ -76,6 +79,7 @@ export function MultiRunPage() {
             <div className="truncate text-[13.5px] font-medium">{run.title}</div>
             <div className="truncate text-[11px] text-subtle">{strat ? t(strat.name) : ''} · <span className={st.cls}>{stLabel}</span> · {run.config.cwd}</div>
           </div>
+          <button className="btn" onClick={() => setShowAgents(true)}><Icon name="lucide:network" size={15} /> Agentenübersicht</button>
           <button className={cx('icon-btn', showDiff && 'bg-active text-fg')} onClick={() => setShowDiff((d) => !d)} title={t('Änderungen')}><Icon name="lucide:git-compare" /></button>
           {run.status === 'running' ? (
             <button className="btn" onClick={() => stopMulti(run.id)}><Icon name="lucide:square" size={13} /> {t('Stoppen')}</button>

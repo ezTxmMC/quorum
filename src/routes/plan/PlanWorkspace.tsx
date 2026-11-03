@@ -1,5 +1,5 @@
 import { DefinitionEditor } from './DefinitionEditor';
-import { useBlocker, useNavigate } from 'react-router-dom';
+import { useBlocker, useNavigate, useLocation } from 'react-router-dom';
 import { useHub } from '@/lib/store';
 import { useEffect, useState } from 'react';
 import type { ApprovalScope, Plan, PlanDefinition, PlanSnapshot } from '@shared/plan/types';
@@ -18,6 +18,7 @@ function definitionOf(snapshot: PlanSnapshot): PlanDefinition {
 
 export function PlanWorkspace() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [editorDirty, setEditorDirty] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [snapshot, setSnapshot] = useState<PlanSnapshot | null>(null);
@@ -37,6 +38,22 @@ export function PlanWorkspace() {
   const [allowNetwork, setAllowNetwork] = useState(false);
   const [inspectedRevision, setInspectedRevision] = useState('');
   const [previousDefinition, setPreviousDefinition] = useState<string | null>(null);
+
+  useEffect(() => {
+    const state = location.state as { ideOpen?: { root: string; path: string } } | null;
+    const request = state?.ideOpen;
+    if (!request || typeof request.root !== 'string' || typeof request.path !== 'string') { return; }
+    let active = true;
+    void hub.ideRoot(request.root).then((workspaceRoot) => {
+      if (!active) { return; }
+      if (root && root !== workspaceRoot) {
+        setSnapshot(null); setTitle('');
+        setDefinition(JSON.stringify(initialDefinition('Projektziel beschreiben'), null, 2));
+      }
+      setRoot(workspaceRoot); setFile(request.path); setTab('editor');
+    }).catch((reason: unknown) => { if (active) { setError(String(reason)); } });
+    return () => { active = false; };
+  }, [location.key]);
 
   const accept = (next: PlanSnapshot) => {
     setSnapshot(next);

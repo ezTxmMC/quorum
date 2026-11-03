@@ -52,13 +52,13 @@ interface State {
   cliUsage: Partial<Record<'claude' | 'antigravity', CliUsage>>;
   cliUsageBusy: Partial<Record<'claude' | 'antigravity', boolean>>;
   refreshCliUsage: (p?: 'claude' | 'antigravity') => Promise<void>;
-  send: (sessionId: string, text: string, opts?: { images?: string[]; attachments?: Attachment[]; review?: RunRequest['review']; continueLast?: boolean; fork?: boolean }) => void;
+  send: (sessionId: string, text: string, opts?: { images?: string[]; attachments?: Attachment[]; files?: import('@shared/types').MessageFile[]; review?: RunRequest['review']; continueLast?: boolean; fork?: boolean }) => void;
   cancel: (sessionId: string) => void;
   isRunning: (sessionId: string) => boolean;
   /** Nachrichten, die auf das Ende des laufenden Laufs warten (je Chat). */
-  queued: Record<string, { id: string; text: string; images?: string[]; attachments?: Attachment[] }[]>;
+  queued: Record<string, { id: string; text: string; images?: string[]; attachments?: Attachment[]; files?: import('@shared/types').MessageFile[] }[]>;
   /** Sendet auch während eines Laufs: direkt zustellen (wenn der Anbieter es kann) oder einreihen. */
-  submit: (sessionId: string, text: string, opts?: { images?: string[]; attachments?: Attachment[]; mode?: 'direct' | 'queue' }) => Promise<boolean>;
+  submit: (sessionId: string, text: string, opts?: { images?: string[]; attachments?: Attachment[]; files?: import('@shared/types').MessageFile[]; mode?: 'direct' | 'queue' }) => Promise<boolean>;
   unqueue: (sessionId: string, id: string) => void;
   /** Chat-Optionen (Seitenpanel) – wird in der Titelleiste umgeschaltet. */
   chatOptionsOpen: boolean;
@@ -331,7 +331,7 @@ export const useHub = create<State>((set, get) => {
       const s = get().data.sessions.find((x) => x.id === sessionId);
       if (!s || get().isRunning(sessionId)) return;
       const runId = uid();
-      const userMsg: Message = { id: uid(), role: 'user', blocks: [{ kind: 'text', text }], images: [...(opts.images ?? []), ...(opts.attachments?.map((a) => a.name) ?? [])], createdAt: Date.now() };
+      const userMsg: Message = { id: uid(), role: 'user', blocks: [{ kind: 'text', text }], images: opts.images, attachments: opts.attachments, files: opts.files, createdAt: Date.now() };
       const asst: Message = { id: uid(), role: 'assistant', provider: s.provider, model: s.options.imageGen ? undefined : s.options.model, blocks: [], createdAt: Date.now() };
       const mode = chatMode(s.options);
       if (mode === 'model') {
@@ -384,14 +384,14 @@ export const useHub = create<State>((set, get) => {
         if (!(await get().checkLimit(sessionId))) return false;
         // Währenddessen kann ein anderer Lauf gestartet sein – dann einreihen statt stillschweigend zu verwerfen.
         if (!get().isRunning(sessionId)) {
-          get().send(sessionId, text, { images: opts.images, attachments: opts.attachments });
+          get().send(sessionId, text, { images: opts.images, attachments: opts.attachments, files: opts.files });
           return true;
         }
-        set((st) => ({ queued: { ...st.queued, [sessionId]: [...(st.queued[sessionId] ?? []), { id: uid(), text, images: opts.images, attachments: opts.attachments }] } }));
+        set((st) => ({ queued: { ...st.queued, [sessionId]: [...(st.queued[sessionId] ?? []), { id: uid(), text, images: opts.images, attachments: opts.attachments, files: opts.files }] } }));
         return true;
       }
       const route = Object.entries(get().runs).find(([, r]) => r.sessionId === sessionId);
-      if ((chatMode(s.options) === 'text' || chatMode(s.options) === 'coding') && opts.mode === 'direct' && route && DIRECT_MESSAGES[s.provider] && s.options.liveInput !== false) {
+      if ((chatMode(s.options) === 'text' || chatMode(s.options) === 'coding') && opts.mode === 'direct' && !opts.images?.length && !opts.attachments?.length && !opts.files?.length && route && DIRECT_MESSAGES[s.provider] && s.options.liveInput !== false) {
         const full = opts.images?.length ? `${opts.images.map((p) => `@${p}`).join(' ')}\n\n${text}` : text;
         try {
           if (await hub.inject(route[0], full, opts.attachments)) { return true; }
@@ -400,7 +400,7 @@ export const useHub = create<State>((set, get) => {
           return false;
         }
       }
-      set((st) => ({ queued: { ...st.queued, [sessionId]: [...(st.queued[sessionId] ?? []), { id: uid(), text, images: opts.images, attachments: opts.attachments }] } }));
+      set((st) => ({ queued: { ...st.queued, [sessionId]: [...(st.queued[sessionId] ?? []), { id: uid(), text, images: opts.images, attachments: opts.attachments, files: opts.files }] } }));
       return true;
     },
 
@@ -655,7 +655,7 @@ function flush() {
       useHub.setState({ queued: { ...st.queued, [sid]: st.queued[sid].slice(1) } });
       void st.checkLimit(sid).then((ok) => {
         if (ok && useHub.getState().isRunning(sid)) useHub.setState((x) => ({ queued: { ...x.queued, [sid]: [next, ...(x.queued[sid] ?? [])] } }));
-        else if (ok) useHub.getState().send(sid, next.text, { images: next.images, attachments: next.attachments });
+        else if (ok) useHub.getState().send(sid, next.text, { images: next.images, attachments: next.attachments, files: next.files });
         else useHub.setState((x) => ({ queued: { ...x.queued, [sid]: [] } }));
       });
     }, 0);

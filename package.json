@@ -42,7 +42,10 @@
     "test:chat-provider-worker": "python3 scripts/check-chat-provider-worker.py",
     "test:chat-lifecycle": "node scripts/check-chat-lifecycle.mjs",
     "test:chat-persistence": "node --experimental-strip-types scripts/check-chat-persistence.mjs",
-    "test:chat-runtime": "node --experimental-strip-types scripts/check-chat-runtime.mjs"
+    "test:chat-runtime": "node --experimental-strip-types scripts/check-chat-runtime.mjs",
+    "test:input-history": "node --experimental-strip-types scripts/check-input-history.mjs",
+    "test:git-launch": "node --experimental-strip-types scripts/check-git-launch.mjs",
+    "test:agent-overview": "node --experimental-strip-types scripts/check-agent-overview.mjs"
   },
   "dependencies": {
     "@types/three": "^0.186.0",

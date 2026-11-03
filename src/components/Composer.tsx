@@ -1,7 +1,9 @@
+import { recallInput } from '@shared/input-history';
+import { SentImage } from './SentAttachments';
 import { getLang, t } from '@/lib/i18n';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { DIRECT_MESSAGES, PROVIDERS, isChatModel, canonicalModel, selectModelOptions, modelChoices, imageEngines } from '@shared/catalog';
-import type { Attachment, ChatMode, ChatSession } from '@shared/types';
+import type { Attachment, ChatMode, ChatSession, MessageFile } from '@shared/types';
 import { hub, uid } from '@/lib/api';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
@@ -21,7 +23,7 @@ function arrayToB64(bytes: Uint8Array): string {
 interface Props {
   session: ChatSession;
   running: boolean;
-  onSend: (text: string, images: string[], mode: 'direct' | 'queue', attachments: Attachment[]) => void | Promise<boolean | void>;
+  onSend: (text: string, images: string[], mode: 'direct' | 'queue', attachments: Attachment[], files: MessageFile[]) => void | Promise<boolean | void>;
   onStop: () => void;
   onCommand: (cmd: string, arg: string) => boolean;
 }
@@ -49,8 +51,11 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
   useEffect(() => { const id = session.id; return () => { if (textRef.current.trim()) drafts.set(id, textRef.current); else drafts.delete(id); }; }, [session.id]);
   const msgCount = useHub((s) => s.data.sessions.find((x) => x.id === session.id)?.messages.length ?? 0);
   const compacting = useHub((s) => !!s.compacting[session.id]);
+  const historyIndex = useRef(-1);
+  const historyDraft = useRef('');
+  const [sentFiles, setSentFiles] = useState<MessageFile[]>([]);
   const [images, setImages] = useState<string[]>([]);
-  // Im Arbeitsspeicher gehaltene Anhänge (Screenshots aus der Zwischenablage etc.) – werden nirgends gespeichert.
+  // Entwurfsanhänge; gesendete Anhänge werden mit der Nachricht gespeichert.
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [files, setFiles] = useState<string[]>([]);
   const [skills, setSkills] = useState<{ name: string; source: string }[]>([]);
@@ -146,9 +151,11 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
         used = true;
       } else if (f.size <= 200_000 && (f.type.startsWith('text/') || /\.(txt|md|json|ya?ml|toml|csv|log|xml|html?|css|[cm]?[jt]sx?|py|rs|go|java|kt|cs|cpp?|h|sh|sql|ini|env)$/i.test(f.name))) {
         const body = await f.text();
+        setSentFiles((previous) => [...previous, { name: f.name, path: path || undefined, text: body }]);
         setText((t0) => `${t0}${t0 && !t0.endsWith('\n') ? '\n\n' : ''}Datei ${f.name}:\n\`\`\`\n${body}\n\`\`\`\n`);
         used = true;
       } else if (path) {
+        setSentFiles((previous) => [...previous, { name: f.name, path }]);
         setText((t0) => t0 + (t0 && !t0.endsWith(' ') ? ' ' : '') + `@${path} `);
         used = true;
       }
@@ -175,9 +182,11 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
         if (onCommand(cmd, rest.join(' '))) { setText(''); return; }
       }
     }
-    const snap = { images, atts };
-    const res = onSend(t, images, canDirect && !forceQueue ? 'direct' : 'queue', atts);
+    const snap = { images, atts, sentFiles };
+    historyIndex.current = -1;
+    const res = onSend(t, images, canDirect && !forceQueue ? 'direct' : 'queue', atts, sentFiles);
     setText('');
+    setSentFiles([]);
     setImages([]);
     setAtts([]);
     // Blockiert das Limit den Versand, kommen Text und Anhänge zurück ins Eingabefeld.
@@ -186,6 +195,7 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
         if (ok !== false) return;
         setText((cur) => (cur ? `${t}\n\n${cur}` : t));
         setImages((cur) => (cur.length ? cur : snap.images));
+        setSentFiles((cur) => [...snap.sentFiles, ...cur]);
         setAtts((cur) => (cur.length ? cur : snap.atts));
       });
     }
@@ -196,6 +206,22 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => (s + 1) % items.length); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => (s - 1 + items.length) % items.length); return; }
       if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && (mention !== undefined || (slashQ !== undefined && !BUILTIN.some((b) => b.name === slashQ))))) { e.preventDefault(); items[sel]?.apply(); return; }
+    }
+    if (!e.nativeEvent.isComposing && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      const field = ta.current;
+      const direction = e.key === 'ArrowUp' ? 1 : -1;
+      if (field) {
+        const history = (useHub.getState().data.sessions.find((entry) => entry.id === session.id)?.messages ?? [])
+          .filter((message) => message.role === 'user').map((message) => message.blocks.filter((block) => block.kind === 'text').map((block) => block.text).join('')).filter(Boolean).reverse();
+        const recalled = recallInput(history, { index: historyIndex.current, text, draft: historyDraft.current }, direction, field.selectionStart, field.selectionEnd);
+        if (recalled) {
+          e.preventDefault();
+          historyIndex.current = recalled.index;
+          historyDraft.current = recalled.draft;
+          setText(recalled.text);
+          return;
+        }
+      }
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(e.altKey); }
   };
@@ -239,17 +265,18 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
                 <button onClick={() => setAtts((x) => x.filter((y) => y.id !== a.id))}><Icon name="lucide:x" size={12} /></button></span>
             ))}
             {images.map((p) => (
-              <span key={p} className="chip-in inline-flex items-center gap-1.5 rounded-md bg-active p-1 pr-2 text-[11.5px]"><img src={'file://' + p} alt="" className="size-8 rounded object-cover" />{p.split(/[\\/]/).pop()}
+              <span key={p} className="chip-in inline-flex items-center gap-1.5 rounded-md bg-active p-1 pr-2 text-[11.5px]"><SentImage path={p} name={p.split(/[\\/]/).pop() ?? p} />{p.split(/[\\/]/).pop()}
                 <button onClick={() => setImages((i) => i.filter((x) => x !== p))}><Icon name="lucide:x" size={12} /></button></span>
             ))}
           </div>
         )}
+        {sentFiles.length > 0 && <div className="flex flex-wrap gap-2 px-4 pt-2">{sentFiles.map((file, index) => <span key={index} className="inline-flex max-w-full items-center gap-1 rounded bg-active px-2 py-1 text-xs"><Icon name="lucide:file" size={12} /><span className="truncate">{file.name}</span><button aria-label={`${file.name} entfernen`} onClick={() => setSentFiles((current) => current.filter((_, position) => position !== index))}><Icon name="lucide:x" size={12} /></button></span>)}</div>}
         {!imageReady && <div className="px-4 pt-3 text-[12px] text-warn">{t('Wähle ein Bildmodell. Verbinde bei Bedarf einen Anbieter in den Einstellungen.')}</div>}
-        <textarea ref={ta} rows={1} value={text} onChange={(e) => { setText(e.target.value); setSel(0); }} onKeyDown={onKey} onPaste={onPaste}
+        <textarea title="↑ / ↓: frühere Eingaben im leeren Feld durchgehen" ref={ta} rows={1} value={text} onChange={(e) => { historyIndex.current = -1; setText(e.target.value); setSel(0); }} onKeyDown={onKey} onPaste={onPaste}
           placeholder={mode === 'model' ? t('Beschreibe das 3D-Modell, Texturen, Materialien oder Animationen …') : mode === 'image' ? (getLang() === 'en' ? 'Describe the image … (or a change to the last one)' : 'Beschreibe das Bild … (oder eine Änderung am letzten)') : getLang() === 'en' ? `Message ${meta.name} …   (/ for commands, @ for files)` : `Nachricht an ${meta.name} …   (/ für Befehle, @ für Dateien)`}
           className="block max-h-[220px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-relaxed outline-none placeholder:text-subtle" />
         <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
-          <button className="icon-btn" title={t('Bild anhängen')} onClick={async () => { const f = await hub.pickFiles('image'); if (f.length) setImages((i) => [...i, ...f]); }}><Icon name="lucide:paperclip" /></button>
+          <label className="icon-btn cursor-pointer" title={t('Bilder oder Dateien anhängen')}><Icon name="lucide:paperclip" /><input aria-label={t('Bilder oder Dateien anhängen')} className="hidden" type="file" multiple onChange={(event) => { const selected = [...(event.target.files ?? [])]; event.target.value = ''; void ingest(selected); }} /></label>
           <ChatModeButton value={mode} onChange={changeMode} disabled={running} />
           <ModelButton kind={mode === 'image' ? 'image' : 'text'} provider={session.provider} model={session.options.model} imageGen={session.options.imageGen} includeImages onPick={pick} />
           {mode === 'coding' && <ModeButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} onMore={() => useHub.getState().toggleChatOptions(true)} />}

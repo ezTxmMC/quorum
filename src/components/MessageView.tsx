@@ -1,3 +1,4 @@
+import { SentAttachments } from './SentAttachments';
 import { t } from '@/lib/i18n';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -98,7 +99,7 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop, o
       <div className="fade-in group/msg flex items-start justify-end gap-1">
         <CopyButton title={t('Kopieren / Copy')} className="mt-1 opacity-0 transition-opacity group-hover/msg:opacity-100" text={text} />
         <div className="min-w-0 max-w-[85%] select-text overflow-hidden rounded-lumen-lg rounded-br-md border border-edge bg-surface px-3.5 py-2.5">
-          {m.images?.length ? <div className="mb-2 flex flex-wrap gap-1.5">{m.images.map((p) => <span key={p} className="inline-flex items-center gap-1 rounded-md bg-active px-2 py-0.5 text-[11px]"><Icon name="lucide:image" size={12} />{p.split(/[\\/]/).pop()}</span>)}</div> : null}
+          {!!(m.images?.length || m.attachments?.length || m.files?.length) && <SentAttachments message={m} />}
           <div className="whitespace-pre-wrap text-[14px] leading-relaxed [overflow-wrap:anywhere]">{text}</div>
         </div>
       </div>

@@ -478,7 +478,10 @@ export async function startMulti(multiId: string, config: MultiConfig, emit: Emi
     if (c.stopped) emit({ type: 'finished', ok: false, summary: 'Abgebrochen.' });
   } catch (err) {
     emit({ type: 'log', level: 'error', text: String(err instanceof Error ? err.message : err) });
-    fail(c, 'Interner Fehler im Orchestrator.');
+    c.stopped = true;
+    for (const runId of c.activeRuns) { cancelRun(runId); }
+    const detail = err instanceof Error ? err.message : String(err);
+    fail(c, `${loc(c, 'Interner Fehler im Orchestrator.')}\n${detail}`);
   } finally {
     active.delete(multiId);
   }
