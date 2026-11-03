@@ -27,12 +27,19 @@
     "release:beta": "node scripts/release.ts beta",
     "release:stable": "node scripts/release.ts release",
     "build:cli": "vite build -c vite.cli.config.ts",
-    "test:cli": "node --experimental-strip-types scripts/check-cli.mjs"
+    "test:cli": "node --experimental-strip-types scripts/check-cli.mjs",
+    "test:plan-core": "node --experimental-strip-types scripts/check-plan-core.mjs",
+    "test:plan-cli": "python3 scripts/check-plan-cli.py",
+    "test:lsp-core": "node --experimental-strip-types scripts/check-lsp-core.mjs",
+    "test:lsp-servers": "python3 scripts/check-lsp-servers.py",
+    "test:ide-ui": "electron --no-sandbox scripts/check-ide-electron.cjs",
+    "test:workspace-search": "node --experimental-strip-types scripts/check-workspace-search.mjs"
   },
   "dependencies": {
     "@types/three": "^0.186.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
+    "monaco-editor": "^0.57.0",
     "three": "^0.186.1"
   },
   "devDependencies": {
@@ -46,6 +53,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.4.3",
     "electron-builder": "^26.15.3",
+    "pyright": "^1.1.414",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
@@ -53,6 +61,7 @@
     "remark-gfm": "^4.0.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.9.0",
+    "typescript-language-server": "^6.0.3",
     "vite": "^8.3.0",
     "vite-plugin-electron": "^0.29.0",
     "zustand": "^5.0.3"
@@ -102,6 +111,30 @@
           "**/*.py",
           "requirements.txt"
         ]
+      },
+      {
+        "from": "node_modules/typescript-language-server",
+        "to": "language-servers/node_modules/typescript-language-server",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
+      },
+      {
+        "from": "node_modules/typescript",
+        "to": "language-servers/node_modules/typescript",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
+      },
+      {
+        "from": "node_modules/pyright",
+        "to": "language-servers/node_modules/pyright",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
       }
     ]
   },
@@ -113,5 +146,8 @@
   "desktopName": "quorum.desktop",
   "bin": {
     "quorum": "bin/quorum.mjs"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

@@ -12,6 +12,7 @@ import { PROVIDERS } from '@shared/catalog';
 import { chatMode } from '@shared/chat-modes';
 
 const nav = [
+  { to: '/plan', icon: 'lucide:list-checks', label: 'Plan & IDE' },
   { to: '/multi', icon: 'lucide:network', label: 'Multi-Agent' },
   { to: '/models', icon: 'lucide:box', label: 'Modelle' },
   { to: '/workflows', icon: 'lucide:workflow', label: 'Workflows' },

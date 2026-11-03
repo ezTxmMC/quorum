@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { WorkspaceSearch } from '../core/ide/search.ts';
+const temporary = mkdtempSync(join(tmpdir(), 'quorum-search-'));
+const root = join(temporary, 'workspace');
+mkdirSync(root);
+try {
+  mkdirSync(join(root, 'src'));
+  writeFileSync(join(root, 'src', 'hello.ts'), 'const greeting = "hello hello";\r\n// hello 🌍\r\n');
+  writeFileSync(join(root, '.env'), 'hello = secret');
+  mkdirSync(join(root, '.ssh'));
+  writeFileSync(join(root, '.ssh', 'config'), 'hello = secret');
+  mkdirSync(join(root, 'node_modules'));
+  writeFileSync(join(root, 'node_modules', 'ignored.ts'), 'hello');
+  writeFileSync(join(root, 'binary'), Buffer.from([0, 1, 2]));
+  writeFileSync(join(temporary, 'outside'), 'hello');
+  symlinkSync(join(temporary, 'outside'), join(root, 'escape'));
+  const search = new WorkspaceSearch();
+  const files = await search.files(root, 'hello');
+  assert.deepEqual(files.files, [join(root, 'src', 'hello.ts')]);
+  const result = await search.search(root, 'hello');
+  assert.equal(result.matches.length, 3);
+  assert.deepEqual(result.matches.map((match) => [match.line, match.column]), [[1, 19], [1, 25], [2, 4]]);
+  assert.equal(result.matches.every((match) => match.path === join(root, 'src', 'hello.ts')), true);
+  assert.equal((await search.search(root, 'HELLO')).matches.length, 0, 'explicit case-sensitive search');
+  await assert.rejects(search.search(root, ''), /query/);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(search.search(root, 'hello', controller.signal), /abort/i);
+  writeFileSync(join(root, 'many'), 'hello\n'.repeat(300));
+  const limited = await search.search(root, 'hello');
+  assert.equal(limited.matches.length, 200);
+  assert.equal(limited.truncated, true);
+  console.log('Workspace search: file queries, UTF-16 positions, result limits, cancellation, secret/generated exclusions and symlinks passed.');
+} finally { rmSync(temporary, { recursive: true, force: true }); }

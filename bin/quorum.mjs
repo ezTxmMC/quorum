@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
-const terminal = args.some((a) => a === '--tui' || a === '-t' || a === '-p' || a === '--print' || a.startsWith('--print=') || a === '-h' || a === '--help' || a === '-v' || a === '--version');
+const terminal = args[0] === 'plan' || args.some((a) => a === '--tui' || a === '-t' || a === '-p' || a === '--print' || a.startsWith('--print=') || a === '-h' || a === '--help' || a === '-v' || a === '--version');
 const bundle = join(root, 'dist-cli', 'quorum.mjs');
 
 if (terminal) {

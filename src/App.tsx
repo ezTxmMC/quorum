@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { setLang } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, Outlet, RouterProvider, createHashRouter, useLocation, useParams, useSearchParams } from 'react-router-dom';
@@ -17,6 +18,9 @@ import { ToolsPage } from '@/routes/Tools';
 import { ModelsPage } from '@/routes/Models';
 import { WorkflowsPage } from '@/routes/Workflows';
 import { ThreeDPage } from '@/routes/ThreeD';
+
+const PlanWorkspace = lazy(() => import('@/routes/plan/PlanWorkspace').then((module) => ({ default: module.PlanWorkspace })));
+
 
 /** Startseite: öffnet immer einen neuen Chat (ein vorhandener leerer Chat wird wiederverwendet, es entstehen keine Duplikate). */
 function Home() {
@@ -228,6 +232,7 @@ const router = createHashRouter([
       { path: '/chat/:id', element: <ChatPage /> },
       { path: '/multi', element: <MultiBuilder /> },
       { path: '/multi/:id', element: <MultiRunPage /> },
+      { path: '/plan', element: <Suspense fallback={<div className="p-4 text-muted">Editor wird geladen…</div>}><PlanWorkspace /></Suspense> },
       { path: '/tools', element: <ToolsPage /> },
       { path: '/models', element: <ModelsPage /> },
       { path: '/workflows', element: <WorkflowsPage /> },

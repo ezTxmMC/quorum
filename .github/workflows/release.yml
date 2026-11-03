@@ -44,7 +44,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: 'npm'
 
       - name: Determine Tag, Channel & Release Info
@@ -112,6 +112,14 @@ jobs:
       - name: Build Web & Electron
         run: |
           npm run build
+
+      - name: Verify Plan and IDE Core
+        run: |
+          npm run test:plan-core
+          npm run test:plan-cli
+          npm run test:lsp-core
+          npm run test:lsp-servers
+          npm run test:workspace-search
 
       - name: Build Linux Packages (AppImage & deb)
         run: |

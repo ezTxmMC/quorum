@@ -101,6 +101,7 @@ export const HELP = `Quorum – all models, one table
 
 Usage:
   quorum [folder]              Open Quorum with a new chat in the folder (a file opens its folder)
+  quorum plan --help           Persistent workspace plans (JSON CLI)
   quorum --tray                Start hidden in the system tray
   quorum --tui [folder]        Terminal UI right in your shell
   quorum -p "prompt" [folder]  One-shot answer on stdout ("-p -" reads the prompt from stdin)

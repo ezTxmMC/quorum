@@ -1,3 +1,6 @@
+import type { LspDocument, LspEvent, LspLanguage, LspReply, LspRequest, LspStatus } from '../shared/ide/lsp';
+import type { ApprovalScope, Plan, PlanSaveInput, PlanSnapshot } from '../shared/plan/types';
+import type { EditorDocument, WorkspaceEntry, WorkspaceFileResult, WorkspaceSearchResult } from '../shared/ide/types';
 import type { AnimationPreview, ToolId, ToolStatus } from '../shared/threed';
 import type { ApiConnection, OllamaManagement, OllamaPull } from '../shared/connections';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
@@ -25,6 +28,29 @@ const sub = <T>(channel: string, cb: (p: T) => void) => {
 };
 
 const api = {
+  ideRoot: (root: string): Promise<string> => ipcRenderer.invoke('ide:root', root),
+  ideFindFiles: (root: string, query: string): Promise<WorkspaceFileResult> => ipcRenderer.invoke('ide:find', root, query, false),
+  ideSearch: (root: string, query: string): Promise<WorkspaceSearchResult> => ipcRenderer.invoke('ide:find', root, query, true),
+  lspStart: (root: string, language: LspLanguage): Promise<LspStatus> => ipcRenderer.invoke('lsp:start', root, language),
+  lspStop: (root: string, language: LspLanguage): Promise<void> => ipcRenderer.invoke('lsp:stop', root, language),
+  lspSync: (document: LspDocument): Promise<void> => ipcRenderer.invoke('lsp:sync', document),
+  lspSaved: (root: string, language: LspLanguage, path: string): Promise<void> => ipcRenderer.invoke('lsp:saved', root, language, path),
+  lspClose: (root: string, language: LspLanguage, path: string): Promise<void> => ipcRenderer.invoke('lsp:close', root, language, path),
+  lspRequest: (input: LspRequest): Promise<LspReply> => ipcRenderer.invoke('lsp:request', input),
+  onLspEvent: (callback: (event: LspEvent) => void) => sub('lsp:event', callback),
+  planAsk: (id: string, revisionId: string, question: string, options: string[] = []): Promise<PlanSnapshot> => ipcRenderer.invoke('plan:ask', id, revisionId, question, options),
+  planAnswer: (id: string, questionId: string, answer: string): Promise<PlanSnapshot> => ipcRenderer.invoke('plan:answer', id, questionId, answer),
+  planArchive: (id: string): Promise<PlanSnapshot> => ipcRenderer.invoke('plan:archive', id),
+  planExport: (id: string): Promise<string> => ipcRenderer.invoke('plan:export', id),
+  planImport: (root: string, value: unknown): Promise<PlanSnapshot> => ipcRenderer.invoke('plan:import', root, value),
+  planList: (root?: string): Promise<Plan[]> => ipcRenderer.invoke('plan:list', root),
+  planGet: (id: string): Promise<PlanSnapshot> => ipcRenderer.invoke('plan:get', id),
+  planSave: (input: PlanSaveInput): Promise<PlanSnapshot> => ipcRenderer.invoke('plan:save', input),
+  planApprove: (id: string, revisionId: string, scope: ApprovalScope): Promise<PlanSnapshot> => ipcRenderer.invoke('plan:approve', id, revisionId, scope),
+  planRevoke: (id: string, approvalId: string): Promise<PlanSnapshot> => ipcRenderer.invoke('plan:revoke', id, approvalId),
+  ideList: (root: string, path?: string): Promise<WorkspaceEntry[]> => ipcRenderer.invoke('ide:list', root, path),
+  ideRead: (root: string, path: string): Promise<EditorDocument> => ipcRenderer.invoke('ide:read', root, path),
+  ideSave: (root: string, path: string, text: string, expectedHash: string): Promise<EditorDocument> => ipcRenderer.invoke('ide:save', root, path, text, expectedHash),
   apiSetKey: (id: string, key: string): Promise<{ persistent: boolean }> => ipcRenderer.invoke('api:key', id, key),
   apiHasKey: (id: string): Promise<boolean> => ipcRenderer.invoke('api:has-key', id),
   apiDiscover: (): Promise<{ name: string; baseUrl: string; models: string[]; needsKey: boolean }[]> => ipcRenderer.invoke('api:discover'),

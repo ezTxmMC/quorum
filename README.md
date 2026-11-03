@@ -30,3 +30,16 @@ npm run update:linux -- --build        # Build, replace, install, and launch the
 ```
 
 For branding and icons, see [branding/README.md](branding/README.md). Regenerate icons with `npm run icons`.
+
+## Persistente Pläne und Editor
+
+Unter **Plan & IDE** lassen sich Workspace-Pläne mit versionierten Aufgaben,
+Rückfragen und revisionsgebundenen Freigaben verwalten. Der Monaco-Editor öffnet
+Task-Dateien in Tabs und schützt beim Speichern vor externen Änderungen.
+TypeScript-/Python-LSP lässt sich pro vertrauenswürdigem Workspace aktivieren
+(Completion, Hover, Definitionen, Referenzen und Diagnosen). Strg/Cmd+P öffnet
+Dateien; Strg/Cmd+Shift+F durchsucht den Workspace.
+`quorum plan --help` zeigt die gemeinsame CLI; in der TUI stehen `/plans` und
+`/plan <id>` bereit. Node ≥24 wird für die SQLite-CLI benötigt.
+
+[Umsetzungsstand, Bedienung und offene Konzeptphasen](docs/plan-ide-implementation.md).

@@ -1,3 +1,4 @@
+import { registerWorkspaceIpc } from './workspace/ipc';
 import { chatMode } from '../shared/chat-modes';
 import { configureApi, inspectApi } from './providers/api';
 import { discoverLocalServers } from './providers/discover';
@@ -86,6 +87,19 @@ function createWindow(hash = '') {
   w.on('maximize', state); w.on('unmaximize', state); w.on('enter-full-screen', state); w.on('leave-full-screen', state);
   // Nach 'closed' sind window/webContents zerstört – Werte vorher festhalten.
   const wc = w.webContents, wid = w.id;
+  wc.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync(w, {
+      type: 'question', buttons: ['Abbrechen', 'Änderungen verwerfen'], defaultId: 0, cancelId: 0,
+      title: 'Ungespeicherte Änderungen', message: 'Ungespeicherte Änderungen verwerfen und das Fenster verlassen?',
+    });
+    if (choice === 1) {
+      event.preventDefault();
+      return;
+    }
+    quitting = false;
+    shutdownStarted = false;
+    shutdownComplete = false;
+  });
   w.on('closed', () => {
     killTerminalsOf(wc);
     if (wid === primaryId) primaryId = allWindows().find((x) => !x.isDestroyed())?.id ?? -1;
@@ -288,7 +302,12 @@ function ingestInbox() {
   for (const w of BrowserWindow.getAllWindows()) sendTo(w.webContents, 'store:sync', data);
 }
 
+let closeWorkspace: (() => Promise<void>) | undefined;
+
 function registerIpc() {
+  const workspace = registerWorkspaceIpc();
+  closeWorkspace = workspace.shutdown;
+  app.once('will-quit', workspace.close);
   ipcMain.handle('launch:take', (e) => { const f = pendingFolder.get(e.sender.id); pendingFolder.delete(e.sender.id); return f ?? null; });
   configureApi(() => data.settings.apiConnections ?? [], apiKey);
   configureAcp(() => data.settings.acpAgents ?? []);
@@ -537,7 +556,7 @@ app.on('before-quit', (event) => {
   cancelAllChatModeling();
   cancelAll();
   killAllTerminals();
-  void Promise.allSettled([shutdownOllama(), scheduler.shutdown()]).then(() => { shutdownComplete = true; app.quit(); });
+  void Promise.allSettled([shutdownOllama(), scheduler.shutdown(), closeWorkspace?.()]).then(() => { shutdownComplete = true; app.quit(); });
 });
 // Signals use the same cleanup path as a normal quit, including owned local servers.
 for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(sig, () => app.quit());

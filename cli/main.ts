@@ -1,3 +1,4 @@
+import { planCommand } from './plans';
 // Quorum im Terminal: `quorum --tui [Ordner]` (interaktiv) und `quorum -p "…"` (Einmal-Antwort auf stdout).
 // Läuft als reiner Node-Prozess ohne Fenster; nutzt dieselben Provider-Runner wie die App und liest deren Einstellungen (nur lesend).
 import { randomUUID } from 'node:crypto';
@@ -112,6 +113,8 @@ const HELP_TUI = `Commands:
   /chats           list this folder's chats (shared with the app)
   /resume <n>      continue one of them
   /cwd             show the working folder
+  /plans           list persistent plans for this workspace
+  /plan <id>       inspect a persistent plan (JSON)
   /help            this list
   /quit            leave (Ctrl+D also works)
 Ctrl+C cancels a running answer, a second Ctrl+C quits.`;
@@ -165,6 +168,8 @@ async function tui(a: CliArgs): Promise<number> {
         process.stdout.write(dim(`Resumed "${chat.title || chat.id.slice(0, 8)}" (${chat.messages.length} messages)\n`));
         return true;
       }
+      case 'plans': await planCommand(['list', cwd]); return true;
+      case 'plan': await planCommand(arg ? ['show', arg] : ['--help']); return true;
       case 'cwd': process.stdout.write(cwd + '\n'); return true;
       case 'new': chat = blank(); sessionId = undefined; process.stdout.write(dim('Fresh conversation.\n')); return true;
       case 'provider':
@@ -240,6 +245,9 @@ const toolHint = (input: unknown): string => {
 };
 
 export async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'plan') {
+    return planCommand(argv.slice(1));
+  }
   const a = parseArgs(argv, process.cwd());
   if (a.help) { process.stdout.write(HELP); return 0; }
   if (a.version) { process.stdout.write(`${pkg.version}\n`); return 0; }
