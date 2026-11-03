@@ -139,6 +139,7 @@ function Shell() {
   const keep = () => { clearTimeout(timer.current); };
   const leave = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), 240); };
   useEffect(() => setOpen(false), [location.pathname]);
+  useEffect(() => () => clearTimeout(timer.current), []);
   useEffect(() => { if (pinned) setOpen(false); }, [pinned]);
 
   return (
@@ -149,6 +150,7 @@ function Shell() {
         {/* Angeheftete Seitenleiste mit flüssiger Breiten- und Einblendanimation */}
         <div
           className="relative shrink-0 overflow-hidden"
+          inert={!pinned}
           style={{
             width: pinned ? 280 : 0,
             transition: 'width 280ms cubic-bezier(0.16, 1, 0.3, 1)',
@@ -191,17 +193,19 @@ function Shell() {
         {!pinned && (
           <div
             className={cx(
-              'absolute bottom-0 left-11 top-0 z-40 flex',
+              'absolute bottom-0 left-11 top-0 z-40 flex w-[280px]',
               open ? 'pointer-events-auto' : 'pointer-events-none'
             )}
             style={{
-              transform: open ? 'none' : 'translateX(-102%)',
-              opacity: open ? 1 : 0.85,
+              clipPath: open ? 'inset(-40px -40px -40px 0)' : 'inset(0 100% 0 0)',
+              opacity: open ? 1 : 0,
+              visibility: open ? 'visible' : 'hidden',
               boxShadow: open
                 ? '12px 0 36px -4px rgba(0, 0, 0, 0.5), 4px 0 12px -2px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--c-border)'
                 : 'none',
-              transition: 'transform 300ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease, box-shadow 300ms ease',
+              transition: `clip-path 240ms ease, opacity 200ms ease, visibility 0s ${open ? '0s' : '240ms'}`,
             }}
+            inert={!open}
             onMouseEnter={keep}
             onMouseLeave={leave}
           >
