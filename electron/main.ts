@@ -1,3 +1,5 @@
+import { ChatLifecycle } from './chat-host/lifecycle';
+import { ChatHostManager } from './chat-host/manager';
 import { registerWorkspaceIpc } from './workspace/ipc';
 import { chatMode } from '../shared/chat-modes';
 import { configureApi, inspectApi } from './providers/api';
@@ -24,13 +26,13 @@ import { listImportable, loadImportable } from './importer';
 import { startMulti, stopMulti, stopMultiTurn } from './orchestrator';
 import { Worker } from 'node:worker_threads';
 import { execCli, providerStatus, resolveBinary } from './providers/detect';
-import { cancelAll, cancelRun, injectMessage, runCli } from './providers/runner';
+import { cancelAll } from './providers/runner';
 import { registerModelIpc } from './models/ipc';
 import { registerWorkflowIpc } from './workflows/ipc';
 import { register3dIpc } from './3d/ipc';
-import { cancelAllChatModeling, cancelChatModeling, runChatModeling } from './3d/chat-model';
+import { cancelAllChatModeling } from './3d/chat-model';
 import { scheduler } from './runtimes/scheduler';
-import { dataDir, flushSaveSync, load, save, setDataDirResolver } from './store';
+import { dataDir, flushSaveSync, load, onSaved, save, waitForSave, setDataDirResolver } from './store';
 import { HELP, isTerminalMode, parseArgs, type CliArgs } from '../cli/args';
 import { execFile, spawn } from 'node:child_process';
 import { createTerminal, killAllTerminals, killTerminal, killTerminalsOf, listShells, resizeTerminal, writeTerminal } from './terminal';
@@ -96,11 +98,13 @@ function createWindow(hash = '') {
       event.preventDefault();
       return;
     }
+    chatLifecycle?.cancelled(w.id);
     quitting = false;
-    shutdownStarted = false;
-    shutdownComplete = false;
   });
+  chatLifecycle?.guard(w);
   w.on('closed', () => {
+    chatHosts?.detach(wc.id);
+    for (const window of allWindows()) { sendTo(window.webContents, 'chat:changed', undefined); }
     killTerminalsOf(wc);
     if (wid === primaryId) primaryId = allWindows().find((x) => !x.isDestroyed())?.id ?? -1;
   });
@@ -302,9 +306,40 @@ function ingestInbox() {
   for (const w of BrowserWindow.getAllWindows()) sendTo(w.webContents, 'store:sync', data);
 }
 
+let chatHosts: ChatHostManager;
+let chatLifecycle: ChatLifecycle | undefined;
 let closeWorkspace: (() => Promise<void>) | undefined;
 
 function registerIpc() {
+  chatHosts = new ChatHostManager(dataDir(),
+    app.isPackaged ? join(process.resourcesPath, 'chat-host', process.platform === 'win32' ? 'quorum-chat-host.exe' : 'quorum-chat-host')
+      : join(here, '../native/bin', process.platform === 'win32' ? 'quorum-chat-host.exe' : 'quorum-chat-host'),
+    join(here, 'chat-worker.js'));
+  app.once('will-quit', () => chatHosts.dispose());
+  chatLifecycle = new ChatLifecycle({
+    manager: chatHosts, windows: allWindows, save: () => flushSaveSync(data),
+    acknowledge: () => chatHosts.acknowledge(data), setQuitting: (value) => { quitting = value; },
+    cleanup: async (keepChats) => {
+      cancelAllChatModeling();
+      cancelAll();
+      killAllTerminals();
+      await Promise.allSettled([keepChats ? Promise.resolve() : shutdownOllama(), scheduler.shutdown(), closeWorkspace?.()]);
+    },
+  });
+  ipcMain.handle('chat:jobs', () => chatHosts.discover());
+  ipcMain.handle('chat:process-status', async () => (await chatHosts.list()).filter((job) => !job.forgotten).map(({ snapshot: _snapshot, ...job }) => job));
+  ipcMain.handle('chat:attach', ({ sender }, cursors: Record<string, number>) => {
+    chatHosts.attach(sender.id, cursors, (events) => {
+      for (const entry of events) {
+        if (entry.event.type === 'model_progress') { sendTo(sender, '3d:event', { projectId: entry.event.projectId, event: entry.event.event }); }
+      }
+      sendTo(sender, 'hub:batch', events);
+    });
+  });
+  const stopSaved = onSaved((saved) => { void chatHosts.acknowledge(saved).catch(() => undefined); });
+  app.once('will-quit', stopSaved);
+  ipcMain.handle('chat:forget', (_event, chatId: string) => chatHosts.forgetChat(chatId));
+  ipcMain.handle('chat:stop-all', () => chatHosts.stopAll());
   const workspace = registerWorkspaceIpc();
   closeWorkspace = workspace.shutdown;
   app.once('will-quit', workspace.close);
@@ -329,7 +364,7 @@ function registerIpc() {
   setLlamaBinary(() => data.settings.llamaBinary);
   scheduler.configure(data.settings.localRuntime);
   ipcMain.handle('store:load', () => data);
-  ipcMain.handle('store:save', (e, d: Persisted) => {
+  ipcMain.handle('store:save', async (e, d: Persisted) => {
     // Turns aus der Kommandozeile, die gerade übernommen wurden, dürfen durch einen älteren Stand des Fensters nicht verloren gehen.
     const cutoff = Date.now() - 60_000;
     recentInbox = recentInbox.filter((r) => r.at > cutoff);
@@ -342,28 +377,36 @@ function registerIpc() {
     registerHotkey();
     // Andere Fenster bekommen den neuen Stand (gleiche Daten in allen Fenstern); bei Ergänzungen auch das speichernde.
     for (const w of BrowserWindow.getAllWindows()) if (changed || w.webContents !== e.sender) sendTo(w.webContents, 'store:sync', d);
+    await waitForSave();
   });
   ipcMain.handle('app:isPrimary', (e) => BrowserWindow.fromWebContents(e.sender)?.id === primaryId);
 
-  ipcMain.handle('hub:run', async (e, req: RunRequest) => {
-    const wc = e.sender;
+  ipcMain.handle('hub:run', async (_e, req: RunRequest) => {
     // Ohne gewählten Ordner läuft die CLI in einem leeren Arbeitsverzeichnis – kein Zugriff auf echte Projektdateien.
     if (chatMode(req.options) === 'text' || !req.cwd || !existsSync(req.cwd)) {
       req = { ...req, cwd: join(dataDir(), 'scratch') };
       await fsp.mkdir(req.cwd, { recursive: true });
     }
-    if (chatMode(req.options) === 'model') {
-      await runChatModeling(req, (event) => sendTo(wc, 'hub:event', { runId: req.runId, event }), binaries(), (projectId, event) => sendTo(wc, '3d:event', { projectId, event }));
-      return;
+    const apiKeys: Record<string, string> = {};
+    if (req.provider === 'api') {
+      for (const connection of data.settings.apiConnections ?? []) {
+        if (!req.options.model?.startsWith(`${connection.id}::`)) { continue; }
+        const key = await apiKey(connection.id);
+        if (key) { apiKeys[connection.id] = key; }
+      }
     }
-    await runCli(req, (event) => sendTo(wc, 'hub:event', { runId: req.runId, event }), binaries());
+    await chatHosts.launch(req, { dataRoot: dataDir(),
+      pythonRoot: app.isPackaged ? join(process.resourcesPath, 'python') : join(here, '../python'),
+      settings: data.settings, apiKeys });
+    // Each window subscribes after its run route exists; no token parsing runs in Electron's main loop.
+    for (const window of allWindows()) { sendTo(window.webContents, 'chat:changed', undefined); }
   });
-  ipcMain.handle('hub:cancel', (_e, runId: string) => { if (!cancelChatModeling(runId)) cancelRun(runId); });
+  ipcMain.handle('hub:cancel', (_e, runId: string) => chatHosts.cancel(runId));
   // Lokale Modelle: Fortschritt und Status gehen an alle Fenster.
   registerModelIpc((channel, payload) => { for (const w of allWindows()) sendTo(w.webContents, channel, payload); });
   registerWorkflowIpc((channel, payload) => { for (const w of allWindows()) sendTo(w.webContents, channel, payload); }, binaries);
   register3dIpc((channel, payload) => { for (const w of allWindows()) sendTo(w.webContents, channel, payload); }, binaries);
-  ipcMain.handle('hub:inject', (_e, runId: string, text: string, atts?: Attachment[]) => injectMessage(runId, text, atts));
+  ipcMain.handle('hub:inject', (_e, runId: string, text: string, atts?: Attachment[]) => chatHosts.inject(runId, text, atts));
 
   ipcMain.handle('multi:start', (e, m: MultiStart) => {
     const wc = e.sender;
@@ -543,20 +586,6 @@ app.whenReady().then(() => {
     if (data?.settings.autoCheckUpdate !== false) void checkUpdate(data?.settings.updateChannel).catch(() => {});
   }, 4000);
   app.on('activate', () => { if (allWindows().length === 0) createWindow(); });
-});
-let shutdownStarted = false;
-let shutdownComplete = false;
-app.on('before-quit', (event) => {
-  quitting = true;
-  if (shutdownComplete) return;
-  event.preventDefault();
-  if (shutdownStarted) return;
-  flushSaveSync(data);
-  shutdownStarted = true;
-  cancelAllChatModeling();
-  cancelAll();
-  killAllTerminals();
-  void Promise.allSettled([shutdownOllama(), scheduler.shutdown(), closeWorkspace?.()]).then(() => { shutdownComplete = true; app.quit(); });
 });
 // Signals use the same cleanup path as a normal quit, including owned local servers.
 for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(sig, () => app.quit());

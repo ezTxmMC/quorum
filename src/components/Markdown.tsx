@@ -1,4 +1,4 @@
-import { Children, isValidElement, memo, useMemo, type ReactNode } from 'react';
+import { Children, isValidElement, memo, useMemo, useDeferredValue, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { hub } from '@/lib/api';
@@ -48,7 +48,8 @@ const Chunk = memo(function Chunk({ text }: { text: string }) {
 
 /** Lange, wachsende Antworten: nur der letzte Abschnitt wird beim Streamen neu geparst, fertige Abschnitte bleiben unverändert. */
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
-  const blocks = useMemo(() => (text.length > 1500 ? splitBlocks(text) : [text]), [text]);
+  const deferred = useDeferredValue(text);
+  const blocks = useMemo(() => (deferred.length > 1500 ? splitBlocks(deferred) : [deferred]), [deferred]);
   return (
     <div className="md select-text">
       {blocks.map((b, i) => <Chunk key={i} text={b} />)}

@@ -1,3 +1,4 @@
+import { recoverChats } from '@shared/chat-host/recovery';
 import { chatMode } from '@shared/chat-modes';
 import { useRef } from 'react';
 import { create } from 'zustand';
@@ -274,6 +275,7 @@ export const useHub = create<State>((set, get) => {
     patchSession(id, patch) { mutSession(id, (s) => ({ ...s, ...patch })); },
     deleteSession(id) {
       get().cancel(id);
+      void hub.chatForget(id);
       // Gelöschte Chats nicht wieder automatisch importieren.
       mutData((d) => {
         const s = d.sessions.find((x) => x.id === id);
@@ -335,7 +337,7 @@ export const useHub = create<State>((set, get) => {
       if (mode === 'model') {
         mutSession(sessionId, (x) => ({ ...x, title: x.messages.length === 0 ? titleOf(text) : x.title, messages: [...x.messages, userMsg, asst], updatedAt: Date.now() }));
         set((st) => ({ runs: { ...st.runs, [runId]: { sessionId, messageId: asst.id, provider: s.provider } } }));
-        void hub.run({ runId, provider: s.provider, prompt: text, cwd: s.cwd, options: s.options, modelProjectId: s.modelProjectId, images: opts.images, attachments: opts.attachments });
+        launchChatRun(sessionId, asst.id, { runId, provider: s.provider, prompt: text, cwd: s.cwd, options: s.options, modelProjectId: s.modelProjectId, images: opts.images, attachments: opts.attachments });
         return;
       }
       if (mode === 'image' && !s.options.imageGen) return;
@@ -344,7 +346,7 @@ export const useHub = create<State>((set, get) => {
         const lastImage = [...s.messages].reverse().flatMap((m) => [...m.blocks].reverse()).find((b) => b.kind === 'image') as { path: string } | undefined;
         mutSession(sessionId, (x) => ({ ...x, title: x.messages.length === 0 ? titleOf(text) : x.title, messages: [...x.messages, userMsg, asst], updatedAt: Date.now() }));
         set((st) => ({ runs: { ...st.runs, [runId]: { sessionId, messageId: asst.id, provider: s.provider } } }));
-        void hub.run({ runId, provider: s.provider, prompt: text, cwd: s.cwd, options: s.options, imageGen: s.options.imageGen, images: [...(lastImage ? [lastImage.path] : []), ...(opts.images ?? [])], attachments: opts.attachments });
+        launchChatRun(sessionId, asst.id, { runId, provider: s.provider, prompt: text, cwd: s.cwd, options: s.options, imageGen: s.options.imageGen, images: [...(lastImage ? [lastImage.path] : []), ...(opts.images ?? [])], attachments: opts.attachments });
         return;
       }
       const providerSession = s.providerSessions[s.provider];
@@ -359,7 +361,7 @@ export const useHub = create<State>((set, get) => {
       }));
       set((st) => ({ runs: { ...st.runs, [runId]: { sessionId, messageId: asst.id, provider: s.provider } } }));
       get().touchProject(s.cwd);
-      void hub.run({
+      launchChatRun(sessionId, asst.id, {
         runId, provider: s.provider, prompt, cwd: s.cwd, options: s.options, images: opts.images, attachments: opts.attachments, review: opts.review, history, live: DIRECT_MESSAGES[s.provider] && s.options.liveInput !== false,
         resume: providerSession || opts.continueLast ? { sessionId: opts.continueLast ? undefined : providerSession, continueLast: opts.continueLast, fork: opts.fork } : undefined,
       });
@@ -391,9 +393,11 @@ export const useHub = create<State>((set, get) => {
       const route = Object.entries(get().runs).find(([, r]) => r.sessionId === sessionId);
       if ((chatMode(s.options) === 'text' || chatMode(s.options) === 'coding') && opts.mode === 'direct' && route && DIRECT_MESSAGES[s.provider] && s.options.liveInput !== false) {
         const full = opts.images?.length ? `${opts.images.map((p) => `@${p}`).join(' ')}\n\n${text}` : text;
-        if (await hub.inject(route[0], full, opts.attachments)) {
-          mutSession(sessionId, (x) => ({ ...x, messages: x.messages.map((m) => (m.id === route[1].messageId ? { ...m, blocks: [...m.blocks, { kind: 'inject' as const, text }] } : m)) }));
-          return true;
+        try {
+          if (await hub.inject(route[0], full, opts.attachments)) { return true; }
+        } catch (error) {
+          get().setBanner(sessionId, { kind: 'error', text: String(error) });
+          return false;
         }
       }
       set((st) => ({ queued: { ...st.queued, [sessionId]: [...(st.queued[sessionId] ?? []), { id: uid(), text, images: opts.images, attachments: opts.attachments }] } }));
@@ -583,7 +587,7 @@ export const useHub = create<State>((set, get) => {
 
 // ---- Event-Verarbeitung (gebündelt pro Frame) --------------------------------------------------
 
-type QItem = { kind: 'run'; runId: string; event: HubEvent } | { kind: 'multi'; multiId: string; event: MultiEvent };
+type QItem = { kind: 'run'; runId: string; event: HubEvent; sequence?: number } | { kind: 'multi'; multiId: string; event: MultiEvent };
 let queue: QItem[] = [];
 let scheduled = false;
 
@@ -598,9 +602,9 @@ function flush() {
     let data = st.data;
     let runs = st.runs;
     // Events je Lauf bündeln: jede Nachricht und die Sitzungsliste werden pro Flush nur einmal neu aufgebaut.
-    const perRun = new Map<string, HubEvent[]>();
+    const perRun = new Map<string, { event: HubEvent; sequence?: number }[]>();
     for (const it of items) {
-      if (it.kind === 'run') { const list = perRun.get(it.runId); if (list) list.push(it.event); else perRun.set(it.runId, [it.event]); }
+      if (it.kind === 'run') { const list = perRun.get(it.runId); if (list) list.push({ event: it.event, sequence: it.sequence }); else perRun.set(it.runId, [{ event: it.event, sequence: it.sequence }]); }
       else data = applyMulti(data, it.multiId, it.event);
     }
     for (const [runId, events] of perRun) {
@@ -615,19 +619,22 @@ function flush() {
           if (!msg) return s;
           let providerSessions = s.providerSessions;
           let modelProjectId = s.modelProjectId;
-          for (const ev of events) {
+          for (const entry of events) {
+            if (entry.sequence !== undefined && msg.workerRunId === runId && (msg.workerSequence ?? 0) >= entry.sequence) { continue; }
+            const ev = entry.event;
             msg = applyEvent(msg, ev);
+            if (entry.sequence !== undefined) { msg = { ...msg, workerRunId: runId, workerSequence: entry.sequence, workerDone: ev.type === 'done' ? true : msg.workerDone }; }
             if (ev.type === 'model_project') modelProjectId = ev.projectId;
             if (ev.type === 'session') providerSessions = { ...providerSessions, [route.provider]: ev.sessionId };
           }
-          const done = events.find((e) => e.type === 'done');
+          const done = events.find((entry) => entry.event.type === 'done');
           const m2 = msg;
           // updatedAt nur am Ende ändern: sonst re-rendert die Sidebar bei jedem Token.
           next = { ...s, messages: s.messages.map((m) => (m.id === route.messageId ? m2 : m)), providerSessions, modelProjectId, updatedAt: done ? Date.now() : s.updatedAt };
           return next;
         }),
       };
-      const done = events.find((e): e is Extract<HubEvent, { type: 'done' }> => e.type === 'done');
+      const done = events.map((entry) => entry.event).find((e): e is Extract<HubEvent, { type: 'done' }> => e.type === 'done');
       if (done) {
         const { [runId]: _gone, ...rest } = runs; runs = rest;
         if (done.ok) finished.push(route.sessionId);
@@ -700,19 +707,67 @@ function schedule() {
   setTimeout(flush, 50);
 }
 
+function launchChatRun(sessionId: string, messageId: string, request: RunRequest): void {
+  const snapshot = useHub.getState().data.sessions.find((session) => session.id === sessionId);
+  void hub.run({ ...request, chatId: sessionId, messageId, chatSnapshot: snapshot }).catch((error) => {
+    queue.push({ kind: 'run', runId: request.runId, event: { type: 'done', ok: false, error: String(error) } });
+    schedule();
+  });
+}
+
+let reconnecting = false;
+let reconnectAgain = false;
+async function reconnectChats(): Promise<void> {
+  if (!useHub.getState().ready || location.hash.startsWith('#/quick') || location.hash.startsWith('#/popout')) { return; }
+  if (reconnecting) { reconnectAgain = true; return; }
+  reconnecting = true;
+  try {
+    const jobs = await hub.chatJobs();
+    const cursors: Record<string, number> = {};
+    useHub.setState((state) => {
+      const recovered = recoverChats(state.data.sessions, state.runs, jobs);
+      Object.assign(cursors, recovered.cursors);
+      return { data: { ...state.data, sessions: recovered.sessions }, runs: recovered.runs };
+    });
+    // Collectors do not have a visible chat route but still receive their isolated worker's response.
+    for (const runId of collectors.keys()) { cursors[runId] = 0; }
+    await hub.chatAttach(cursors);
+  } finally {
+    reconnecting = false;
+    if (reconnectAgain) { reconnectAgain = false; void reconnectChats().catch(() => undefined); }
+  }
+}
+
 export function wireEvents(): () => void {
   const a = hub.onRun((p) => {
     const collect = collectors.get(p.runId);
     if (collect) { collect(p.event); return; }
     queue.push({ kind: 'run', runId: p.runId, event: p.event }); schedule();
   });
+  const prepareClose = hub.onPrepareClose((token) => {
+    flush();
+    void hub.save(useHub.getState().data).then(() => hub.readyClose(token), (error: unknown) => hub.readyClose(token, String(error)));
+  });
+  const batch = hub.onRunBatch((events) => {
+    for (const entry of events) {
+      const collect = collectors.get(entry.runId);
+      if (collect) { collect(entry.event); continue; }
+      queue.push({ kind: 'run', runId: entry.runId, event: entry.event, sequence: entry.sequence });
+    }
+    schedule();
+  });
+  const changed = hub.onChatChanged(() => { void reconnectChats().catch(() => undefined); });
+  const unsubscribeReady = useHub.subscribe((state, previous) => {
+    if (state.ready && !previous.ready) { void reconnectChats().catch(() => undefined); }
+  });
+  if (useHub.getState().ready) { void reconnectChats().catch(() => undefined); }
   const b = hub.onMulti((p) => { queue.push({ kind: 'multi', multiId: p.multiId, event: p.event }); schedule(); });
   const c = hub.onUpdaterStatus((s) => useHub.setState({ updaterState: s }));
   const d = hub.onUpdaterProgress((p) => {
     useHub.setState((s) => ({ updaterState: { ...s.updaterState, status: 'downloading', progress: p } }));
   });
   void hub.updaterState().then((s) => { if (s) useHub.setState({ updaterState: s }); }).catch(() => {});
-  return () => { a(); b(); c(); d(); };
+  return () => { a(); b(); c(); d(); batch(); changed(); unsubscribeReady(); prepareClose(); };
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;

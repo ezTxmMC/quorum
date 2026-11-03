@@ -4,3 +4,6 @@ dist-electron
 release
 .ai-hub
 dist-cli
+
+native/chat-host/target/
+native/bin/

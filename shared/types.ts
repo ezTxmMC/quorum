@@ -58,6 +58,9 @@ export interface ResumeInfo {
 export interface Attachment { id: string; name: string; mime: string; /** Base64 ohne Präfix */ data: string }
 
 export interface RunRequest {
+  chatId?: string;
+  messageId?: string;
+  chatSnapshot?: ChatSession;
   modelProjectId?: string;
   runId: string;
   provider: ProviderId;
@@ -79,6 +82,8 @@ export interface RunRequest {
 }
 
 export type HubEvent =
+  | { type: 'model_progress'; projectId: string; event: unknown }
+  | { type: 'injected'; text: string }
   | { type: 'model_project'; projectId: string }
   | { type: 'session'; sessionId: string }
   | { type: 'text'; delta: string }
@@ -93,7 +98,7 @@ export type HubEvent =
   | { type: 'done'; ok: boolean; code?: number | null; error?: string };
 
 export interface RunEnvelope {
-  runId: string;
+  sequence?: number;  runId: string;
   event: HubEvent;
 }
 
@@ -210,7 +215,9 @@ export type Block =
   | { kind: 'tool'; id: string; name: string; input: unknown; output?: string; isError?: boolean; running: boolean; parentId?: string };
 
 export interface Message {
-  id: string;
+  workerDone?: boolean;
+  workerRunId?: string;
+  workerSequence?: number;  id: string;
   role: 'user' | 'assistant' | 'system';
   provider?: ProviderId;
   agentId?: string;

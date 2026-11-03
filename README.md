@@ -43,3 +43,13 @@ Dateien; Strg/Cmd+Shift+F durchsucht den Workspace.
 `/plan <id>` bereit. Node ≥24 wird für die SQLite-CLI benötigt.
 
 [Umsetzungsstand, Bedienung und offene Konzeptphasen](docs/plan-ide-implementation.md).
+
+## Unabhängige Chat-Prozesse
+
+Desktop-Chats laufen über einen Rust-Host mit separatem Provideradapter. Beim
+Schließen kannst du laufende Chats bis zum Ende weiterarbeiten lassen oder alle
+Chat-Prozesse stoppen. Beim Neustart werden laufende Anfragen und fertige
+Ergebnisse wieder angehängt. Die neue Statusleiste öffnet die Prozessübersicht.
+
+Für den Build wird zusätzlich ein stabiles Rust-/Cargo-Toolchain benötigt.
+[Architektur, Grenzen und Tests](docs/chat-hosts.md).

@@ -1,4 +1,3 @@
-import { app } from 'electron';
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
@@ -51,7 +50,9 @@ export function blenderVersion(bin: string): string | undefined {
 }
 
 export function pythonDir(): string {
-  return app.isPackaged ? join(process.resourcesPath, 'python') : fileURLToPath(new URL('../python/', import.meta.url));
+  if (process.env.QUORUM_PYTHON_DIR) { return process.env.QUORUM_PYTHON_DIR; }
+  if (process.resourcesPath && existsSync(join(process.resourcesPath, 'python'))) { return join(process.resourcesPath, 'python'); }
+  return fileURLToPath(new URL('../python/', import.meta.url));
 }
 
 /** Operationsskript im Projekt (liegt neben dem Quellcode bzw. in den Zusatzressourcen). */
@@ -75,7 +76,7 @@ export async function runBlenderOps(opts: { bin: string; script: string; workdir
       cwd: opts.workdir,
       env: run.env,
       stdio: ['ignore', 'pipe', 'pipe'],
-      detached: process.platform !== 'win32',
+      detached: process.platform !== 'win32' && process.env.QUORUM_CHAT_WORKER !== '1',
     });
     const results: { op: string; result: unknown }[] = [];
     let error: string | undefined;

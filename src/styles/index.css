@@ -209,3 +209,11 @@ html[data-quick], html[data-quick] body, html[data-quick] #root { background: tr
 @keyframes shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 .pop-in { animation: pop-in 0.24s var(--ease-out) both; }
 .bg-in { animation: bg-in 0.18s ease-out both; }
+
+/* Compact IDE workbench: stable rails and shared panel surfaces. */
+.workbench-rail { background: color-mix(in srgb, var(--c-bg) 88%, var(--c-bg-elevated)); }
+.workbench-rail-item { position: relative; display: grid; place-items: center; width: 42px; height: 40px; color: var(--c-text-subtle); transition: color 120ms, background 120ms; }
+.workbench-rail-item:hover { color: var(--c-text); background: var(--c-bg-hover); }
+.workbench-rail-item.is-active { color: var(--c-text); }
+.workbench-rail-item.is-active::before { content: ''; position: absolute; left: 0; top: 9px; bottom: 9px; width: 2px; border-radius: 2px; background: var(--c-accent); }
+.workbench-status { background: var(--c-bg-elevated); }

@@ -1,3 +1,5 @@
+import { ActivityRail } from '@/components/workbench/ActivityRail';
+import { ProcessStatus } from '@/components/workbench/ProcessStatus';
 import { lazy, Suspense } from 'react';
 import { setLang } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
@@ -120,11 +122,18 @@ export default function App() {
 }
 
 function Shell() {
-  const pinned = useHub((s) => s.data.settings.sidebarPinned);
+  const pinnedPreference = useHub((s) => s.data.settings.sidebarPinned);
+  const [workspaceSidebar, setWorkspaceSidebar] = useState(false);
   const setSettings = useHub.getState().setSettings;
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const location = useLocation();
+  const workspace = location.pathname.startsWith('/plan');
+  const pinned = workspace ? workspaceSidebar : pinnedPreference;
+  const toggleSidebar = () => {
+    if (workspace) { setWorkspaceSidebar((previous) => !previous); return; }
+    setSettings({ sidebarPinned: !pinnedPreference });
+  };
   // Hover-Absicht: die Leiste öffnet erst, wenn die Maus kurz am Rand verweilt – beim bloßen Vorbeifahren springt sie nicht auf.
   const enter = () => { clearTimeout(timer.current); if (!open) timer.current = setTimeout(() => setOpen(true), 220); };
   const keep = () => { clearTimeout(timer.current); };
@@ -134,18 +143,19 @@ function Shell() {
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar hover={{ open, enter, leave }} />
+      <TopBar hover={{ open, enter, leave }} sidebarVisible={pinned} onToggleSidebar={toggleSidebar} />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <ActivityRail />
         {/* Angeheftete Seitenleiste mit flüssiger Breiten- und Einblendanimation */}
         <div
           className="relative shrink-0 overflow-hidden"
           style={{
-            width: pinned ? 340 : 0,
+            width: pinned ? 280 : 0,
             transition: 'width 280ms cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
           <div
-            className="h-full w-[340px]"
+            className="h-full w-[280px]"
             style={{
               // Release the compositor layer at rest so sidebar text stays sharp.
               transform: pinned ? 'none' : 'translateX(-100%)',
@@ -153,14 +163,14 @@ function Shell() {
               transition: 'transform 280ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease',
             }}
           >
-            <Sidebar pinned={pinned} onTogglePin={() => setSettings({ sidebarPinned: !pinned })} />
+            <Sidebar pinned={pinned} onTogglePin={toggleSidebar} />
           </div>
         </div>
 
         {/* Nicht angeheftet: Feiner linker Hover-Rand zum bequemen Öffnen */}
         {!pinned && (
           <div
-            className="absolute bottom-0 left-0 top-0 z-20 w-3 cursor-pointer"
+            className="absolute bottom-0 left-11 top-0 z-20 w-3 cursor-pointer"
             onMouseEnter={enter}
             onMouseLeave={leave}
           />
@@ -181,7 +191,7 @@ function Shell() {
         {!pinned && (
           <div
             className={cx(
-              'absolute bottom-0 left-0 top-0 z-40 flex',
+              'absolute bottom-0 left-11 top-0 z-40 flex',
               open ? 'pointer-events-auto' : 'pointer-events-none'
             )}
             style={{
@@ -198,7 +208,8 @@ function Shell() {
             <Sidebar
               pinned={pinned}
               onTogglePin={() => {
-                setSettings({ sidebarPinned: true });
+                if (workspace) { setWorkspaceSidebar(true); }
+                if (!workspace) { setSettings({ sidebarPinned: true }); }
                 setOpen(false);
               }}
               onClose={() => setOpen(false)}
@@ -209,6 +220,7 @@ function Shell() {
         <SettingsModal />
         <Dock><main className="page-root absolute inset-0 flex min-w-0 flex-col overflow-hidden"><Outlet /></main></Dock>
       </div>
+      <ProcessStatus />
     </div>
   );
 }

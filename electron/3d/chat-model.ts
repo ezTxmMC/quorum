@@ -2,7 +2,7 @@ import type { HubEvent, ProviderId, RunRequest } from '../../shared/types';
 import { cancelProjectRun, createProject, readModel, runProject } from './service';
 import { blenderScript, findBlender } from './blender';
 import type { LoopEvent } from './loop';
-import { pythonDir } from './ipc';
+import { pythonDir } from './blender';
 
 const runs = new Map<string, { projectId?: string; cancelled: boolean }>();
 

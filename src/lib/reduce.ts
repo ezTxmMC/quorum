@@ -14,6 +14,7 @@ function capInput(v: unknown, depth = 0): unknown {
 /** Wendet ein normalisiertes Event auf eine Assistant-Nachricht an (immutabel). */
 export function applyEvent(m: Message, e: HubEvent): Message {
   switch (e.type) {
+    case 'injected': return { ...m, blocks: [...m.blocks, { kind: 'inject', text: e.text }] };
     case 'text':
     case 'thinking': {
       const kind = e.type === 'text' ? 'text' : 'thinking';

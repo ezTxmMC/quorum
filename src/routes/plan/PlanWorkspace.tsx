@@ -1,5 +1,5 @@
 import { DefinitionEditor } from './DefinitionEditor';
-import { useBlocker } from 'react-router-dom';
+import { useBlocker, useNavigate } from 'react-router-dom';
 import { useHub } from '@/lib/store';
 import { useEffect, useState } from 'react';
 import type { ApprovalScope, Plan, PlanDefinition, PlanSnapshot } from '@shared/plan/types';
@@ -17,13 +17,14 @@ function definitionOf(snapshot: PlanSnapshot): PlanDefinition {
 }
 
 export function PlanWorkspace() {
+  const navigate = useNavigate();
   const [editorDirty, setEditorDirty] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [snapshot, setSnapshot] = useState<PlanSnapshot | null>(null);
   const [root, setRoot] = useState('');
   const [title, setTitle] = useState('');
   const [definition, setDefinition] = useState(JSON.stringify(initialDefinition('Projektziel beschreiben'), null, 2));
-  const [tab, setTab] = useState<'tasks' | 'definition' | 'history' | 'editor'>('tasks');
+  const [tab, setTab] = useState<'tasks' | 'definition' | 'history' | 'editor'>('definition');
   const [error, setError] = useState('');
   const [questionText, setQuestionText] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -103,7 +104,7 @@ export function PlanWorkspace() {
       }} /></label>
       <button className="btn mb-4 w-full" disabled={busy} onClick={() => {
         if (!canLeave()) { return; }
-        setSnapshot(null); setEditorDirty(false); setTitle(''); setRoot(''); setTab('tasks'); setFile(undefined);
+        setSnapshot(null); setEditorDirty(false); setTitle(''); setRoot(''); setTab('definition'); setFile(undefined);
         setDefinition(JSON.stringify(initialDefinition('Projektziel beschreiben'), null, 2));
       }}>Neuer Plan</button>
       {plans.map((plan) => <button key={plan.id} className={`mb-1 block w-full rounded p-2 text-left hover:bg-hover ${snapshot?.plan.id === plan.id ? 'bg-hover' : ''}`} disabled={busy} onClick={() => {
@@ -112,6 +113,19 @@ export function PlanWorkspace() {
       }}><span className="block truncate text-sm">{plan.title}</span><span className="text-xs text-muted">{plan.status}</span></button>)}
     </aside>
     <section className="flex min-w-0 flex-1 flex-col">
+      <div className="border-b border-edge bg-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="font-semibold">Pläne & Workspace</h1>
+            <p className="mt-1 text-sm text-muted">Hier bearbeitest und speicherst du Pläne manuell. KI-Planung startest du im Multi-Agent-Modus.</p>
+          </div>
+          <button className="btn" disabled={busy} onClick={() => {
+            if (!canLeave()) { return; }
+            navigate('/multi', { state: { cwd: root, goal: title.trim() } });
+          }}>Mit KI planen & umsetzen →</button>
+        </div>
+        <p className="mt-2 text-xs text-muted">Dort: Ziel beschreiben → Ordner wählen → Modelle hinzufügen → „Plan → Umsetzung → Review“ → Starten. Dieser Ablauf kann Dateien ändern und ist noch nicht mit den gespeicherten Planrevisionen verbunden.</p>
+      </div>
       <div className="flex flex-wrap items-center gap-2 border-b border-edge p-3">
         <input aria-label="Plantitel" className="input min-w-40 flex-1" placeholder="Titel des Plans" value={title} onChange={(event) => setTitle(event.target.value)} />
         <button className="btn" disabled={busy || !!snapshot} onClick={() => { void action(async () => { const folder = await hub.pickFolder(); if (folder) { setRoot(await hub.ideRoot(folder)); } }); }}>Workspace wählen</button>

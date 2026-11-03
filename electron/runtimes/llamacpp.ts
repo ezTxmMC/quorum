@@ -96,7 +96,7 @@ export class LlamaModel implements ChatHandle {
   async start(args: string[], timeoutMs: number): Promise<void> {
     this.port = await freePort();
     const full = [...args, '--host', '127.0.0.1', '--port', String(this.port), '--no-webui'];
-    this.proc = spawn(binaryPath(), full, { stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
+    this.proc = spawn(binaryPath(), full, { stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' && process.env.QUORUM_CHAT_WORKER !== '1' });
     this.proc.stderr?.setEncoding('utf8');
     this.proc.stderr?.on('data', (c: string) => { this.stderr = (this.stderr + c).slice(-8000); });
     this.proc.stdout?.resume();

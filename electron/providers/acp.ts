@@ -68,7 +68,7 @@ export async function runAcp(req: RunRequest, emit: (e: HubEvent) => void): Prom
   const allow = !!req.options.fullAccess || req.options.permission === 'allow';
 
   return new Promise((resolve) => {
-    const child = spawn(bin, agent.args, { cwd: req.cwd, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, NO_COLOR: '1' }, detached: process.platform !== 'win32' });
+    const child = spawn(bin, agent.args, { cwd: req.cwd, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, NO_COLOR: '1' }, detached: process.platform !== 'win32' && process.env.QUORUM_CHAT_WORKER !== '1' });
     let nextId = 1;
     const pending = new Map<number, { res: (v: Json) => void; rej: (e: Error) => void }>();
     let sessionId: string | undefined;

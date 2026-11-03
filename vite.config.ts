@@ -12,7 +12,7 @@ export default defineConfig({
     electron({
       main: {
         // Zweiter Einstiegspunkt: Worker-Thread für die Nutzungsauswertung (dist-electron/usage-worker.js).
-        entry: { main: 'electron/main.ts', 'usage-worker': 'electron/usage-worker.ts' },
+        entry: { main: 'electron/main.ts', 'usage-worker': 'electron/usage-worker.ts', 'chat-worker': 'electron/chat-host/worker.ts' },
         vite: {
           // Gebündelte CommonJS-Abhängigkeiten brauchen `require` im ESM-Hauptprozess.
           build: { rollupOptions: { output: { banner: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);" } } },

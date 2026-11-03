@@ -201,7 +201,7 @@ export function MultiBuilder() {
               )}
             </Popover>
             <div className="flex-1" />
-            <button className="grid size-8 place-items-center rounded-full bg-accent text-accent-fg transition-all enabled:hover:scale-105 disabled:opacity-35" disabled={!valid} onClick={start} title={t('Team starten (Strg+Enter)')}><Icon name="lucide:arrow-up" size={16} /></button>
+            <button className="btn bg-accent text-accent-fg disabled:opacity-35" disabled={!valid} onClick={start} title={t('Team starten (Strg+Enter)')}><Icon name="lucide:play" size={16} /> {t('Team starten')}</button>
           </div>
         </div>
 

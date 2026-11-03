@@ -114,3 +114,13 @@ Beispiel für eine reine Lesefreigabe:
 Neue Module folgen Pureline: Guard Clauses, explizite Blöcke, `const` zuerst, `unknown` an unvalidierten Grenzen, keine neuen Framework-/Factory-Schichten und Aufteilung nach Plan-/Datei-/UI-Verantwortung. Bestehende Stilabweichungen außerhalb der Integration wurden nicht pauschal umgeschrieben.
 
 Protokollreferenz: [Language Server Protocol 3.17](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/). Monaco-APIs und Serveroptionen wurden gegen die lokal installierten Pakete geprüft.
+
+
+## Ergänzung: Chat-Prozesse und Workbench
+
+Die Desktop-Chats über `hub:run` verwenden inzwischen einen eigenen Rust-Host mit
+separatem Node-Provideradapter, persistentem Journal und Wiederanbindung. Beim
+Schließen lassen sie sich weiterlaufen lassen oder stoppen. Activity Rail und
+Prozessstatus ergänzen die Workbench. Dies ist eine Chat-Laufzeit und ersetzt noch
+nicht die geplante DAG-Ausführung mit Plan-Approvals, Worktrees und Verification.
+Details und bekannte Grenzen: [Chat-Hosts](chat-hosts.md).

@@ -143,7 +143,7 @@ export async function runCli(
         cwd: req.cwd,
         env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', TERM: 'dumb' },
         stdio: ['pipe', 'pipe', 'pipe'],
-        detached: process.platform !== 'win32',
+        detached: process.platform !== 'win32' && process.env.QUORUM_CHAT_WORKER !== '1',
       });
     } catch (e) {
       // Synchroner Spawn-Fehler (z. B. E2BIG): trotzdem „done“ melden, damit der Chat nicht hängt.

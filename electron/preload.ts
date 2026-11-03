@@ -1,3 +1,4 @@
+import type { ChatJob } from '../shared/chat-host/types';
 import type { LspDocument, LspEvent, LspLanguage, LspReply, LspRequest, LspStatus } from '../shared/ide/lsp';
 import type { ApprovalScope, Plan, PlanSaveInput, PlanSnapshot } from '../shared/plan/types';
 import type { EditorDocument, WorkspaceEntry, WorkspaceFileResult, WorkspaceSearchResult } from '../shared/ide/types';
@@ -28,6 +29,15 @@ const sub = <T>(channel: string, cb: (p: T) => void) => {
 };
 
 const api = {
+  chatProcessStatus: (): Promise<Omit<ChatJob, 'snapshot'>[]> => ipcRenderer.invoke('chat:process-status'),
+  onPrepareClose: (callback: (token: string) => void) => sub('chat:prepare-close', callback),
+  readyClose: (token: string, error?: string): Promise<void> => ipcRenderer.invoke('chat:ready-close', token, error),
+  chatForget: (chatId: string): Promise<void> => ipcRenderer.invoke('chat:forget', chatId),
+  chatJobs: (): Promise<ChatJob[]> => ipcRenderer.invoke('chat:jobs'),
+  chatAttach: (cursors: Record<string, number>): Promise<void> => ipcRenderer.invoke('chat:attach', cursors),
+  chatStopAll: (): Promise<void> => ipcRenderer.invoke('chat:stop-all'),
+  onChatChanged: (callback: () => void) => sub('chat:changed', callback),
+  onRunBatch: (callback: (events: RunEnvelope[]) => void) => sub('hub:batch', callback),
   ideRoot: (root: string): Promise<string> => ipcRenderer.invoke('ide:root', root),
   ideFindFiles: (root: string, query: string): Promise<WorkspaceFileResult> => ipcRenderer.invoke('ide:find', root, query, false),
   ideSearch: (root: string, query: string): Promise<WorkspaceSearchResult> => ipcRenderer.invoke('ide:find', root, query, true),

@@ -6,8 +6,8 @@
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build && vite build -c vite.cli.config.ts",
+    "dev": "npm run build:chat-host && vite",
+    "build": "tsc --noEmit && vite build && vite build -c vite.cli.config.ts && npm run build:chat-host",
     "typecheck": "tsc --noEmit",
     "test:providers": "node --experimental-strip-types scripts/check-provider-management.mjs",
     "test:chat-controls": "node --experimental-strip-types scripts/check-chat-controls.mjs",
@@ -15,12 +15,12 @@
     "test:chat-modes": "node --experimental-strip-types scripts/check-chat-modes.mjs",
     "test:3d": "node --experimental-strip-types scripts/check-3d.mjs",
     "start": "electron . --no-sandbox",
-    "dist": "vite build && vite build -c vite.cli.config.ts && electron-builder --publish never",
+    "dist": "npm run build && electron-builder --publish never",
     "update:linux": "bash scripts/update-linux.sh",
     "icons": "node scripts/make-icons.ts",
-    "dist:linux": "npm run icons && vite build && vite build -c vite.cli.config.ts && electron-builder --linux AppImage deb --x64 --publish never",
-    "dist:win": "npm run icons && vite build && vite build -c vite.cli.config.ts && electron-builder --win zip --x64 --publish never",
-    "dist:mac": "npm run icons && vite build && vite build -c vite.cli.config.ts && electron-builder --mac zip --arm64 --publish never",
+    "dist:linux": "node scripts/check-chat-platform.mjs linux x64 && npm run icons && npm run build && electron-builder --linux AppImage deb --x64 --publish never",
+    "dist:win": "node scripts/check-chat-platform.mjs win32 x64 && npm run icons && npm run build && electron-builder --win zip --x64 --publish never",
+    "dist:mac": "node scripts/check-chat-platform.mjs darwin arm64 && npm run icons && npm run build && electron-builder --mac zip --arm64 --publish never",
     "dist:all": "npm run dist:linux && npm run dist:win && npm run dist:mac",
     "release": "node scripts/release.ts",
     "release:dev": "node scripts/release.ts dev",
@@ -33,7 +33,16 @@
     "test:lsp-core": "node --experimental-strip-types scripts/check-lsp-core.mjs",
     "test:lsp-servers": "python3 scripts/check-lsp-servers.py",
     "test:ide-ui": "electron --no-sandbox scripts/check-ide-electron.cjs",
-    "test:workspace-search": "node --experimental-strip-types scripts/check-workspace-search.mjs"
+    "test:workspace-search": "node --experimental-strip-types scripts/check-workspace-search.mjs",
+    "build:chat-host": "cargo build --release --locked --manifest-path native/chat-host/Cargo.toml && node scripts/build-chat-host.mjs",
+    "build:worker": "vite build -c vite.worker.config.ts",
+    "test:chat-host": "python3 scripts/check-chat-host.py",
+    "test:chat-recovery": "node --experimental-strip-types scripts/check-chat-host-recovery.mjs",
+    "test:chat-manager": "node --experimental-strip-types scripts/check-chat-host-manager.mjs",
+    "test:chat-provider-worker": "python3 scripts/check-chat-provider-worker.py",
+    "test:chat-lifecycle": "node scripts/check-chat-lifecycle.mjs",
+    "test:chat-persistence": "node --experimental-strip-types scripts/check-chat-persistence.mjs",
+    "test:chat-runtime": "node --experimental-strip-types scripts/check-chat-runtime.mjs"
   },
   "dependencies": {
     "@types/three": "^0.186.0",
@@ -134,6 +143,13 @@
         "filter": [
           "**/*",
           "!**/*.map"
+        ]
+      },
+      {
+        "from": "native/bin",
+        "to": "chat-host",
+        "filter": [
+          "quorum-chat-host*"
         ]
       }
     ]

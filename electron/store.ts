@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_OPTIONS, defaultDock, defaultTerminal } from '../shared/catalog';
+import { DEFAULT_OPTIONS, defaultDock, defaultTerminal } from '../shared/catalog.ts';
 import type { Persisted } from '../shared/types';
 
 /** Datenordner: QUORUM_DATA_DIR, sonst derselbe Ordner wie in der App (~/.config/ai-hub bzw. Application Support / APPDATA). Kein Electron nötig. */
@@ -67,6 +67,8 @@ export function load(): Persisted {
 // Speichern läuft asynchron und fasst schnelle Folgeaufrufe zusammen – der Hauptprozess wird dadurch nicht blockiert.
 let pending: Persisted | null = null;
 let writing = false;
+let lastSaveError: unknown;
+const saveWaiters: { resolve: () => void; reject: (error: unknown) => void }[] = [];
 
 async function flushSave(): Promise<void> {
   writing = true;
@@ -77,9 +79,29 @@ async function flushSave(): Promise<void> {
       const tmp = file() + '.tmp';
       await fsp.writeFile(tmp, JSON.stringify(d));
       await fsp.rename(tmp, file());
-    } catch { /* nächster Versuch beim nächsten Speichern */ }
+      lastSaveError = undefined;
+      notifySaved(d);
+    } catch (error) { lastSaveError = error; }
   }
   writing = false;
+  for (const waiter of saveWaiters.splice(0)) {
+    if (lastSaveError) { waiter.reject(lastSaveError); continue; }
+    waiter.resolve();
+  }
+}
+
+const savedListeners = new Set<(data: Persisted) => void>();
+export function onSaved(listener: (data: Persisted) => void): () => void {
+  savedListeners.add(listener);
+  return () => savedListeners.delete(listener);
+}
+function notifySaved(data: Persisted): void {
+  for (const listener of savedListeners) { listener(data); }
+}
+
+export function waitForSave(): Promise<void> {
+  if (!writing && !pending) { return lastSaveError ? Promise.reject(lastSaveError) : Promise.resolve(); }
+  return new Promise((resolve, reject) => saveWaiters.push({ resolve, reject }));
 }
 
 export function save(data: Persisted): void {
@@ -88,13 +110,15 @@ export function save(data: Persisted): void {
 }
 
 /** Beim Beenden: den neuesten Stand synchron schreiben, damit nichts aus der Warteschlange verloren geht. */
-export function flushSaveSync(latest?: Persisted): void {
+export function flushSaveSync(latest?: Persisted): boolean {
   const d = latest ?? pending;
   pending = null;
-  if (!d) return;
+  if (!d) return true;
   try {
     const tmp = file() + '.sync.tmp';
     writeFileSync(tmp, JSON.stringify(d));
     renameSync(tmp, file());
-  } catch { /* beim Beenden nichts mehr zu tun */ }
+    notifySaved(d);
+    return true;
+  } catch { return false; }
 }
