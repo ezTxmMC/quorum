@@ -1,7 +1,7 @@
 import { ProcessStatus } from '@/components/workbench/ProcessStatus';
 import { lazy, Suspense } from 'react';
 import { setLang } from '@/lib/i18n';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, Outlet, RouterProvider, createHashRouter, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Dock, PanelBody } from '@/components/Dock';
 import { IdeSidebar, ThreeDSidebar } from '@/components/ModeSidebars';
@@ -143,33 +143,111 @@ export default function App() {
 function Shell() {
   const pinned = useHub((s) => s.data.settings.sidebarPinned);
   const [winState, setWinState] = useState({ maximized: false, fullscreen: false });
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const openTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const insideWindow = useRef(true);
   const setSettings = useHub.getState().setSettings;
   const location = useLocation();
   const isThreeD = location.pathname.startsWith('/3d');
   const isIde = location.pathname.startsWith('/plan');
   const roundedFrame = Boolean(window.__TAURI__) && !winState.maximized && !winState.fullscreen;
+
+  const clearTimers = useCallback(() => {
+    clearTimeout(openTimer.current);
+    clearTimeout(closeTimer.current);
+  }, []);
+
+  const cancelAndClose = useCallback(() => {
+    clearTimers();
+    setHoverOpen(false);
+  }, [clearTimers]);
+
+  const scheduleOpen = useCallback((delay = 240) => {
+    if (pinned || !insideWindow.current || !document.hasFocus()) {
+      return;
+    }
+    clearTimeout(closeTimer.current);
+    if (hoverOpen) {
+      return;
+    }
+    clearTimeout(openTimer.current);
+    openTimer.current = setTimeout(() => {
+      if (insideWindow.current && document.hasFocus()) {
+        setHoverOpen(true);
+      }
+    }, delay);
+  }, [pinned, hoverOpen]);
+
+  const keepOpen = useCallback(() => {
+    clearTimeout(closeTimer.current);
+  }, []);
+
+  const scheduleClose = useCallback((delay = 180) => {
+    clearTimeout(openTimer.current);
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setHoverOpen(false), delay);
+  }, []);
+
   useEffect(() => {
     void hub.winState().then(setWinState);
     return hub.onWinState(setWinState);
   }, []);
+
+  useEffect(() => {
+    const onWindowEnter = () => { insideWindow.current = true; };
+    const onWindowLeave = () => {
+      insideWindow.current = false;
+      cancelAndClose();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && hoverOpen) {
+        cancelAndClose();
+      }
+    };
+    document.addEventListener('mouseenter', onWindowEnter);
+    document.addEventListener('mouseleave', onWindowLeave);
+    window.addEventListener('blur', onWindowLeave);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mouseenter', onWindowEnter);
+      document.removeEventListener('mouseleave', onWindowLeave);
+      window.removeEventListener('blur', onWindowLeave);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [cancelAndClose, hoverOpen]);
+
+  useEffect(() => { cancelAndClose(); }, [location.pathname, pinned, cancelAndClose]);
+  useEffect(() => () => clearTimers(), [clearTimers]);
+
   const toggleSidebar = () => {
+    cancelAndClose();
     setSettings({ sidebarPinned: !pinned });
   };
-  const renderSidebar = () => {
+
+  const renderSidebar = (props?: { pinned?: boolean; onTogglePin?: () => void; onClose?: () => void }) => {
     if (isThreeD) {
-      return <ThreeDSidebar />;
+      return <ThreeDSidebar {...props} />;
     }
     if (isIde) {
-      return <IdeSidebar />;
+      return <IdeSidebar {...props} />;
     }
-    return <Sidebar />;
+    return <Sidebar {...props} />;
   };
 
   return (
     <div className={cx('flex h-full flex-col overflow-hidden bg-bg', roundedFrame && 'rounded-[14px] border border-edge-strong/80 shadow-2xl')}>
-      <TopBar sidebarVisible={pinned} onToggleSidebar={toggleSidebar} />
+      <TopBar
+        hover={{
+          open: hoverOpen,
+          enter: () => scheduleOpen(180),
+          leave: () => scheduleClose(180),
+        }}
+        sidebarVisible={pinned}
+        onToggleSidebar={toggleSidebar}
+      />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        {/* Seitenleiste mit ruhiger Breiten- und Einblendanimation – nur per Klick oder Strg+B */}
+        {/* Angeheftete Seitenleiste */}
         <div
           className="relative shrink-0 overflow-hidden"
           inert={!pinned}
@@ -186,9 +264,73 @@ function Shell() {
               transition: 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease',
             }}
           >
-            {renderSidebar()}
+            {renderSidebar({ pinned, onTogglePin: toggleSidebar })}
           </div>
         </div>
+
+        {/* Präzise linke Hover-Zone: bricht sofort ab, wenn der Cursor nach links aus dem Fenster wandert */}
+        {!pinned && !hoverOpen && (
+          <div
+            className="absolute bottom-0 left-0 top-0 z-20 w-2"
+            onPointerEnter={(event) => {
+              insideWindow.current = true;
+              if (event.clientX <= 2 && event.movementX < -1) {
+                return;
+              }
+              scheduleOpen(260);
+            }}
+            onPointerMove={(event) => {
+              if (event.clientX <= 2 && event.movementX < -1) {
+                clearTimeout(openTimer.current);
+              }
+            }}
+            onPointerLeave={() => clearTimeout(openTimer.current)}
+          />
+        )}
+
+        {/* Sanfter Backdrop beim schwebenden Drawer */}
+        {!pinned && (
+          <div
+            className={cx(
+              'absolute inset-0 z-30 bg-black/30 backdrop-blur-[1.5px] transition-opacity duration-200',
+              hoverOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
+            )}
+            onMouseDown={cancelAndClose}
+          />
+        )}
+
+        {/* Schwebende Seitenleiste (Hover-Drawer) */}
+        {!pinned && (
+          <div
+            className={cx(
+              'absolute bottom-0 left-0 top-0 z-40 flex w-[272px] transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
+              hoverOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'pointer-events-none -translate-x-full opacity-0',
+            )}
+            style={{
+              boxShadow: hoverOpen
+                ? '12px 0 36px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--c-border)'
+                : 'none',
+            }}
+            inert={!hoverOpen}
+            onPointerEnter={keepOpen}
+            onPointerLeave={(event) => {
+              if (event.clientX <= 0) {
+                cancelAndClose();
+                return;
+              }
+              scheduleClose(180);
+            }}
+          >
+            {renderSidebar({
+              pinned: false,
+              onTogglePin: () => {
+                cancelAndClose();
+                setSettings({ sidebarPinned: true });
+              },
+              onClose: cancelAndClose,
+            })}
+          </div>
+        )}
 
         <SettingsModal />
         <Dock><main className="page-root absolute inset-0 flex min-w-0 flex-col overflow-hidden"><Outlet /></main></Dock>
