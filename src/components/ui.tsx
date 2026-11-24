@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { PROVIDERS } from '@shared/catalog';
 import type { ProviderId } from '@shared/types';
@@ -69,6 +69,42 @@ export function Select<T extends string>({ value, onChange, options, placeholder
   );
 }
 
+const POPOVER_GAP = 8;
+
+interface PopoverPlace {
+  down: boolean;
+  maxHeight: number;
+  /** Nur scrollen, wenn der Inhalt wirklich nicht passt – sonst würden verschachtelte Menüs abgeschnitten. */
+  scroll: boolean;
+}
+
+/** Sichtbarer Bereich um das Element: das Fenster, beschnitten durch alle scrollenden oder abschneidenden Vorfahren. */
+function visibleBounds(element: HTMLElement): { top: number; bottom: number } {
+  let top = 0;
+  let bottom = window.innerHeight;
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    if (getComputedStyle(parent).overflowY === 'visible') {
+      continue;
+    }
+    const rect = parent.getBoundingClientRect();
+    top = Math.max(top, rect.top);
+    bottom = Math.min(bottom, rect.bottom);
+  }
+  return { top, bottom };
+}
+
+/** Öffnet zur gewünschten Seite, solange der Inhalt dort passt – sonst zur Seite mit mehr Platz, notfalls scrollbar. */
+function placePopover(anchor: HTMLElement, panel: HTMLElement, preferDown: boolean): PopoverPlace {
+  const bounds = visibleBounds(anchor);
+  const rect = anchor.getBoundingClientRect();
+  const above = rect.top - bounds.top - 2 * POPOVER_GAP;
+  const below = bounds.bottom - rect.bottom - 2 * POPOVER_GAP;
+  const preferred = preferDown ? below : above;
+  const down = panel.scrollHeight <= preferred ? preferDown : below > above;
+  const maxHeight = Math.max(120, down ? below : above);
+  return { down, maxHeight, scroll: panel.scrollHeight > maxHeight };
+}
+
 export function Popover({ trigger, children, align = 'left', down, className }: { trigger: (open: boolean, toggle: () => void) => ReactNode; children: (close: () => void) => ReactNode; align?: 'left' | 'right'; down?: boolean; className?: string }) {
   const [open, setOpen] = useState(false);
   const { mounted, state } = usePresence(open);
@@ -81,11 +117,18 @@ export function Popover({ trigger, children, align = 'left', down, className }: 
     window.addEventListener('keydown', k);
     return () => { window.removeEventListener('mousedown', h); window.removeEventListener('keydown', k); };
   }, [open]);
+  const panel = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<PopoverPlace>({ down: !!down, maxHeight: 0, scroll: false });
+  useLayoutEffect(() => {
+    if (open && ref.current && panel.current) {
+      setPlace(placePopover(ref.current, panel.current, !!down));
+    }
+  }, [open, mounted, down]);
   return (
     <div ref={ref} className={cx('relative', className)}>
       {trigger(open, () => setOpen((o) => !o))}
       {mounted && (
-        <div data-state={state} className={cx('pop absolute z-40 min-w-56 rounded-lumen border border-edge-strong bg-overlay/95 p-1 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md', down ? 'top-full mt-2 origin-top' : 'bottom-full mb-2 origin-bottom', align === 'right' ? 'right-0' : 'left-0')}>
+        <div ref={panel} data-state={state} style={place.scroll ? { maxHeight: place.maxHeight } : undefined} className={cx('pop absolute z-40 min-w-56 rounded-lumen border border-edge-strong bg-overlay/95 p-1 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md', place.scroll && 'overflow-y-auto', place.down ? 'top-full mt-2 origin-top' : 'bottom-full mb-2 origin-bottom', align === 'right' ? 'right-0' : 'left-0')}>
           {children(() => setOpen(false))}
         </div>
       )}
