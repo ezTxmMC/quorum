@@ -162,7 +162,7 @@ const LIMIT_RE = /usage limit|rate.?limit|limit (has been )?(reached|exceeded)|h
 
 /** Anbieter und Optionen eines neuen Chats: die zuletzt genutzte Auswahl gilt vor den Anbieter-Standards. */
 function startChoice(settings: Persisted['settings'], init?: Partial<ChatSession>): Pick<ChatSession, 'provider' | 'options'> {
-  const last = settings.lastChat;
+  const last = settings.rememberLastChat === false ? undefined : settings.lastChat;
   const provider = init?.provider ?? last?.provider ?? settings.defaultProvider;
   const lastMode = last ? chatMode(last.options) : 'text';
   // Die Bild-Engine gehört zum Anbieter; bei einem anderen Anbieter startet der Chat deshalb als Text.

@@ -347,6 +347,8 @@ export interface Settings {
   compaction?: { auto?: boolean; thresholdTokens?: number };
   /** Zuletzt genutzte Auswahl (Anbieter, Modus, Modell, Berechtigungen, Effort) – Vorlage für neue Chats. */
   lastChat?: { provider: ProviderId; options: ProviderOptions };
+  /** false = neue Chats starten mit den Anbieter-Standards statt der letzten Auswahl. */
+  rememberLastChat?: boolean;
   showOlderModels?: boolean;
   showUsageInComposer?: boolean;
   customModels?: Partial<Record<ProviderId, string[]>>;

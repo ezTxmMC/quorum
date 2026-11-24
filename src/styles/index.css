@@ -135,6 +135,10 @@
 .icon-btn:hover:not(:disabled) { background: var(--c-bg-hover); color: var(--c-text); }
 .icon-btn:active:not(:disabled) { transform: scale(0.95); }
 
+/* Treffer der Einstellungssuche kurz hervorheben. */
+.settings-card { transition: border-color 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out); }
+.settings-card-found { border-color: color-mix(in srgb, var(--c-accent) 70%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 18%, transparent); }
+
 /* Inseln: Seitenleiste, Hauptbereich und Panels liegen als eigene Flächen mit Abstand auf einem dunkleren Grund. */
 .island {
   border: 1px solid var(--c-border);

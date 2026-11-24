@@ -37,11 +37,58 @@ const FONTS = [
 
 const TABS = [
   { id: 'general', icon: 'lucide:sliders-horizontal', label: 'Allgemein' },
+  { id: 'chat', icon: 'lucide:message-circle', label: 'Chat' },
   { id: 'providers', icon: 'lucide:plug', label: 'Anbieter' },
   { id: 'terminal', icon: 'lucide:square-terminal', label: 'Terminal' },
   { id: 'usage', icon: 'lucide:chart-no-axes-column', label: 'Nutzung' },
   { id: 'updates', icon: 'lucide:sparkles', label: 'Updates' },
+] as const;
+
+const SHORTCUTS = [
+  { keys: 'Strg+B', label: 'Seitenleiste ein-/ausblenden' },
+  { keys: 'Strg+`', label: 'Terminal des Chats' },
+  { keys: 'Strg+N', label: 'Neues Fenster' },
+  { keys: 'Strg+P', label: 'Datei öffnen (Plan & IDE)' },
+  { keys: 'Strg+Umschalt+F', label: 'Im Workspace suchen (Plan & IDE)' },
+  { keys: 'Strg+S', label: 'Datei speichern (Editor)' },
+  { keys: 'Strg+Enter', label: 'Team starten' },
+  { keys: '↑ / ↓', label: 'Frühere Eingaben in der Chatbox' },
+  { keys: 'Esc', label: 'Dialog, Menü oder Vollbild schließen' },
 ];
+
+/** Suchindex der Einstellungen: Begriffe je Karte, damit die Suche direkt zur richtigen Stelle springt. */
+const SETTINGS_INDEX: { tab: string; card?: string; title: string; keywords: string }[] = [
+  { tab: 'general', card: 'appearance', title: 'Darstellung', keywords: 'theme dunkel hell sprache language akzentfarbe farbe design' },
+  { tab: 'general', card: 'workspace', title: 'Workspace', keywords: 'projektordner ordner hotkey schnell-prompt tray seitenleiste sidebar anheften' },
+  { tab: 'general', card: 'shortcuts', title: 'Tastenkürzel', keywords: 'shortcuts tasten kürzel keyboard strg' },
+  { tab: 'general', card: 'hidden-projects', title: 'Ausgeblendete Projekte', keywords: 'projekte wiederherstellen ausgeblendet' },
+  { tab: 'chat', card: 'new-chats', title: 'Neue Chats', keywords: 'standard-anbieter letzte auswahl modell modus nutzung chatbox ältere modelle' },
+  { tab: 'chat', card: 'compaction', title: 'Kompaktieren', keywords: 'compact zusammenfassen verlauf kontext token automatisch' },
+  { tab: 'chat', card: 'fallbacks', title: 'Ausweich-Modelle für alle Chats', keywords: 'fallback limit kontingent wechseln' },
+  { tab: 'chat', card: 'import', title: 'Import', keywords: 'sessions importieren claude codex automatisch' },
+  { tab: 'providers', title: 'Anbieter', keywords: 'cli pfad api ollama lokal sandbox isoliert anmelden modellkatalog standardwerte berechtigungen' },
+  { tab: 'terminal', card: 'shell', title: 'Shell', keywords: 'bash zsh fish shell pfad' },
+  { tab: 'terminal', card: 'terminal-theme', title: 'Farbschema', keywords: 'terminal farben theme' },
+  { tab: 'terminal', card: 'terminal-font', title: 'Schrift & Verhalten', keywords: 'schriftart font cursor schriftgröße zeilenhöhe scrollback nerd' },
+  { tab: 'usage', title: 'Nutzung', keywords: 'token kosten verbrauch limits statistik' },
+  { tab: 'updates', title: 'Software-Updates', keywords: 'update version kanal release beta dev' },
+];
+
+/** Springt zur Karte und hebt sie kurz hervor; der Tab wird erst gerendert, deshalb einen Frame warten. */
+function revealCard(card: string | undefined) {
+  if (!card) {
+    return;
+  }
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const element = document.querySelector<HTMLElement>(`[data-settings-card="${card}"]`);
+    if (!element) {
+      return;
+    }
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    element.classList.add('settings-card-found');
+    setTimeout(() => element.classList.remove('settings-card-found'), 1600);
+  }));
+}
 
 function accelerator(event: React.KeyboardEvent): string | null {
   if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) {
@@ -103,17 +150,66 @@ function HotkeyField({ value, onChange }: { value: string; onChange: (value: str
   );
 }
 
-function SettingsCard({ title, description, action, children }: { title: string; description?: string; action?: React.ReactNode; children: React.ReactNode }) {
+const CARD_STATE_KEY = 'quorum.settings.cards';
+
+function readCardState(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(CARD_STATE_KEY) ?? '{}') as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+interface SettingsCardProps {
+  /** Anker für die Suche und Schlüssel, unter dem der Auf-/Zu-Zustand gemerkt wird. */
+  id?: string;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  /** Einklappbar; zugeklappt zeigt die Kopfzeile `summary` als Kurzstand. */
+  collapsible?: boolean;
+  defaultOpen?: boolean;
+  summary?: string;
+  children: React.ReactNode;
+}
+
+function SettingsCard({ id, title, description, action, collapsible, defaultOpen = true, summary, children }: SettingsCardProps) {
+  const [open, setOpen] = useState(() => (id ? readCardState()[id] : undefined) ?? defaultOpen);
+  const shown = !collapsible || open;
+
+  function handleToggle() {
+    const next = !open;
+    setOpen(next);
+    if (id) {
+      try {
+        localStorage.setItem(CARD_STATE_KEY, JSON.stringify({ ...readCardState(), [id]: next }));
+      } catch { /* Speicher nicht verfügbar: der Zustand gilt dann nur für diese Sitzung */ }
+    }
+  }
+
+  const heading = (
+    <div className="min-w-0 flex-1">
+      <h3 className="text-[13px] font-semibold text-fg">{title}</h3>
+      {description && shown && <p className="mt-0.5 text-[11.5px] text-subtle">{description}</p>}
+    </div>
+  );
+
   return (
-    <section className="space-y-4 rounded-lumen-lg border border-edge bg-surface/55 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-[13px] font-semibold text-fg">{title}</h3>
-          {description && <p className="mt-0.5 text-[11.5px] text-subtle">{description}</p>}
+    <section data-settings-card={id} className="settings-card rounded-lumen-lg border border-edge bg-surface/55">
+      {collapsible ? (
+        <button type="button" aria-expanded={open} className="flex w-full items-center gap-3 px-4 py-3 text-left" onClick={handleToggle}>
+          {heading}
+          {!open && summary && <span className="shrink-0 truncate text-[11.5px] text-subtle">{summary}</span>}
+          <Icon name="lucide:chevron-down" size={14} className={cx('shrink-0 text-subtle transition-transform duration-200', !open && '-rotate-90')} />
+        </button>
+      ) : (
+        <div className="flex items-start justify-between gap-3 px-4 pt-4">
+          {heading}
+          {action}
         </div>
-        {action}
-      </div>
-      {children}
+      )}
+      {/* Kein animiertes Einklappen: dessen Beschnitt würde Auswahlmenüs innerhalb der Karte abschneiden. */}
+      {shown && <div className={cx('fade-in space-y-4 px-4 pb-4', collapsible ? 'pt-1' : 'pt-4')}>{children}</div>}
     </section>
   );
 }
@@ -127,10 +223,10 @@ function GeneralTab() {
     <div className="space-y-5">
       <div>
         <h2 className="text-[17px] font-semibold tracking-tight">{t('Allgemein')}</h2>
-        <p className="mt-0.5 text-[12.5px] text-muted">{t('Darstellung, Sprache, Standard-Workspace und Ausweich-Modelle.')}</p>
+        <p className="mt-0.5 text-[12.5px] text-muted">{t('Darstellung, Sprache, Workspace und Tastenkürzel.')}</p>
       </div>
 
-      <SettingsCard title={t('Darstellung')}>
+      <SettingsCard id="appearance" title={t('Darstellung')}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <Label>{t('Theme')}</Label>
@@ -189,22 +285,7 @@ function GeneralTab() {
         </div>
       </SettingsCard>
 
-      <SettingsCard title={t('Workspace & Verhalten')}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <Label>{t('Standard-Anbieter')}</Label>
-            <Select
-              value={settings.defaultProvider}
-              onChange={(defaultProvider) => setSettings({ defaultProvider })}
-              options={PROVIDER_ORDER.map((id) => ({ value: id, label: PROVIDERS[id].name }))}
-            />
-          </div>
-          <div>
-            <Label hint={t('Schnell-Prompt (Tray)')}>{t('Hotkey Schnell-Prompt')}</Label>
-            <HotkeyField value={settings.quickHotkey} onChange={(quickHotkey) => setSettings({ quickHotkey })} />
-          </div>
-        </div>
-
+      <SettingsCard id="workspace" title={t('Workspace')}>
         <div>
           <Label>{t('Standard-Projektordner')}</Label>
           <div className="flex gap-2">
@@ -214,24 +295,28 @@ function GeneralTab() {
             </button>
           </div>
         </div>
-
-        <div className="space-y-1 border-t border-edge/70 pt-2">
+        <div>
+          <Label hint={t('Schnell-Prompt (Tray)')}>{t('Hotkey Schnell-Prompt')}</Label>
+          <HotkeyField value={settings.quickHotkey} onChange={(quickHotkey) => setSettings({ quickHotkey })} />
+        </div>
+        <div className="border-t border-edge/70 pt-2">
           <Toggle checked={settings.sidebarPinned} onChange={(sidebarPinned) => setSettings({ sidebarPinned })} label={t('Seitenleiste angeheftet')} hint={t('Aus: Die Seitenleiste öffnet sich beim Verweilen am linken Rand oder per Strg+B')} />
-          <Toggle checked={settings.showUsageInComposer !== false} onChange={(showUsageInComposer) => setSettings({ showUsageInComposer })} label={t('Nutzung in der Chatbox anzeigen')} />
-          <Toggle checked={!!settings.showOlderModels} onChange={(showOlderModels) => setSettings({ showOlderModels })} label={t('Ältere Modelle standardmäßig anzeigen')} hint={t('Zeigt zusätzlich ältere und eigene Modell-IDs in der Auswahl')} />
-          <Toggle checked={settings.autoImport} onChange={(autoImport) => setSettings({ autoImport })} label={t('Neue Sessions automatisch importieren')} hint={t('Prüft alle 60 s auf neue Claude- und Codex-Sessions')} />
         </div>
       </SettingsCard>
 
-      <SettingsCard
-        title={t('Ausweich-Modelle für alle Chats')}
-        description={t('Ist das Kontingent eines Modells aufgebraucht, wechselt der Chat der Reihe nach auf diese Modelle. Pro Chat anpassbar über das Rettungsring-Symbol in der Titelleiste.')}
-      >
-        <FallbackList value={settings.fallbacks ?? []} onChange={(fallbacks) => setSettings({ fallbacks })} />
+      <SettingsCard id="shortcuts" title={t('Tastenkürzel')} collapsible defaultOpen={false} summary={`${SHORTCUTS.length} ${t('Kürzel')}`}>
+        <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
+          {SHORTCUTS.map((shortcut) => (
+            <div key={shortcut.keys} className="flex items-center justify-between gap-3 text-[12px]">
+              <span className="text-muted">{t(shortcut.label)}</span>
+              <kbd className="kbd-pill shrink-0">{shortcut.keys}</kbd>
+            </div>
+          ))}
+        </div>
       </SettingsCard>
 
       {hidden.length > 0 && (
-        <SettingsCard title={t('Ausgeblendete Projekte')}>
+        <SettingsCard id="hidden-projects" title={t('Ausgeblendete Projekte')} collapsible defaultOpen={false} summary={String(hidden.length)}>
           <div className="space-y-2">
             {hidden.map((path) => (
               <div key={path} className="flex items-center gap-3 rounded-lumen border border-edge bg-bg/50 px-3 py-2">
@@ -245,6 +330,74 @@ function GeneralTab() {
           </div>
         </SettingsCard>
       )}
+    </div>
+  );
+}
+
+const COMPACT_STEPS = [20_000, 40_000, 60_000, 100_000, 150_000, 200_000];
+const DEFAULT_COMPACT_TOKENS = 60_000;
+
+function ChatTab() {
+  const settings = useHub((s) => s.data.settings);
+  const { setSettings } = useHub.getState();
+  const compaction = settings.compaction ?? {};
+  const autoCompact = compaction.auto !== false;
+  const threshold = compaction.thresholdTokens ?? DEFAULT_COMPACT_TOKENS;
+  const fallbackCount = settings.fallbacks?.length ?? 0;
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-[17px] font-semibold tracking-tight">{t('Chat')}</h2>
+        <p className="mt-0.5 text-[12.5px] text-muted">{t('Neue Chats, Kompaktieren, Ausweich-Modelle und Import.')}</p>
+      </div>
+
+      <SettingsCard id="new-chats" title={t('Neue Chats')}>
+        <div>
+          <Label hint={t('gilt, wenn keine letzte Auswahl übernommen wird')}>{t('Standard-Anbieter')}</Label>
+          <Select value={settings.defaultProvider} onChange={(defaultProvider) => setSettings({ defaultProvider })} options={PROVIDER_ORDER.map((id) => ({ value: id, label: PROVIDERS[id].name }))} />
+        </div>
+        <div className="space-y-1 border-t border-edge/70 pt-2">
+          <Toggle checked={settings.rememberLastChat !== false} onChange={(rememberLastChat) => setSettings({ rememberLastChat })} label={t('Letzte Auswahl übernehmen')} hint={t('Neue Chats starten mit Anbieter, Modus, Modell, Berechtigungen und Effort des zuletzt genutzten Chats')} />
+          <Toggle checked={settings.showUsageInComposer !== false} onChange={(showUsageInComposer) => setSettings({ showUsageInComposer })} label={t('Nutzung in der Chatbox anzeigen')} />
+          <Toggle checked={!!settings.showOlderModels} onChange={(showOlderModels) => setSettings({ showOlderModels })} label={t('Ältere Modelle standardmäßig anzeigen')} hint={t('Zeigt zusätzlich ältere und eigene Modell-IDs in der Auswahl')} />
+        </div>
+      </SettingsCard>
+
+      <SettingsCard id="compaction" title={t('Kompaktieren')} description={t('Fasst ältere Teile eines langen Chats zusammen; die jüngsten Nachrichten bleiben wörtlich erhalten. Manuell jederzeit mit /compact.')}>
+        <Toggle
+          checked={autoCompact}
+          onChange={(auto) => setSettings({ compaction: { ...compaction, auto } })}
+          label={t('Automatisch kompaktieren')}
+          hint={t('Für API-, Ollama- und lokale Modelle, die den Verlauf bei jeder Anfrage komplett mitbekommen. Claude, Codex und Co. verdichten ihre Sitzung selbst.')}
+        />
+        {autoCompact && (
+          <div>
+            <Label hint={`~${(threshold / 1000).toFixed(0)}k ${t('Token')}`}>{t('Ab dieser Verlaufsgröße')}</Label>
+            <input
+              type="range" min={0} max={COMPACT_STEPS.length - 1} step={1}
+              value={Math.max(0, COMPACT_STEPS.findIndex((value) => value >= threshold))}
+              onChange={(event) => setSettings({ compaction: { ...compaction, thresholdTokens: COMPACT_STEPS[Number(event.target.value)] } })}
+              className="w-full accent-[var(--c-accent)]"
+            />
+          </div>
+        )}
+      </SettingsCard>
+
+      <SettingsCard
+        id="fallbacks"
+        title={t('Ausweich-Modelle für alle Chats')}
+        description={t('Ist das Kontingent eines Modells aufgebraucht, wechselt der Chat der Reihe nach auf diese Modelle. Pro Chat anpassbar über das Rettungsring-Symbol in der Titelleiste.')}
+        collapsible
+        defaultOpen={fallbackCount > 0}
+        summary={fallbackCount ? `${fallbackCount} ${t('Modelle')}` : t('keine gewählt')}
+      >
+        <FallbackList value={settings.fallbacks ?? []} onChange={(fallbacks) => setSettings({ fallbacks })} />
+      </SettingsCard>
+
+      <SettingsCard id="import" title={t('Import')}>
+        <Toggle checked={settings.autoImport} onChange={(autoImport) => setSettings({ autoImport })} label={t('Neue Sessions automatisch importieren')} hint={t('Prüft alle 60 s auf neue Claude- und Codex-Sessions')} />
+      </SettingsCard>
     </div>
   );
 }
@@ -289,10 +442,9 @@ function ProviderTab({ p }: { p: ProviderId }) {
 
       {isSandboxProvider(p) && <SandboxCard provider={p} />}
 
-      <div>
-        <div className="mb-2 text-[12px] font-medium text-muted">{t('Standardwerte für neue Chats & Agenten')}</div>
+      <SettingsCard id={`defaults-${p}`} title={t('Standardwerte für neue Chats & Agenten')} collapsible defaultOpen={false} summary={t('Modell, Berechtigungen, CLI-Optionen')}>
         <OptionsPanel provider={p} value={settings.providerDefaults[p]} onChange={(patch) => setProviderDefaults(p, patch)} />
-      </div>
+      </SettingsCard>
     </div>
   );
 }
@@ -452,6 +604,7 @@ function TerminalTab() {
       </div>
 
       <SettingsCard
+        id="shell"
         title={t('Shell')}
         description={t('Wähle eine erkannte Shell oder gib einen eigenen Pfad an (gilt für neu geöffnete Terminals).')}
       >
@@ -528,7 +681,7 @@ function TerminalTab() {
         </div>
       </div>
 
-      <SettingsCard title={t('Farbschema')}>
+      <SettingsCard id="terminal-theme" title={t('Farbschema')} collapsible>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
             { id: 'app', label: t('App'), bg: 'var(--c-bg-elevated)', fg: 'var(--c-text)' },
@@ -549,7 +702,7 @@ function TerminalTab() {
         </div>
       </SettingsCard>
 
-      <SettingsCard title={t('Schrift & Verhalten')}>
+      <SettingsCard id="terminal-font" title={t('Schrift & Verhalten')} collapsible>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <Label>{t('Schriftart')}</Label>
@@ -774,30 +927,57 @@ export function SettingsModal() {
   const tab = useHub((s) => s.settingsTab);
   const version = useHub((s) => s.updaterState.currentVersion);
   const { closeSettings, openSettings } = useHub.getState();
+  const [query, setQuery] = useState('');
 
   if (!tab) {
     return null;
+  }
+
+  const needle = query.trim().toLowerCase();
+  const results = needle ? SETTINGS_INDEX.filter((entry) => `${entry.title} ${t(entry.title)} ${entry.keywords}`.toLowerCase().includes(needle)) : [];
+
+  function handleJump(target: string, card?: string) {
+    setQuery('');
+    openSettings(target);
+    revealCard(card);
   }
 
   return (
     <Modal xl bare title={t('Einstellungen')} onClose={closeSettings}>
       <nav className="flex w-52 shrink-0 flex-col border-r border-edge bg-surface/80 p-3">
         <div className="px-2.5 pb-3 pt-1 text-[13px] font-semibold tracking-tight text-fg">{t('Einstellungen')}</div>
-        <div className="space-y-0.5">
-          {TABS.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => openSettings(item.id)}
-              className={cx(
-                'flex w-full items-center gap-2.5 rounded-lumen-sm px-2.5 py-2 text-left text-[12.5px] font-medium transition-colors',
-                tab === item.id ? 'bg-active text-fg' : 'text-muted hover:bg-hover hover:text-fg',
-              )}
-            >
-              <Icon name={item.icon} size={15} className={tab === item.id ? 'text-accent' : 'text-subtle'} />
-              <span>{t(item.label)}</span>
-            </button>
-          ))}
+        <div className="mb-2 flex items-center gap-2 rounded-lumen-sm border border-edge bg-input px-2.5 focus-within:border-accent/60">
+          <Icon name="lucide:search" size={13} className="shrink-0 text-subtle" />
+          <input type="text" role="searchbox" aria-label={t('Einstellungen durchsuchen')} placeholder={t('Suchen …')} value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent py-1.5 text-[12px] outline-none placeholder:text-subtle" />
+          {query && <button className="icon-btn !size-5" aria-label={t('Suche leeren')} onClick={() => setQuery('')}><Icon name="lucide:x" size={12} /></button>}
         </div>
+        {query.trim() ? (
+          <div className="space-y-0.5">
+            {results.length === 0 && <div className="px-2.5 py-2 text-[12px] text-subtle">{t('Nichts gefunden.')}</div>}
+            {results.map((entry) => (
+              <button key={`${entry.tab}:${entry.card ?? ''}`} onClick={() => handleJump(entry.tab, entry.card)} className="flex w-full flex-col rounded-lumen-sm px-2.5 py-1.5 text-left transition-colors hover:bg-hover">
+                <span className="text-[12.5px] font-medium text-fg">{t(entry.title)}</span>
+                <span className="text-[10.5px] text-subtle">{t(TABS.find((item) => item.id === entry.tab)?.label ?? '')}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-0.5">
+            {TABS.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => openSettings(item.id)}
+                className={cx(
+                  'flex w-full items-center gap-2.5 rounded-lumen-sm px-2.5 py-2 text-left text-[12.5px] font-medium transition-colors',
+                  tab === item.id ? 'bg-active text-fg' : 'text-muted hover:bg-hover hover:text-fg',
+                )}
+              >
+                <Icon name={item.icon} size={15} className={tab === item.id ? 'text-accent' : 'text-subtle'} />
+                <span>{t(item.label)}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex-1" />
         <div className="px-2.5 pt-3 font-mono text-[11px] text-subtle">Quorum v{version}</div>
       </nav>
@@ -811,6 +991,7 @@ export function SettingsModal() {
         </button>
         <div key={tab} className="fade-in min-h-0 flex-1 overflow-y-auto p-6 pr-12">
           {tab === 'general' && <GeneralTab />}
+          {tab === 'chat' && <ChatTab />}
           {tab === 'providers' && <ProvidersTab />}
           {tab === 'terminal' && <TerminalTab />}
           {tab === 'usage' && <UsageView />}
