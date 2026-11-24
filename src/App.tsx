@@ -4,6 +4,7 @@ import { setLang } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, Outlet, RouterProvider, createHashRouter, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Dock, PanelBody } from '@/components/Dock';
+import { IdeSidebar, ThreeDSidebar } from '@/components/ModeSidebars';
 import { Sidebar } from '@/components/Sidebar';
 import { TopBar } from '@/components/TopBar';
 import { cx } from '@/components/ui';
@@ -140,23 +141,30 @@ export default function App() {
 }
 
 function Shell() {
-  const preference = useHub((s) => s.data.settings.sidebarPinned);
-  const [workspaceSidebar, setWorkspaceSidebar] = useState(false);
+  const pinned = useHub((s) => s.data.settings.sidebarPinned);
   const [winState, setWinState] = useState({ maximized: false, fullscreen: false });
   const setSettings = useHub.getState().setSettings;
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const location = useLocation();
-  const workspace = location.pathname.startsWith('/plan');
-  const pinned = workspace ? workspaceSidebar : preference;
+  const isThreeD = location.pathname.startsWith('/3d');
+  const isIde = location.pathname.startsWith('/plan');
   const roundedFrame = Boolean(window.__TAURI__) && !winState.maximized && !winState.fullscreen;
   useEffect(() => {
     void hub.winState().then(setWinState);
     return hub.onWinState(setWinState);
   }, []);
   const toggleSidebar = () => {
-    if (workspace) { setWorkspaceSidebar((previous) => !previous); return; }
-    setSettings({ sidebarPinned: !preference });
+    setSettings({ sidebarPinned: !pinned });
+  };
+  const renderSidebar = (props: { pinned?: boolean; onTogglePin?: () => void; onClose?: () => void }) => {
+    if (isThreeD) {
+      return <ThreeDSidebar {...props} />;
+    }
+    if (isIde) {
+      return <IdeSidebar {...props} />;
+    }
+    return <Sidebar {...props} />;
   };
   // Hover-Absicht: die Leiste öffnet erst, wenn die Maus kurz am Rand verweilt – beim bloßen Vorbeifahren springt sie nicht auf.
   const enter = () => { clearTimeout(timer.current); if (!open) timer.current = setTimeout(() => setOpen(true), 220); };
@@ -188,7 +196,7 @@ function Shell() {
               transition: 'transform 280ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease',
             }}
           >
-            <Sidebar pinned={pinned} onTogglePin={toggleSidebar} />
+            {renderSidebar({ pinned, onTogglePin: toggleSidebar })}
           </div>
         </div>
 
@@ -232,15 +240,14 @@ function Shell() {
             onMouseEnter={keep}
             onMouseLeave={leave}
           >
-            <Sidebar
-              pinned={pinned}
-              onTogglePin={() => {
-                if (workspace) { setWorkspaceSidebar(true); }
-                if (!workspace) { setSettings({ sidebarPinned: true }); }
+            {renderSidebar({
+              pinned,
+              onTogglePin: () => {
+                setSettings({ sidebarPinned: true });
                 setOpen(false);
-              }}
-              onClose={() => setOpen(false)}
-            />
+              },
+              onClose: () => setOpen(false),
+            })}
           </div>
         )}
 

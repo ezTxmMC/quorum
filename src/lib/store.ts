@@ -68,6 +68,20 @@ interface State {
   /** Terminal-Sichtbarkeit pro Chat (nicht global für die gesamte App). */
   chatTerminals: Record<string, boolean>;
   toggleChatTerminal: (sessionId: string, open?: boolean) => void;
+  /** Aktives 3D-Projekt für Sidebar ↔ 3D-Studio Synchronisierung. */
+  threeDProjectId: string;
+  threeDRevision: number;
+  setThreeDProjectId: (id: string) => void;
+  bumpThreeDRevision: () => void;
+  /** IDE-Sidebar ↔ WorkspaceEditor / PlanWorkspace Synchronisierung. */
+  ideRootPath: string;
+  setIdeRootPath: (root: string) => void;
+  ideOpenFile: { path: string; seq: number } | null;
+  openIdeFile: (path: string) => void;
+  ideQuickAction: { kind: 'files' | 'content'; seq: number } | null;
+  triggerIdeQuickAction: (kind: 'files' | 'content') => void;
+  idePlanAction: { kind: 'select' | 'new' | 'import'; id?: string; seq: number } | null;
+  triggerIdePlanAction: (kind: 'select' | 'new' | 'import', id?: string) => void;
 
   createMulti: (config: MultiConfig, title?: string) => string;
   startMulti: (id: string) => void;
@@ -164,6 +178,18 @@ export const useHub = create<State>((set, get) => {
       const next = open ?? !state.chatTerminals[sessionId];
       return { chatTerminals: { ...state.chatTerminals, [sessionId]: next } };
     }),
+    threeDProjectId: '',
+    threeDRevision: 0,
+    setThreeDProjectId: (id) => set({ threeDProjectId: id }),
+    bumpThreeDRevision: () => set((state) => ({ threeDRevision: state.threeDRevision + 1 })),
+    ideRootPath: '',
+    setIdeRootPath: (ideRootPath) => set({ ideRootPath }),
+    ideOpenFile: null,
+    openIdeFile: (path) => set((state) => ({ ideOpenFile: { path, seq: (state.ideOpenFile?.seq ?? 0) + 1 } })),
+    ideQuickAction: null,
+    triggerIdeQuickAction: (kind) => set((state) => ({ ideQuickAction: { kind, seq: (state.ideQuickAction?.seq ?? 0) + 1 } })),
+    idePlanAction: null,
+    triggerIdePlanAction: (kind, id) => set((state) => ({ idePlanAction: { kind, id, seq: (state.idePlanAction?.seq ?? 0) + 1 } })),
     openSettings: (tab = 'general') => set({ settingsTab: tab }),
     closeSettings: () => set({ settingsTab: null }),
     setActiveCwd: (cwd) => { if (get().activeCwd !== cwd) set({ activeCwd: cwd }); },

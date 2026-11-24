@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useBlocker, useLocation, useNavigate } from 'react-router-dom';
-import type { ApprovalScope, Plan, PlanDefinition, PlanSnapshot } from '@shared/plan/types';
+import type { ApprovalScope, PlanDefinition, PlanSnapshot } from '@shared/plan/types';
 import { initialDefinition } from '@shared/plan/validation';
 import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
@@ -35,13 +35,14 @@ function definitionOf(snapshot: PlanSnapshot): PlanDefinition {
 export function PlanWorkspace() {
   const navigate = useNavigate();
   const location = useLocation();
-  const initialRoot = useHub.getState().activeCwd || useHub.getState().data.recentProjects[0] || '';
+  const initialRoot = useHub.getState().ideRootPath || useHub.getState().activeCwd || useHub.getState().data.recentProjects[0] || '';
+  const root = useHub((state) => state.ideRootPath);
+  const ideOpenFile = useHub((state) => state.ideOpenFile);
+  const idePlanAction = useHub((state) => state.idePlanAction);
+  const { setIdeRootPath } = useHub.getState();
 
   const [editorDirty, setEditorDirty] = useState(false);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [plansDrawerOpen, setPlansDrawerOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<PlanSnapshot | null>(null);
-  const [root, setRoot] = useState('');
   const [title, setTitle] = useState('');
   const [definition, setDefinition] = useState(JSON.stringify(initialDefinition('Projektziel beschreiben'), null, 2));
   const [tab, setTab] = useState<WorkspaceTab>('editor');
@@ -59,15 +60,52 @@ export function PlanWorkspace() {
   const [previousDefinition, setPreviousDefinition] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!initialRoot) {
+    if (!initialRoot || root) {
       return;
     }
     let active = true;
     void hub.ideRoot(initialRoot)
-      .then((canonical) => { if (active) { setRoot((current) => current || canonical); } })
+      .then((canonical) => { if (active && !useHub.getState().ideRootPath) { setIdeRootPath(canonical); } })
       .catch(() => { /* Ignore stale or moved initial workspace paths. */ });
     return () => { active = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!ideOpenFile?.path) {
+      return;
+    }
+    setFile(ideOpenFile.path);
+    setTab('editor');
+  }, [ideOpenFile]);
+
+  useEffect(() => {
+    if (!idePlanAction) {
+      return;
+    }
+    if (idePlanAction.kind === 'new') {
+      if (!canLeave()) {
+        return;
+      }
+      setSnapshot(null);
+      setEditorDirty(false);
+      setTitle('');
+      setTab('definition');
+      setFile(undefined);
+      setDefinition(JSON.stringify(initialDefinition('Projektziel beschreiben'), null, 2));
+      return;
+    }
+    if (idePlanAction.kind === 'select' && idePlanAction.id) {
+      if (!canLeave()) {
+        return;
+      }
+      const planId = idePlanAction.id;
+      void action(async () => {
+        accept(await hub.planGet(planId));
+        setFile(undefined);
+        setTab('tasks');
+      });
+    }
+  }, [idePlanAction]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const state = location.state as { ideOpen?: { root: string; path: string } } | null;
@@ -85,7 +123,7 @@ export function PlanWorkspace() {
         setTitle('');
         setDefinition(JSON.stringify(initialDefinition('Projektziel beschreiben'), null, 2));
       }
-      setRoot(workspaceRoot);
+      setIdeRootPath(workspaceRoot);
       setFile(request.path);
       setTab('editor');
     }).catch((reason: unknown) => {
@@ -98,7 +136,7 @@ export function PlanWorkspace() {
 
   const accept = (next: PlanSnapshot) => {
     setSnapshot(next);
-    setRoot(next.workspaceRoot);
+    setIdeRootPath(next.workspaceRoot);
     setTitle(next.plan.title);
     setDefinition(JSON.stringify(definitionOf(next), null, 2));
     setScopeOpen(false);
@@ -106,11 +144,7 @@ export function PlanWorkspace() {
     setPreviousDefinition(null);
   };
 
-  const refresh = () => hub.planList().then(setPlans);
-
-  useEffect(() => {
-    void refresh().catch((reason: unknown) => setError(String(reason)));
-  }, []);
+  const refresh = () => Promise.resolve();
 
   const action = async (operation: () => Promise<void>) => {
     if (busy) {
@@ -163,7 +197,7 @@ export function PlanWorkspace() {
       return;
     }
     const resolved = await hub.ideRoot(folder);
-    setRoot(resolved);
+    setIdeRootPath(resolved);
     setFile(undefined);
     useHub.getState().addProject(resolved);
   });
@@ -198,112 +232,11 @@ export function PlanWorkspace() {
   });
 
   const revision = snapshot?.revisions.find((candidate) => candidate.id === inspectedRevision) ?? snapshot?.revisions.at(-1);
-  const workspaceName = root ? root.split(/[\\/]/).filter(Boolean).pop() ?? root : '';
 
   return (
     <div className="flex h-full min-h-0 bg-bg">
-      {plansDrawerOpen && (
-        <aside className="flex w-60 shrink-0 flex-col border-r border-edge bg-surface/60">
-          <div className="flex items-center justify-between border-b border-edge px-3 py-2">
-            <span className="text-[12px] font-semibold text-fg">Pläne</span>
-            <div className="flex items-center gap-1">
-              <label className="icon-btn !size-7 cursor-pointer" title="Plan importieren">
-                <Icon name="lucide:upload" size={13} />
-                <input
-                  className="hidden"
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={(event) => {
-                    const selected = event.target.files?.[0];
-                    event.target.value = '';
-                    if (!selected || !canLeave()) {
-                      return;
-                    }
-                    void action(async () => {
-                      if (selected.size > 2_000_000) {
-                        throw new Error('Import darf höchstens 2 MB groß sein');
-                      }
-                      const folder = await hub.pickFolder();
-                      if (!folder) {
-                        return;
-                      }
-                      accept(await hub.planImport(folder, JSON.parse(await selected.text()) as unknown));
-                      await refresh();
-                    });
-                  }}
-                />
-              </label>
-              <button
-                className="icon-btn !size-7"
-                title="Neuer Plan"
-                disabled={busy}
-                onClick={() => {
-                  if (!canLeave()) {
-                    return;
-                  }
-                  setSnapshot(null);
-                  setEditorDirty(false);
-                  setTitle('');
-                  setTab('definition');
-                  setFile(undefined);
-                  setDefinition(JSON.stringify(initialDefinition('Projektziel beschreiben'), null, 2));
-                }}
-              >
-                <Icon name="lucide:plus" size={14} />
-              </button>
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-            {plans.length === 0 && (
-              <p className="px-2 py-6 text-center text-[12px] text-subtle">Noch keine Pläne gespeichert.</p>
-            )}
-            {plans.map((plan) => (
-              <button
-                key={plan.id}
-                className={cx(
-                  'block w-full rounded-lumen-sm px-2.5 py-2 text-left transition-colors',
-                  snapshot?.plan.id === plan.id ? 'bg-active text-fg' : 'text-muted hover:bg-hover hover:text-fg',
-                )}
-                disabled={busy}
-                onClick={() => {
-                  if (!canLeave()) {
-                    return;
-                  }
-                  void action(async () => {
-                    accept(await hub.planGet(plan.id));
-                    setFile(undefined);
-                  });
-                }}
-              >
-                <span className="block truncate text-[12.5px] font-medium">{plan.title}</span>
-                <span className="text-[11px] text-subtle">{plan.status}</span>
-              </button>
-            ))}
-          </div>
-        </aside>
-      )}
-
       <section className="flex min-w-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center gap-2 border-b border-edge bg-surface/40 px-3 py-2">
-          <button
-            className={cx('icon-btn !size-7', plansDrawerOpen && 'bg-active text-fg')}
-            title="Pläne ein-/ausblenden"
-            onClick={() => setPlansDrawerOpen((value) => !value)}
-          >
-            <Icon name="lucide:list-checks" size={15} />
-          </button>
-
-          <button
-            className="btn !rounded-full !px-3 !py-1 text-[12px]"
-            disabled={busy}
-            title={root || 'Workspace wählen'}
-            onClick={() => void pickWorkspace()}
-          >
-            <Icon name="lucide:folder-open" size={13} className="text-accent" />
-            <span className="max-w-52 truncate">{workspaceName || 'Workspace wählen'}</span>
-          </button>
-
           <div className="flex items-center gap-0.5 rounded-full border border-edge bg-surface/80 p-0.5">
             {WORKSPACE_TABS.map((item) => (
               <button

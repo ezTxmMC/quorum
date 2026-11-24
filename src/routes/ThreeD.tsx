@@ -12,11 +12,9 @@ import { ModelAnimations, ModelTextures } from '@/components/ModelAssets';
 import { ModelButton, defaultModel } from '@/components/ModelPicker';
 import { ModelViewer3D } from '@/components/ModelViewer3D';
 import { ModelWorkfiles } from '@/components/ModelWorkfiles';
-import { ThreeDTools } from '@/components/ThreeDTools';
 import { cx } from '@/components/ui';
 
 type Detail = Awaited<ReturnType<typeof hub.threedGet>>;
-type Project = Awaited<ReturnType<typeof hub.threedList>>[number];
 type StudioTab = 'viewport' | 'workfiles' | 'textures' | 'animations' | 'history';
 
 const STUDIO_TABS: { id: StudioTab; label: string; icon: string }[] = [
@@ -31,15 +29,14 @@ export function ThreeDPage() {
   const location = useLocation();
   const statuses = useHub((state) => state.statuses);
   const settings = useHub((state) => state.data.settings);
+  const projectId = useHub((state) => state.threeDProjectId);
+  const { setThreeDProjectId, bumpThreeDRevision } = useHub.getState();
   const initialProjectId = (location.state as { projectId?: string } | null)?.projectId;
 
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState<string>(initialProjectId ?? '');
   const [detail, setDetail] = useState<Detail | null>(null);
   const [tab, setTab] = useState<StudioTab>('viewport');
   const [live, setLive] = useState(false);
   const [frame, setFrame] = useState<string | null>(null);
-  const [toolsOpen, setToolsOpen] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [provider, setProvider] = useState<ProviderId>(settings.defaultProvider);
   const [model, setModel] = useState<string | undefined>(() => settings.providerDefaults[settings.defaultProvider]?.model);
@@ -49,17 +46,11 @@ export function ThreeDPage() {
 
   const resolvedModel = model ?? defaultModel(provider, statuses[provider]);
 
-  const loadProjects = async () => {
-    const list = await hub.threedList();
-    setProjects(list);
-    if (!projectId && list.length > 0) {
-      setProjectId(list[0].id);
-    }
-  };
-
   useEffect(() => {
-    void loadProjects().catch((reason: unknown) => setError(String(reason)));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (initialProjectId) {
+      setThreeDProjectId(initialProjectId);
+    }
+  }, [initialProjectId, setThreeDProjectId]);
 
   useEffect(() => {
     if (!projectId) {
@@ -117,7 +108,7 @@ export function ThreeDPage() {
         setRunning(false);
         setStatusText(event.reason || (event.ok ? t('Fertig') : t('Abgebrochen')));
         refreshDetail();
-        void loadProjects();
+        bumpThreeDRevision();
       }
     });
 
@@ -140,18 +131,9 @@ export function ThreeDPage() {
 
   const createProject = () => runAction(async () => {
     const created = await hub.threedCreate(t('Neues 3D-Projekt'));
-    await loadProjects();
-    setProjectId(created.id);
+    setThreeDProjectId(created.id);
+    bumpThreeDRevision();
     setTab('viewport');
-  });
-
-  const deleteProject = (id: string) => runAction(async () => {
-    await hub.threedDelete(id);
-    const list = await hub.threedList();
-    setProjects(list);
-    if (projectId === id) {
-      setProjectId(list[0]?.id ?? '');
-    }
   });
 
   const toggleLive = () => runAction(async () => {
@@ -188,8 +170,8 @@ export function ThreeDPage() {
     if (!targetId) {
       const created = await hub.threedCreate(goal.slice(0, 36));
       targetId = created.id;
-      setProjectId(targetId);
-      await loadProjects();
+      setThreeDProjectId(targetId);
+      bumpThreeDRevision();
     }
     setRunning(true);
     setStatusText(t('Starte 3D-Generierung …'));
@@ -221,74 +203,6 @@ export function ThreeDPage() {
 
   return (
     <div className="flex h-full min-h-0 bg-bg">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-edge bg-surface/60">
-        <div className="flex items-center justify-between border-b border-edge px-3 py-2.5">
-          <div className="flex items-center gap-2 text-[12.5px] font-semibold text-fg">
-            <Icon name="lucide:cuboid" size={15} className="text-accent" />
-            <span>3D Studio</span>
-          </div>
-          <button className="btn btn-primary !px-2.5 !py-1 text-[11.5px]" onClick={() => void createProject()}>
-            <Icon name="lucide:plus" size={13} />
-            <span>{t('Neu')}</span>
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-          {projects.length === 0 && (
-            <p className="px-2 py-6 text-center text-[12px] text-subtle">
-              {t('Noch keine 3D-Projekte.')}
-            </p>
-          )}
-          {projects.map((project) => {
-            const selected = project.id === projectId;
-            return (
-              <div
-                key={project.id}
-                className={cx(
-                  'group flex items-center gap-2 rounded-lumen-sm px-2.5 py-2 transition-colors',
-                  selected ? 'bg-active text-fg' : 'text-muted hover:bg-hover hover:text-fg',
-                )}
-              >
-                <button
-                  className="min-w-0 flex-1 text-left"
-                  onClick={() => setProjectId(project.id)}
-                >
-                  <span className="block truncate text-[12.5px] font-medium">{project.name}</span>
-                  <span className="block text-[10.5px] text-subtle">
-                    {new Date(project.updatedAt).toLocaleDateString()}
-                  </span>
-                </button>
-                <button
-                  className="icon-btn hidden !size-6 group-hover:grid"
-                  title={t('Projekt löschen')}
-                  onClick={() => void deleteProject(project.id)}
-                >
-                  <Icon name="lucide:trash-2" size={12} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="border-t border-edge p-2">
-          <button
-            className="flex w-full items-center justify-between rounded-lumen-sm px-2.5 py-1.5 text-[12px] text-muted transition-colors hover:bg-hover hover:text-fg"
-            onClick={() => setToolsOpen((value) => !value)}
-          >
-            <span className="flex items-center gap-2">
-              <Icon name="lucide:wrench" size={13} />
-              <span>{t('Blockbench & Blender')}</span>
-            </span>
-            <Icon name={toolsOpen ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={13} />
-          </button>
-          {toolsOpen && (
-            <div className="mt-2 max-h-60 overflow-y-auto px-1">
-              <ThreeDTools />
-            </div>
-          )}
-        </div>
-      </aside>
-
       <section className="flex min-w-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center gap-2 border-b border-edge bg-surface/40 px-4 py-2">
           <div className="flex min-w-0 items-center gap-2.5">

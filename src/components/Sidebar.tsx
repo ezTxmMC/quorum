@@ -11,8 +11,7 @@ import { Collapse, MenuItem, Modal, Popover, ProviderMark, cx } from './ui';
 import { PROVIDERS } from '@shared/catalog';
 import { chatMode } from '@shared/chat-modes';
 
-const nav = [
-  { to: '/plan', icon: 'lucide:list-checks', label: 'Plan & IDE' },
+const EXTRA_NAV = [
   { to: '/multi', icon: 'lucide:network', label: 'Multi-Agent' },
   { to: '/models', icon: 'lucide:box', label: 'Modelle' },
   { to: '/workflows', icon: 'lucide:workflow', label: 'Workflows' },
@@ -343,122 +342,94 @@ export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; on
           </button>
         )}
       </div>
-      <nav className="space-y-0.5 px-2.5 pb-2">
-        {nav.map((n) => (
-          <NavLink key={n.to} to={n.to} viewTransition className={({ isActive }) => cx('flex items-center gap-2.5 rounded-lumen-sm px-2.5 py-1.5 text-muted hover:bg-hover hover:text-fg', isActive && 'bg-active text-fg')}>
-            <Icon name={n.icon} size={16} /> {t(n.label)}
-          </NavLink>
-        ))}
-      </nav>
       <div role="search" className="px-2.5 pb-2">
         <div className="flex items-center gap-2 rounded-lumen-sm border border-edge bg-input px-2.5 focus-within:border-accent/60">
-          <Icon name="lucide:search" size={14} className="shrink-0 text-subtle" />
-          <input type="text" role="searchbox" aria-label={t('Chats durchsuchen')} placeholder={t('Chats durchsuchen …')} value={search} onChange={(e) => setSearch(e.target.value)}
+          <Icon name="lucide:search" size={13} className="shrink-0 text-subtle" />
+          <input type="text" role="searchbox" aria-label={t('Chats durchsuchen')} placeholder={t('Suchen …')} value={search} onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape' && search) { e.preventDefault(); e.stopPropagation(); setSearch(''); } }}
-            className="min-w-0 flex-1 bg-transparent py-2 text-[12px] outline-none placeholder:text-subtle" />
+            className="min-w-0 flex-1 bg-transparent py-1.5 text-[12px] outline-none placeholder:text-subtle" />
           {search && <button className="icon-btn !size-5" aria-label={t('Suche leeren')} title={t('Suche leeren')} onClick={() => setSearch('')}><Icon name="lucide:x" size={12} /></button>}
         </div>
-        {search.trim() && <div role="status" aria-live="polite" className="px-1 pt-1.5 text-[10.5px] text-subtle">{query !== search.trim() ? t('Suche …') : `${matches.size} ${t('Chats gefunden')}`}</div>}
+        {search.trim() && <div role="status" aria-live="polite" className="px-1 pt-1 text-[10.5px] text-subtle">{query !== search.trim() ? t('Suche …') : `${matches.size} ${t('Chats gefunden')}`}</div>}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
         {!searching && multis.length > 0 && (
           <>
-            <div className="px-2.5 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-subtle">{t('Teams')}</div>
-            {multis.slice(0, 8).map((m) => (
-              <NavLink key={m.id} to={`/multi/${m.id}`} viewTransition className={({ isActive }) => cx('group flex items-center gap-2 rounded-lumen-sm px-2.5 py-1.5 transition-colors hover:bg-hover', isActive && 'bg-active', leaving.has(m.id) && 'row-leave')}>
+            <div className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-wider text-subtle">{t('Teams')}</div>
+            {multis.slice(0, 6).map((m) => (
+              <NavLink key={m.id} to={`/multi/${m.id}`} viewTransition className={({ isActive }) => cx('group flex items-center gap-2 rounded-lumen-sm px-2 py-1.5 transition-colors hover:bg-hover', isActive && 'bg-active', leaving.has(m.id) && 'row-leave')}>
                 <span className={cx('size-2 shrink-0 rounded-full', m.status === 'running' ? 'pulse-dot bg-accent' : m.status === 'done' ? 'bg-ok' : m.status === 'failed' ? 'bg-bad' : 'bg-subtle')} />
-                <span className="flex-1 truncate">{m.title}</span>
-                <span className="text-[10.5px] text-subtle group-hover:hidden">{m.config.agents.length} {t('Agenten')}</span>
+                <span className="flex-1 truncate text-[12.5px]">{m.title}</span>
                 <button className="icon-btn hidden !size-5 group-hover:grid" onClick={(e) => { e.preventDefault(); leave(m.id, () => { delMulti(m.id); if (location.hash.includes(m.id)) navigate('/multi', { viewTransition: true }); }); }}><Icon name="lucide:trash-2" size={12} /></button>
               </NavLink>
             ))}
           </>
         )}
-        <div className="flex items-center justify-between px-2.5 pb-1.5 pt-3 text-[11px] font-medium uppercase tracking-wide text-subtle">
-          <span className="flex items-center gap-1.5 font-semibold text-muted">
+        <div className="flex items-center justify-between px-2 pb-1.5 pt-2 text-[10.5px] font-semibold uppercase tracking-wider text-subtle">
+          <span className="flex items-center gap-1.5 text-muted">
             {groupBy === 'project' ? t('Projekte') : t('Chats')}
-            <span className="text-[10px] text-subtle font-normal">({sessions.length})</span>
+            <span className="font-normal text-subtle">({sessions.length})</span>
           </span>
           <div className="flex items-center gap-0.5">
-            {/* Popover für Gruppierung */}
+            {groupBy === 'project' && (
+              <button className="icon-btn !size-6" title={t('Projekt hinzufügen')} onClick={async () => { const d = await hub.pickFolder(); if (d) addProject(d); }}>
+                <Icon name="lucide:folder-plus" size={13} />
+              </button>
+            )}
             <Popover
               align="right"
               down
               trigger={(open, toggle) => (
                 <button
-                  className={cx('icon-btn !size-6', (open || groupBy !== 'project') && 'text-accent bg-active')}
-                  title={`${t('Gruppieren nach')}: ${t(GROUP_OPTIONS.find((x) => x.id === groupBy)?.label ?? '')}`}
+                  className={cx('icon-btn !size-6', open && 'bg-active text-fg')}
+                  title={t('Ansicht & Import')}
                   onClick={toggle}
                 >
-                  <Icon name="lucide:layers" size={13} />
+                  <Icon name="lucide:sliders-horizontal" size={13} />
                 </button>
               )}
             >
               {(close) => (
-                <div className="p-1 min-w-44">
-                  <div className="px-2 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-subtle">{t('Gruppieren nach')}</div>
+                <div className="min-w-48 space-y-0.5 p-1">
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-subtle">{t('Gruppieren')}</div>
                   {GROUP_OPTIONS.map((opt) => (
                     <MenuItem
                       key={opt.id}
-                      icon={<Icon name={opt.icon} size={14} className="text-muted" />}
+                      icon={<Icon name={opt.icon} size={13} className="text-muted" />}
                       active={groupBy === opt.id}
                       onClick={() => { setChatListSettings({ groupBy: opt.id }); close(); }}
                     >
                       {t(opt.label)}
                     </MenuItem>
                   ))}
-                </div>
-              )}
-            </Popover>
-
-            {/* Popover für Sortierung */}
-            <Popover
-              align="right"
-              down
-              trigger={(open, toggle) => (
-                <button
-                  className={cx('icon-btn !size-6', (open || sortBy !== 'updated') && 'text-accent bg-active')}
-                  title={`${t('Sortieren nach')}: ${t(SORT_OPTIONS.find((x) => x.id === sortBy)?.label ?? '')}`}
-                  onClick={toggle}
-                >
-                  <Icon name="lucide:arrow-down-up" size={13} />
-                </button>
-              )}
-            >
-              {(close) => (
-                <div className="p-1 min-w-48">
-                  <div className="px-2 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-subtle">{t('Sortieren nach')}</div>
+                  <div className="my-1 border-t border-edge" />
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-subtle">{t('Sortieren')}</div>
                   {SORT_OPTIONS.map((opt) => (
                     <MenuItem
                       key={opt.id}
-                      icon={<Icon name={opt.icon} size={14} className="text-muted" />}
+                      icon={<Icon name={opt.icon} size={13} className="text-muted" />}
                       active={sortBy === opt.id}
                       onClick={() => { setChatListSettings({ sortBy: opt.id }); close(); }}
                     >
                       {t(opt.label)}
                     </MenuItem>
                   ))}
+                  <div className="my-1 border-t border-edge" />
+                  <MenuItem
+                    icon={<Icon name={sortOrder === 'asc' ? 'lucide:arrow-up-narrow-wide' : 'lucide:arrow-down-wide-narrow'} size={13} className="text-muted" />}
+                    onClick={() => { setChatListSettings({ sortOrder: sortOrder === 'asc' ? 'desc' : 'asc' }); close(); }}
+                  >
+                    {sortOrder === 'asc' ? t('Aufsteigend') : t('Absteigend')}
+                  </MenuItem>
+                  <MenuItem
+                    icon={<Icon name="lucide:download" size={13} className="text-muted" />}
+                    onClick={() => { setImporting(true); close(); }}
+                  >
+                    {t('Sessions importieren')}
+                  </MenuItem>
                 </div>
               )}
             </Popover>
-
-            {/* Auf-/Absteigend Umschalter */}
-            <button
-              className="icon-btn !size-6"
-              title={sortOrder === 'asc' ? t('Aufsteigend (Klick für absteigend)') : t('Absteigend (Klick für aufsteigend)')}
-              onClick={() => setChatListSettings({ sortOrder: sortOrder === 'asc' ? 'desc' : 'asc' })}
-            >
-              <Icon name={sortOrder === 'asc' ? 'lucide:arrow-up-narrow-wide' : 'lucide:arrow-down-wide-narrow'} size={13} />
-            </button>
-
-            {groupBy === 'project' && (
-              <button className="icon-btn !size-6" title={t('Projekt hinzufügen')} onClick={async () => { const d = await hub.pickFolder(); if (d) addProject(d); }}>
-                <Icon name="lucide:folder-plus" size={13} />
-              </button>
-            )}
-            <button className="icon-btn !size-6" title={t('Sessions importieren')} onClick={() => setImporting(true)}>
-              <Icon name="lucide:download" size={13} />
-            </button>
           </div>
         </div>
 
@@ -515,8 +486,36 @@ export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; on
           })
         )}
       </div>
-      <div className="border-t border-edge p-2">
-        <button className="flex w-full items-center gap-2.5 rounded-lumen-sm px-2.5 py-2 text-muted transition-colors hover:bg-hover hover:text-fg" onClick={() => openSettings()}><Icon name="lucide:settings-2" size={16} /> {t('Einstellungen')}</button>
+      <div className="flex items-center gap-1 border-t border-edge p-2">
+        <Popover
+          align="left"
+          trigger={(open, toggle) => (
+            <button
+              className={cx('flex flex-1 items-center gap-2 rounded-lumen-sm px-2.5 py-1.5 text-[12px] text-muted transition-colors hover:bg-hover hover:text-fg', open && 'bg-active text-fg')}
+              onClick={toggle}
+            >
+              <Icon name="lucide:layout-grid" size={14} />
+              <span>{t('Werkzeuge & Mehr')}</span>
+            </button>
+          )}
+        >
+          {(close) => (
+            <div className="min-w-48 space-y-0.5 p-1">
+              {EXTRA_NAV.map((item) => (
+                <MenuItem
+                  key={item.to}
+                  icon={<Icon name={item.icon} size={14} className="text-muted" />}
+                  onClick={() => { navigate(item.to, { viewTransition: true }); close(); }}
+                >
+                  {t(item.label)}
+                </MenuItem>
+              ))}
+            </div>
+          )}
+        </Popover>
+        <button className="icon-btn !size-8 shrink-0" title={t('Einstellungen')} onClick={() => openSettings()}>
+          <Icon name="lucide:settings-2" size={15} />
+        </button>
       </div>
       {removing && (
         <Modal title={t('Projekt entfernen')} onClose={() => setRemoving(null)}>

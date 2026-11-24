@@ -3,70 +3,27 @@ import { MonacoPane, type MonacoPaneHandle } from './MonacoPane';
 import { useLsp } from './useLsp';
 import { lspLanguage } from '@shared/ide/lsp';
 import { useEffect, useRef, useState } from 'react';
-import type { EditorDocument, WorkspaceEntry } from '@shared/ide/types';
+import type { EditorDocument } from '@shared/ide/types';
 import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
+import { useHub } from '@/lib/store';
 import { cx } from '@/components/ui';
 
 type Buffer = EditorDocument & { savedText: string; conflict?: boolean };
 
-function Tree({ root, directory, selected, depth = 0, onOpen, onError }: { root: string; directory?: string; selected: string; depth?: number; onOpen: (path: string) => void; onError: (error: unknown) => void }) {
-  const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
-  const [expanded, setExpanded] = useState<string[]>([]);
-  useEffect(() => {
-    let active = true;
-    void hub.ideList(root, directory).then((result) => { if (active) { setEntries(result); } }).catch(onError);
-    return () => { active = false; };
-  }, [root, directory, onError]);
-  return (
-    <div>
-      {entries.map((entry) => {
-        const isOpen = expanded.includes(entry.path);
-        const isSelected = selected === entry.path;
-        return (
-          <div key={entry.path}>
-            <button
-              className={cx(
-                'flex w-full items-center gap-1.5 rounded-lumen-sm py-1 pr-2 text-left text-[12px] transition-colors',
-                isSelected ? 'bg-active text-fg' : 'text-muted hover:bg-hover hover:text-fg',
-              )}
-              style={{ paddingLeft: `${8 + depth * 12}px` }}
-              title={entry.path}
-              onClick={() => {
-                if (!entry.isDirectory) {
-                  onOpen(entry.path);
-                  return;
-                }
-                setExpanded((previous) => previous.includes(entry.path) ? previous.filter((path) => path !== entry.path) : [...previous, entry.path]);
-              }}
-            >
-              {entry.isDirectory ? (
-                <>
-                  <Icon name={isOpen ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={12} className="shrink-0 text-subtle" />
-                  <Icon name={isOpen ? 'lucide:folder-open' : 'lucide:folder'} size={13} className="shrink-0 text-accent/80" />
-                </>
-              ) : (
-                <>
-                  <span className="w-3 shrink-0" />
-                  <Icon name="lucide:file-code" size={13} className="shrink-0 text-subtle" />
-                </>
-              )}
-              <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-            </button>
-            {isOpen && <Tree root={root} directory={entry.path} selected={selected} depth={depth + 1} onOpen={onOpen} onError={onError} />}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export function WorkspaceEditor({ root, file, onDirty }: { root: string; file?: string; onDirty: (dirty: boolean) => void }) {
+  const ideQuickAction = useHub((state) => state.ideQuickAction);
   const [buffers, setBuffers] = useState<Buffer[]>([]);
   const [selected, setSelected] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [quickOpen, setQuickOpen] = useState<'files' | 'content' | null>(null);
+
+  useEffect(() => {
+    if (ideQuickAction) {
+      setQuickOpen(ideQuickAction.kind);
+    }
+  }, [ideQuickAction]);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const navigation = useRef<{ path: string; line: number; column: number } | null>(null);
   const [diskText, setDiskText] = useState<string | null>(null);
@@ -186,22 +143,6 @@ export function WorkspaceEditor({ root, file, onDirty }: { root: string; file?: 
       }}
     >
       {quickOpen && <QuickOpen root={root} mode={quickOpen} onOpen={navigate} onClose={() => setQuickOpen(null)} />}
-      <aside className="flex w-60 shrink-0 flex-col border-r border-edge bg-surface/50">
-        <div className="flex items-center justify-between border-b border-edge px-2.5 py-1.5">
-          <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-subtle">Explorer</span>
-          <div className="flex items-center gap-0.5">
-            <button className="icon-btn !size-6" title="Datei öffnen (Strg+P)" onClick={() => setQuickOpen('files')}>
-              <Icon name="lucide:file-search" size={13} />
-            </button>
-            <button className="icon-btn !size-6" title="Im Projekt suchen (Strg+Shift+F)" onClick={() => setQuickOpen('content')}>
-              <Icon name="lucide:search" size={13} />
-            </button>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto p-1.5">
-          <Tree root={root} selected={selected} onOpen={(path) => { void open(path); }} onError={report} />
-        </div>
-      </aside>
       <div
         className="flex min-w-0 flex-1 flex-col bg-bg"
         onKeyDown={(event) => {
