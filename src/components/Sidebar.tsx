@@ -317,7 +317,7 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
   };
 
   return (
-    <aside className="flex h-full min-h-0 w-full min-w-0 flex-col border-r border-edge bg-surface select-none">
+    <aside className="flex h-full min-h-0 w-full min-w-0 flex-col select-none">
       <div className="flex items-center gap-1.5 px-2.5 pb-2 pt-2.5">
         <button className="btn btn-primary min-w-0 flex-1 justify-center gap-2" onClick={() => navigate(`/chat/${newSession()}`, { viewTransition: true })}>
           <Icon name="lucide:plus" size={15} />

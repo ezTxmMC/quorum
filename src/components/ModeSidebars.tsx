@@ -56,7 +56,7 @@ export function ThreeDSidebar({ pinned, onClose }: SidebarProps) {
   };
 
   return (
-    <aside className="flex h-full min-h-0 w-full min-w-0 flex-col border-r border-edge bg-surface select-none">
+    <aside className="flex h-full min-h-0 w-full min-w-0 flex-col select-none">
       <div className="flex items-center gap-1.5 px-2.5 pb-2 pt-2.5">
         <button className="btn btn-primary min-w-0 flex-1 justify-center gap-2" onClick={() => void createProject()}>
           <Icon name="lucide:plus" size={15} />
@@ -209,7 +209,7 @@ export function IdeSidebar({ pinned, onClose }: SidebarProps) {
   const workspaceName = root ? root.split(/[\\/]/).filter(Boolean).pop() ?? root : '';
 
   return (
-    <aside className="flex h-full min-h-0 w-full min-w-0 flex-col border-r border-edge bg-surface select-none">
+    <aside className="flex h-full min-h-0 w-full min-w-0 flex-col select-none">
       <div className="flex items-center gap-1.5 px-2.5 pb-2 pt-2.5">
         <button className="btn min-w-0 flex-1 justify-start gap-2 !px-2.5" title={root || t('Workspace wählen')} onClick={() => void pickWorkspace()}>
           <Icon name="lucide:folder-open" size={14} className="shrink-0 text-accent" />
