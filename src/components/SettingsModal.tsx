@@ -1,4 +1,5 @@
 import { isSandboxProvider } from '@shared/sandbox';
+import { HostInstallCard } from './ProviderInstall';
 import { SandboxCard } from './ProviderSandbox';
 import { useEffect, useState } from 'react';
 import { DEFAULT_OPTIONS, PROVIDERS, PROVIDER_ORDER, TERMINAL_THEMES, defaultTerminal, withTerminalFontFallbacks } from '@shared/catalog';
@@ -440,6 +441,7 @@ function ProviderTab({ p }: { p: ProviderId }) {
         </div>
       )}
 
+      <HostInstallCard provider={p} />
       {isSandboxProvider(p) && <SandboxCard provider={p} />}
 
       <SettingsCard id={`defaults-${p}`} title={t('Standardwerte für neue Chats & Agenten')} collapsible defaultOpen={false} summary={t('Modell, Berechtigungen, CLI-Optionen')}>

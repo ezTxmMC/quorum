@@ -1,4 +1,5 @@
 import type { ChatJob } from './chat-host/types';
+import type { HostInstallPlan } from './cli-packages';
 import type { SandboxProgress, SandboxProvider, SandboxResult, SandboxStatus } from './sandbox';
 import type { LspDocument, LspEvent, LspLanguage, LspReply, LspRequest, LspStatus } from './ide/lsp';
 import type { ApprovalScope, Plan, PlanSaveInput, PlanSnapshot } from './plan/types';
@@ -117,6 +118,9 @@ export function createHub(transport: DesktopTransport) {
     onWinState: (cb: (s: { maximized: boolean; fullscreen: boolean }) => void) => sub('win:state', cb),
     newWindow: (hash?: string): Promise<void> => invoke('win:new', hash),
     termCreate: (id: string, cwd: string, cols: number, rows: number, provider?: ProviderId, shell?: string): Promise<{ mode: 'pty' | 'pipe' | 'missing' }> => invoke('term:create', id, cwd, cols, rows, provider, shell),
+    cliInstallPlan: (provider: ProviderId): Promise<HostInstallPlan> => invoke('cli:install-plan', provider),
+    cliInstall: (provider: ProviderId): Promise<SandboxResult> => invoke('cli:install', provider),
+    onCliInstallProgress: (callback: (progress: { provider: ProviderId; text: string }) => void) => sub('cli:install-progress', callback),
     sandboxStatus: (provider: SandboxProvider): Promise<SandboxStatus> => invoke('sandbox:status', provider),
     sandboxInstall: (provider: SandboxProvider): Promise<SandboxResult> => invoke('sandbox:install', provider),
     sandboxRemove: (provider: SandboxProvider): Promise<SandboxResult> => invoke('sandbox:remove', provider),

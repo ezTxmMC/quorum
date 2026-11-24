@@ -9,6 +9,7 @@ import { providerStatus, resolveBinary, execCli } from '../electron/providers/de
 import { adoptUserPath } from '../electron/user-path';
 import { terminalCommand } from '../electron/providers/sandbox';
 import { installSandbox, removeSandbox, sandboxStatus } from '../electron/providers/sandbox-install';
+import { hostInstallPlan, installOnHost } from '../electron/providers/host-install';
 import { effectiveBinaries, type SandboxProvider } from '../shared/sandbox';
 import { configureApi, inspectApi } from '../electron/providers/api';
 import { discoverLocalServers } from '../electron/providers/discover';
@@ -146,6 +147,8 @@ const routes = {
     if (provider && !bin) return { mode: 'missing' };
     return createTerminal(terminal, id, cwd, cols, rows, root, bin ? terminalCommand(bin, cwd) : undefined, shell);
   },
+  'cli:install-plan': (provider: ProviderId) => hostInstallPlan(provider, data.settings.binaries),
+  'cli:install': (provider: ProviderId) => installOnHost(provider, data.settings.binaries, (text) => event('cli:install-progress', { provider, text })),
   'sandbox:status': (provider: SandboxProvider) => sandboxStatus(root, provider),
   'sandbox:install': (provider: SandboxProvider) => installSandbox(root, provider, data.settings.binaries, (text) => event('sandbox:progress', { provider, text })),
   'sandbox:remove': (provider: SandboxProvider) => removeSandbox(root, provider),

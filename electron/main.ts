@@ -30,6 +30,7 @@ import { execCli, providerStatus, resolveBinary } from './providers/detect';
 import { adoptUserPath } from './user-path';
 import { terminalCommand } from './providers/sandbox';
 import { installSandbox, removeSandbox, sandboxStatus } from './providers/sandbox-install';
+import { hostInstallPlan, installOnHost } from './providers/host-install';
 import { effectiveBinaries, type SandboxProvider } from '../shared/sandbox';
 import { cancelAll } from './providers/runner';
 import { registerModelIpc } from './models/ipc';
@@ -474,6 +475,9 @@ function registerIpc() {
     if (provider && !bin) return { mode: 'missing' as const };
     return createTerminal(e.sender, id, cwd, cols, rows, dataDir(), bin ? terminalCommand(bin, cwd) : undefined, shell);
   });
+  // Installation ins Benutzerverzeichnis: immer mit den echten CLI-Pfaden prüfen, nie mit einer aktiven Sandbox-Variante.
+  ipcMain.handle('cli:install-plan', (_e, provider: ProviderId) => hostInstallPlan(provider, data.settings.binaries));
+  ipcMain.handle('cli:install', (e, provider: ProviderId) => installOnHost(provider, data.settings.binaries, (text) => sendTo(e.sender, 'cli:install-progress', { provider, text })));
   ipcMain.handle('sandbox:status', (_e, provider: SandboxProvider) => sandboxStatus(dataDir(), provider));
   ipcMain.handle('sandbox:install', (e, provider: SandboxProvider) => installSandbox(dataDir(), provider, data.settings.binaries, (text) => sendTo(e.sender, 'sandbox:progress', { provider, text })));
   ipcMain.handle('sandbox:remove', (_e, provider: SandboxProvider) => removeSandbox(dataDir(), provider));

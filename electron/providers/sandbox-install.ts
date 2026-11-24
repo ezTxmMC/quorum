@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROVIDERS } from '../../shared/catalog';
+import { CLI_PACKAGES, npmInstallArgs } from '../../shared/cli-packages';
 import type { SandboxProvider, SandboxResult, SandboxStatus } from '../../shared/sandbox';
 import type { ProviderId } from '../../shared/types';
 import { execCli, resolveBinary } from './detect';
@@ -9,17 +10,11 @@ import { bwrapCommand, sandboxRoot, sandboxUnavailable } from './sandbox';
 
 const INSTALL_TIMEOUT_MS = 15 * 60_000;
 
-// Neuere npm-Versionen führen Installationsskripte nur für ausdrücklich erlaubte Pakete aus.
-const npmInstall = (pkg: string) => `npm install --global --no-fund --no-audit --allow-scripts=${pkg} ${pkg}`;
-
 /** Installationsweg je Anbieter. `null` = es gibt kein Paket; die bereits installierte CLI wird in die Sandbox kopiert. */
-const RECIPES: Record<SandboxProvider, string | null> = {
-  claude: npmInstall('@anthropic-ai/claude-code'),
-  codex: npmInstall('@openai/codex'),
-  opencode: npmInstall('opencode-ai'),
-  kimi: 'python3 -m venv "$HOME/.venv" && "$HOME/.venv/bin/pip" install --upgrade kimi-cli && mkdir -p "$HOME/.local/bin" && ln -sf "$HOME/.venv/bin/kimi" "$HOME/.local/bin/kimi"',
-  antigravity: null,
-};
+function recipe(provider: SandboxProvider): string | null {
+  const pkg = CLI_PACKAGES[provider];
+  return pkg ? ['npm', ...npmInstallArgs(pkg.name)].join(' ') : null;
+}
 
 const installing = new Set<SandboxProvider>();
 
@@ -95,8 +90,8 @@ export async function installSandbox(dataDir: string, provider: SandboxProvider,
   try {
     const home = homeOf(dataDir, provider);
     mkdirSync(home, { recursive: true });
-    const recipe = RECIPES[provider];
-    const result = recipe ? await runScript(home, recipe, onLine) : copyHostBinary(home, provider, hostBinaries);
+    const script = recipe(provider);
+    const result = script ? await runScript(home, script, onLine) : copyHostBinary(home, provider, hostBinaries);
     if (result.ok && !binOf(home, provider)) {
       return { ok: false, error: `Die Installation lief durch, aber „${PROVIDERS[provider].bin}“ wurde nicht gefunden.` };
     }
