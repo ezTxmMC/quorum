@@ -127,9 +127,7 @@ function ChatHeader({ id }: { id: string }) {
   );
 }
 
-export interface SidebarHover { open: boolean; enter: () => void; leave: () => void }
-
-export function TopBar({ hover, minimal, sidebarVisible, onToggleSidebar }: { hover?: SidebarHover; minimal?: boolean; sidebarVisible?: boolean; onToggleSidebar?: () => void }) {
+export function TopBar({ minimal, sidebarVisible, onToggleSidebar }: { minimal?: boolean; sidebarVisible?: boolean; onToggleSidebar?: () => void }) {
   const preference = useHub((s) => s.data.settings.sidebarPinned);
   const pinned = sidebarVisible ?? preference;
   const panels = useHub((s) => s.data.settings.dock.panels);
@@ -172,10 +170,8 @@ export function TopBar({ hover, minimal, sidebarVisible, onToggleSidebar }: { ho
       {!minimal && (
         <div className="no-drag flex items-center gap-1 pl-2">
           <button
-            className={cx('icon-btn !size-8', (pinned || hover?.open) && 'text-fg')}
-            title={pinned ? t('Seitenleiste ausblenden') : t('Seitenleiste (Hover) – Klick zum Anheften')}
-            onMouseEnter={() => !pinned && hover?.enter()}
-            onMouseLeave={() => !pinned && hover?.leave()}
+            className={cx('icon-btn !size-8', pinned && 'text-fg')}
+            title={pinned ? `${t('Seitenleiste ausblenden')} (Strg+B)` : `${t('Seitenleiste einblenden')} (Strg+B)`}
             onClick={() => onToggleSidebar ? onToggleSidebar() : setSettings({ sidebarPinned: !pinned })}
           >
             <Icon name={pinned ? 'lucide:panel-left-close' : 'lucide:panel-left'} size={16} />

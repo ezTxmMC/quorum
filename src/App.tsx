@@ -1,7 +1,7 @@
 import { ProcessStatus } from '@/components/workbench/ProcessStatus';
 import { lazy, Suspense } from 'react';
 import { setLang } from '@/lib/i18n';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, Outlet, RouterProvider, createHashRouter, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Dock, PanelBody } from '@/components/Dock';
 import { IdeSidebar, ThreeDSidebar } from '@/components/ModeSidebars';
@@ -144,8 +144,6 @@ function Shell() {
   const pinned = useHub((s) => s.data.settings.sidebarPinned);
   const [winState, setWinState] = useState({ maximized: false, fullscreen: false });
   const setSettings = useHub.getState().setSettings;
-  const [open, setOpen] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const location = useLocation();
   const isThreeD = location.pathname.startsWith('/3d');
   const isIde = location.pathname.startsWith('/plan');
@@ -157,99 +155,40 @@ function Shell() {
   const toggleSidebar = () => {
     setSettings({ sidebarPinned: !pinned });
   };
-  const renderSidebar = (props: { pinned?: boolean; onTogglePin?: () => void; onClose?: () => void }) => {
+  const renderSidebar = () => {
     if (isThreeD) {
-      return <ThreeDSidebar {...props} />;
+      return <ThreeDSidebar />;
     }
     if (isIde) {
-      return <IdeSidebar {...props} />;
+      return <IdeSidebar />;
     }
-    return <Sidebar {...props} />;
+    return <Sidebar />;
   };
-  // Hover-Absicht: die Leiste öffnet erst, wenn die Maus kurz am Rand verweilt – beim bloßen Vorbeifahren springt sie nicht auf.
-  const enter = () => { clearTimeout(timer.current); if (!open) timer.current = setTimeout(() => setOpen(true), 220); };
-  const keep = () => { clearTimeout(timer.current); };
-  const leave = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), 240); };
-  useEffect(() => setOpen(false), [location.pathname]);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  useEffect(() => { if (pinned) setOpen(false); }, [pinned]);
 
   return (
     <div className={cx('flex h-full flex-col overflow-hidden bg-bg', roundedFrame && 'rounded-[14px] border border-edge-strong/80 shadow-2xl')}>
-      <TopBar hover={{ open, enter, leave }} sidebarVisible={pinned} onToggleSidebar={toggleSidebar} />
+      <TopBar sidebarVisible={pinned} onToggleSidebar={toggleSidebar} />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        {/* Angeheftete Seitenleiste mit flüssiger Breiten- und Einblendanimation */}
+        {/* Seitenleiste mit ruhiger Breiten- und Einblendanimation – nur per Klick oder Strg+B */}
         <div
           className="relative shrink-0 overflow-hidden"
           inert={!pinned}
           style={{
-            width: pinned ? 280 : 0,
-            transition: 'width 280ms cubic-bezier(0.16, 1, 0.3, 1)',
+            width: pinned ? 272 : 0,
+            transition: 'width 220ms cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
           <div
-            className="h-full w-[280px]"
+            className="h-full w-[272px]"
             style={{
-              // Release the compositor layer at rest so sidebar text stays sharp.
               transform: pinned ? 'none' : 'translateX(-100%)',
-              opacity: pinned ? 1 : 0.4,
-              transition: 'transform 280ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease',
+              opacity: pinned ? 1 : 0,
+              transition: 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease',
             }}
           >
-            {renderSidebar({ pinned, onTogglePin: toggleSidebar })}
+            {renderSidebar()}
           </div>
         </div>
-
-        {/* Nicht angeheftet: Feiner linker Hover-Rand zum bequemen Öffnen */}
-        {!pinned && (
-          <div
-            className="absolute bottom-0 left-0 top-0 z-20 w-3 cursor-pointer"
-            onMouseEnter={enter}
-            onMouseLeave={leave}
-          />
-        )}
-
-        {/* Nicht angeheftet: Sanfter Backdrop-Scrim */}
-        {!pinned && (
-          <div
-            className={cx(
-              'absolute inset-0 z-30 bg-black/35 backdrop-blur-[2px] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-              open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-            )}
-            onClick={() => setOpen(false)}
-          />
-        )}
-
-        {/* Nicht angeheftet: Schwebende Seitenleiste (Drawer) mit physikalischer Feder-Kurve & Glow */}
-        {!pinned && (
-          <div
-            className={cx(
-              'absolute bottom-0 left-0 top-0 z-40 flex w-[280px]',
-              open ? 'pointer-events-auto' : 'pointer-events-none'
-            )}
-            style={{
-              clipPath: open ? 'inset(-40px -40px -40px 0)' : 'inset(0 100% 0 0)',
-              opacity: open ? 1 : 0,
-              visibility: open ? 'visible' : 'hidden',
-              boxShadow: open
-                ? '12px 0 36px -4px rgba(0, 0, 0, 0.5), 4px 0 12px -2px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--c-border)'
-                : 'none',
-              transition: `clip-path 240ms ease, opacity 200ms ease, visibility 0s ${open ? '0s' : '240ms'}`,
-            }}
-            inert={!open}
-            onMouseEnter={keep}
-            onMouseLeave={leave}
-          >
-            {renderSidebar({
-              pinned,
-              onTogglePin: () => {
-                setSettings({ sidebarPinned: true });
-                setOpen(false);
-              },
-              onClose: () => setOpen(false),
-            })}
-          </div>
-        )}
 
         <SettingsModal />
         <Dock><main className="page-root absolute inset-0 flex min-w-0 flex-col overflow-hidden"><Outlet /></main></Dock>
