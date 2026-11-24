@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { PROVIDERS } from '@shared/catalog';
 import type { ProviderId } from '@shared/types';
 import { Icon } from '@/lib/icons';
@@ -126,8 +127,8 @@ export function Modal({ title, onClose, children, wide, xl, bare }: { title: str
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
   const state = open ? 'open' : 'closed';
-  return (
-    <div data-state={state} className="fade-bg fixed inset-0 z-50 grid place-items-center bg-black/50 p-6 " onMouseDown={close}>
+  return createPortal(
+    <div data-state={state} className="fade-bg fixed inset-0 z-[90] grid place-items-center bg-black/55 p-6 backdrop-blur-xs" onMouseDown={close}>
       <div data-state={state} className={cx('pop flex max-h-full w-full flex-col overflow-hidden rounded-lumen-lg border border-edge-strong bg-overlay shadow-2xl', xl ? 'h-[84vh] max-w-5xl' : wide ? 'max-w-3xl' : 'max-w-xl')} onMouseDown={(e) => e.stopPropagation()}>
         {!bare && (
           <div className="flex items-center justify-between border-b border-edge px-4 py-3">
@@ -137,7 +138,8 @@ export function Modal({ title, onClose, children, wide, xl, bare }: { title: str
         )}
         <div className={cx('min-h-0 flex-1', bare ? 'flex' : 'overflow-y-auto p-4')}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
