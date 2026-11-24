@@ -87,7 +87,7 @@ export async function installTauri(api: TauriApi) {
       return pending;
     },
     'win:state': state,
-    'win:theme': (color) => current.setBackgroundColor(String(color)),
+    'win:theme': async () => {},
     'win:minimize': () => current.minimize(),
     'win:maximize': () => current.toggleMaximize(),
     'win:close': () => current.close(),

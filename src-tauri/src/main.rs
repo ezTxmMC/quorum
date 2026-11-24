@@ -263,6 +263,9 @@ fn main() {
             app.manage(Arc::new(Service::spawn(&mut command, move |event| {
                 let _ = handle.emit("quorum-event", event);
             })?));
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
