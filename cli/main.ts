@@ -9,6 +9,7 @@ import type { ChatSession, HubEvent, Message, ProviderId, ProviderOptions, RunRe
 import { HELP, parseArgs, type CliArgs } from './args';
 import { load } from '../electron/store';
 import { writeInbox } from '../electron/inbox';
+import { effectiveBinaries } from '../shared/sandbox';
 import { providerStatus } from '../electron/providers/detect';
 import { cancelAll, cancelRun, runCli } from '../electron/providers/runner';
 import { configureApi } from '../electron/providers/api';
@@ -90,7 +91,7 @@ async function printMode(a: CliArgs): Promise<number> {
   const req: RunRequest = { runId: randomUUID(), provider, prompt, cwd, options: optionsFor(provider, a, data.settings.providerDefaults[provider] ?? {}, true) };
   const stop = () => { cancelAll(); process.exit(130); };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
-  const r = await runTurn(req, data.settings.binaries, (e) => {
+  const r = await runTurn(req, effectiveBinaries(data.settings), (e) => {
     if (a.json) { process.stdout.write(JSON.stringify(e) + '\n'); return; }
     if (e.type === 'text') process.stdout.write(e.delta);
     else if (e.type === 'notice' && e.level !== 'info') process.stderr.write(`${e.text}\n`);
@@ -178,7 +179,7 @@ async function tui(a: CliArgs): Promise<number> {
         process.stdout.write(dim(`Provider: ${PROVIDERS[provider].name}\n`)); return true;
       case 'model': {
         if (arg) { options = { ...options, model: arg }; process.stdout.write(dim(`Model: ${arg}\n`)); return true; }
-        const st = await providerStatus(provider, settings.binaries);
+        const st = await providerStatus(provider, effectiveBinaries(settings));
         process.stdout.write(st.models.length ? st.models.map((m) => `  ${m.id}${m.label !== m.id ? dim('  ' + m.label) : ''}`).join('\n') + '\n' : dim(st.installed ? 'No models reported.\n' : `${PROVIDERS[provider].name} is not installed/available.\n`));
         return true;
       }
@@ -203,7 +204,7 @@ async function tui(a: CliArgs): Promise<number> {
           const prompt = !sessionId && prior.length && !isTextOnly(provider) ? preamble(prior) + line : line;
           const req: RunRequest = { runId, provider, prompt, cwd, options, resume: sessionId ? { sessionId } : undefined, history: isTextOnly(provider) ? toHistory(prior) : undefined };
           let started = false;
-          const r = await runTurn(req, settings.binaries, (e) => {
+          const r = await runTurn(req, effectiveBinaries(settings), (e) => {
             if (e.type === 'text') { if (!started) { started = true; } process.stdout.write(e.delta); }
             else if (e.type === 'tool_start') process.stdout.write(`\n${dim('⚙ ' + e.name + toolHint(e.input))}\n`);
             else if (e.type === 'notice' && e.level !== 'info') process.stdout.write(`\n${c(33, e.text)}\n`);

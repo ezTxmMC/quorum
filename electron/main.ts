@@ -27,6 +27,9 @@ import { listImportable, loadImportable } from './importer';
 import { startMulti, stopMulti, stopMultiTurn } from './orchestrator';
 import { Worker } from 'node:worker_threads';
 import { execCli, providerStatus, resolveBinary } from './providers/detect';
+import { terminalCommand } from './providers/sandbox';
+import { installSandbox, removeSandbox, sandboxStatus } from './providers/sandbox-install';
+import { effectiveBinaries, type SandboxProvider } from '../shared/sandbox';
 import { cancelAll } from './providers/runner';
 import { registerModelIpc } from './models/ipc';
 import { registerWorkflowIpc } from './workflows/ipc';
@@ -44,7 +47,7 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 let data: Persisted;
 const isMac = process.platform === 'darwin';
 
-const binaries = () => data.settings.binaries;
+const binaries = () => effectiveBinaries(data.settings);
 const sendTo = (wc: WebContents, channel: string, payload: unknown) => { if (!wc.isDestroyed()) wc.send(channel, payload); };
 let quickWin: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -466,7 +469,16 @@ function registerIpc() {
   ipcMain.handle('term:create', (e, id: string, cwd: string, cols: number, rows: number, provider?: ProviderId, shell?: string) => {
     const bin = provider ? resolveBinary(provider, binaries()) : undefined;
     if (provider && !bin) return { mode: 'missing' as const };
-    return createTerminal(e.sender, id, cwd, cols, rows, dataDir(), bin ? { bin, args: [] } : undefined, shell);
+    return createTerminal(e.sender, id, cwd, cols, rows, dataDir(), bin ? terminalCommand(bin, cwd) : undefined, shell);
+  });
+  ipcMain.handle('sandbox:status', (_e, provider: SandboxProvider) => sandboxStatus(dataDir(), provider));
+  ipcMain.handle('sandbox:install', (e, provider: SandboxProvider) => installSandbox(dataDir(), provider, data.settings.binaries, (text) => sendTo(e.sender, 'sandbox:progress', { provider, text })));
+  ipcMain.handle('sandbox:remove', (_e, provider: SandboxProvider) => removeSandbox(dataDir(), provider));
+  // Anmeldung in der Sandbox: startet die isolierte CLI unabhängig davon, ob die Variante schon aktiv ist.
+  ipcMain.handle('sandbox:terminal', async (e, id: string, provider: SandboxProvider, cols: number, rows: number) => {
+    const status = await sandboxStatus(dataDir(), provider);
+    if (!status.bin) return { mode: 'missing' as const };
+    return createTerminal(e.sender, id, status.home, cols, rows, dataDir(), terminalCommand(status.bin, status.home));
   });
   ipcMain.handle('term:shells', () => listShells());
   ipcMain.handle('term:write', (_e, id: string, d: string) => writeTerminal(id, d));

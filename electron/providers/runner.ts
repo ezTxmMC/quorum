@@ -11,6 +11,7 @@ import { buildCodex, CodexParser } from './codex';
 import { buildAntigravity, AntigravityParser } from './antigravity';
 import { buildKimi, KimiParser } from './kimi';
 import { detectedModel, resolveBinary } from './detect';
+import { sandboxLaunch } from './sandbox';
 import { cancelAllOllama, cancelOllama, runOllama } from './ollama';
 import { buildOpenCode, OpenCodeParser } from './opencode';
 import { IMAGE_ENGINES } from '../../shared/catalog';
@@ -141,9 +142,15 @@ export async function runCli(
 
     let child: import('node:child_process').ChildProcessWithoutNullStreams;
     try {
-      child = spawn(bin, built.args, {
+      const launch = sandboxLaunch(bin, built.args, {
         cwd: req.cwd,
         env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', TERM: 'dumb' },
+        share: req.options.addDirs,
+        expose: [...(req.images ?? []), ...(req.options.mcpConfig ? [req.options.mcpConfig] : [])],
+      });
+      child = spawn(launch.cmd, launch.args, {
+        cwd: launch.cwd,
+        env: launch.env,
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: process.platform !== 'win32' && process.env.QUORUM_CHAT_WORKER !== '1',
       });

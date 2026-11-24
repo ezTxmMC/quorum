@@ -1,3 +1,5 @@
+import { isSandboxProvider } from '@shared/sandbox';
+import { SandboxCard } from './ProviderSandbox';
 import { useEffect, useState } from 'react';
 import { DEFAULT_OPTIONS, PROVIDERS, PROVIDER_ORDER, TERMINAL_THEMES, defaultTerminal, withTerminalFontFallbacks } from '@shared/catalog';
 import type { ProviderId, TerminalStyle, UpdateChannel } from '@shared/types';
@@ -286,6 +288,8 @@ function ProviderTab({ p }: { p: ProviderId }) {
           </div>
         </div>
       )}
+
+      {isSandboxProvider(p) && <SandboxCard provider={p} />}
 
       <div>
         <div className="mb-2 text-[12px] font-medium text-muted">{t('Standardwerte für neue Chats & Agenten')}</div>

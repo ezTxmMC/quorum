@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import type { ChatWorkerBootstrap, ChatWorkerCommand } from '../../shared/chat-host/types';
 import type { HubEvent } from '../../shared/types';
 import { setDataDirResolver } from '../store';
+import { effectiveBinaries } from '../../shared/sandbox';
 import { cancelAll, cancelRun, injectMessage, runCli } from '../providers/runner';
 import { configureApi } from '../providers/api';
 import { configureAcp } from '../providers/acp';
@@ -102,10 +103,10 @@ async function run(value: ChatWorkerBootstrap): Promise<void> {
   watchdog.unref();
   try {
     if (chatMode(value.request.options) === 'model') {
-      await runChatModeling(value.request, emit, value.settings.binaries, (projectId, event) => emit({ type: 'model_progress', projectId, event }));
+      await runChatModeling(value.request, emit, effectiveBinaries(value.settings), (projectId, event) => emit({ type: 'model_progress', projectId, event }));
       return;
     }
-    await runCli(value.request, emit, value.settings.binaries);
+    await runCli(value.request, emit, effectiveBinaries(value.settings));
   } catch (error) {
     emit({ type: 'done', ok: false, error: error instanceof Error ? error.message : String(error) });
   } finally {

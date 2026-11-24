@@ -359,6 +359,8 @@ export interface Settings {
   defaultProvider: ProviderId;
   defaultCwd: string;
   binaries: Partial<Record<ProviderId, string>>;
+  /** Anbieter, die über ihre isolierte Sandbox-Variante laufen: Pfad der CLI im Sandbox-Home. */
+  sandboxed?: Partial<Record<ProviderId, string>>;
   providerDefaults: Record<ProviderId, ProviderOptions>;
   updateChannel: UpdateChannel;
   autoCheckUpdate: boolean;

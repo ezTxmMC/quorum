@@ -1,4 +1,5 @@
 import type { ChatJob } from './chat-host/types';
+import type { SandboxProgress, SandboxProvider, SandboxResult, SandboxStatus } from './sandbox';
 import type { LspDocument, LspEvent, LspLanguage, LspReply, LspRequest, LspStatus } from './ide/lsp';
 import type { ApprovalScope, Plan, PlanSaveInput, PlanSnapshot } from './plan/types';
 import type { EditorDocument, WorkspaceEntry, WorkspaceFileResult, WorkspaceSearchResult } from './ide/types';
@@ -116,6 +117,11 @@ export function createHub(transport: DesktopTransport) {
     onWinState: (cb: (s: { maximized: boolean; fullscreen: boolean }) => void) => sub('win:state', cb),
     newWindow: (hash?: string): Promise<void> => invoke('win:new', hash),
     termCreate: (id: string, cwd: string, cols: number, rows: number, provider?: ProviderId, shell?: string): Promise<{ mode: 'pty' | 'pipe' | 'missing' }> => invoke('term:create', id, cwd, cols, rows, provider, shell),
+    sandboxStatus: (provider: SandboxProvider): Promise<SandboxStatus> => invoke('sandbox:status', provider),
+    sandboxInstall: (provider: SandboxProvider): Promise<SandboxResult> => invoke('sandbox:install', provider),
+    sandboxRemove: (provider: SandboxProvider): Promise<SandboxResult> => invoke('sandbox:remove', provider),
+    sandboxTerminal: (id: string, provider: SandboxProvider, cols: number, rows: number): Promise<{ mode: 'pty' | 'pipe' | 'missing' }> => invoke('sandbox:terminal', id, provider, cols, rows),
+    onSandboxProgress: (callback: (progress: SandboxProgress) => void) => sub('sandbox:progress', callback),
     termShells: (): Promise<{ id: string; name: string; path: string }[]> => invoke('term:shells'),
     termWrite: (id: string, d: string): Promise<void> => invoke('term:write', id, d),
     termResize: (id: string, c: number, r: number): Promise<void> => invoke('term:resize', id, c, r),

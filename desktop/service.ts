@@ -6,6 +6,9 @@ import { homedir } from 'node:os';
 import { ChatHostManager } from '../electron/chat-host/manager';
 import { dataDir, load, defaults } from '../electron/store';
 import { providerStatus, resolveBinary, execCli } from '../electron/providers/detect';
+import { terminalCommand } from '../electron/providers/sandbox';
+import { installSandbox, removeSandbox, sandboxStatus } from '../electron/providers/sandbox-install';
+import { effectiveBinaries, type SandboxProvider } from '../shared/sandbox';
 import { configureApi, inspectApi } from '../electron/providers/api';
 import { discoverLocalServers } from '../electron/providers/discover';
 import { configureAcp } from '../electron/providers/acp';
@@ -76,8 +79,8 @@ async function launch(request: RunRequest) {
   await host.launch(request, { dataRoot: root, pythonRoot: join(assets, 'python'), settings: data.settings, apiKeys });
   event('chat:changed');
 }
-const workflows = openWorkflowRoutes(event, () => data.settings.binaries);
-const threed = openThreeDRoutes(event, () => data.settings.binaries);
+const workflows = openWorkflowRoutes(event, () => effectiveBinaries(data.settings));
+const threed = openThreeDRoutes(event, () => effectiveBinaries(data.settings));
 const routes = {
   ...workflows,
   ...threed,
@@ -114,7 +117,7 @@ const routes = {
       await host.acknowledge(next as Persisted);
     }
   },
-  'provider:status': (id: ProviderId, force?: boolean) => providerStatus(id, data.settings.binaries, force),
+  'provider:status': (id: ProviderId, force?: boolean) => providerStatus(id, effectiveBinaries(data.settings), force),
   'api:has-key': async (id: string) => !!await keyFor(id), 'api:key': keyUpdate, 'api:inspect': inspectApi, 'api:discover': discoverLocalServers,
   'ollama:manage': ollamaManagement,
   'ollama:action': ollamaModelAction,
@@ -131,18 +134,26 @@ const routes = {
   'chat:resume-starts': () => host.resumeStarts(),
   'hub:run': launch, 'hub:cancel': (id: string) => host.cancel(id),
   'hub:inject': (id: string, text: string, attachments?: Attachment[]) => host.inject(id, text, attachments),
-  'multi:start': (m: MultiStart) => { void startMulti(m.multiId, m.config, (value) => event('multi:event', { multiId: m.multiId, event: value }), data.settings.binaries, root); },
+  'multi:start': (m: MultiStart) => { void startMulti(m.multiId, m.config, (value) => event('multi:event', { multiId: m.multiId, event: value }), effectiveBinaries(data.settings), root); },
   'multi:stop': stopMulti, 'multi:stop-turn': stopMultiTurn,
   'import:list': listImportable, 'import:load': loadImportable,
   'git:status': gitStatus, 'git:diff': gitDiff, 'usage:scan': scanUsage,
   'term:shells': listShells, 'term:write': writeTerminal, 'term:kill': killTerminal, 'term:resize': resizeTerminal,
   'term:create': (id: string, cwd: string, cols: number, rows: number, provider?: ProviderId, shell?: string) => {
-    const bin = provider && resolveBinary(provider, data.settings.binaries);
+    const bin = provider && resolveBinary(provider, effectiveBinaries(data.settings));
     if (provider && !bin) return { mode: 'missing' };
-    return createTerminal(terminal, id, cwd, cols, rows, root, bin ? { bin, args: [] } : undefined, shell);
+    return createTerminal(terminal, id, cwd, cols, rows, root, bin ? terminalCommand(bin, cwd) : undefined, shell);
+  },
+  'sandbox:status': (provider: SandboxProvider) => sandboxStatus(root, provider),
+  'sandbox:install': (provider: SandboxProvider) => installSandbox(root, provider, data.settings.binaries, (text) => event('sandbox:progress', { provider, text })),
+  'sandbox:remove': (provider: SandboxProvider) => removeSandbox(root, provider),
+  'sandbox:terminal': async (id: string, provider: SandboxProvider, cols: number, rows: number) => {
+    const status = await sandboxStatus(root, provider);
+    if (!status.bin) return { mode: 'missing' };
+    return createTerminal(terminal, id, status.home, cols, rows, root, terminalCommand(status.bin, status.home));
   },
   'cli:exec': (id: ProviderId, args: string[], cwd?: string) => {
-    const bin = resolveBinary(id, data.settings.binaries);
+    const bin = resolveBinary(id, effectiveBinaries(data.settings));
     if (!bin) throw new Error('CLI fehlt');
     return execCli(bin, args, cwd);
   },

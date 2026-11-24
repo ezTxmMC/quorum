@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { PROVIDERS, CLAUDE_MODELS, KIMI_MODELS, modelLabel, isChatModel } from '../../shared/catalog';
 import { ollamaStatus } from './ollama';
+import { sandboxHome, sandboxLaunch } from './sandbox';
 import { listModels } from '../models/registry';
 import { resolveRuntime } from '../runtimes/scheduler';
 import type { CliCommandResult, ModelInfo, ProviderId, ProviderStatus } from '../../shared/types';
@@ -15,6 +16,10 @@ const EXTRA_DIRS = [join(homedir(), '.opencode', 'bin'), join(homedir(), '.local
 export function resolveBinary(id: ProviderId, overrides: Partial<Record<ProviderId, string>> = {}): string | undefined {
   if (id === 'ollama' || id === 'local' || id === 'api' || id === 'acp') return undefined; // laufen über HTTP-APIs, keine CLI
   const custom = overrides[id];
+  // Eine gewählte Sandbox-Variante fällt nie auf die ungeschützte System-CLI zurück.
+  if (custom && sandboxHome(custom)) {
+    return existsSync(custom) ? custom : undefined;
+  }
   if (custom && existsSync(custom)) return custom;
   const name = PROVIDERS[id].bin + (process.platform === 'win32' ? '.cmd' : '');
   const dirs = [...(process.env.PATH ?? '').split(delimiter), ...EXTRA_DIRS];
@@ -28,7 +33,14 @@ export function resolveBinary(id: ProviderId, overrides: Partial<Record<Provider
 
 export function execCli(bin: string, args: string[], cwd?: string, timeout = 60000): Promise<CliCommandResult> {
   return new Promise((resolve) => {
-    execFile(bin, args, { cwd, timeout, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } }, (err, stdout, stderr) => {
+    let launch: ReturnType<typeof sandboxLaunch>;
+    try {
+      launch = sandboxLaunch(bin, args, { cwd, env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } });
+    } catch (error) {
+      resolve({ ok: false, code: 1, stdout: '', stderr: (error as Error).message });
+      return;
+    }
+    execFile(launch.cmd, launch.args, { cwd: launch.cwd, timeout, maxBuffer: 8 * 1024 * 1024, env: launch.env }, (err, stdout, stderr) => {
       const code = err ? (typeof (err as NodeJS.ErrnoException & { code?: unknown }).code === 'number' ? ((err as unknown as { code: number }).code) : 1) : 0;
       resolve({ ok: !err, code, stdout: String(stdout), stderr: String(stderr) });
     });
