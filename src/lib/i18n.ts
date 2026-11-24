@@ -483,7 +483,6 @@ export const en: Record<string, string> = {
   "Knoten": "Nodes",
   "Exportieren": "Export",
   "Löschen": "Delete",
-  "Nach unten": "Move down",
   "– wählen –": "– choose –",
   "lokal": "local",
   "CLI, nur lesend": "CLI, read-only",
