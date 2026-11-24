@@ -103,6 +103,11 @@ interface ChatGroup {
   sessions: ChatSession[];
 }
 
+const COLLAPSED_KEY = 'quorum.sidebar.collapsed';
+const TEAMS_SECTION = 'section:teams';
+const CHATS_SECTION = 'section:chats';
+const SECTION_TOGGLE = 'flex w-full items-center gap-1.5 rounded-lumen-sm px-1 pb-1 pt-2 text-left text-[10.5px] font-semibold uppercase tracking-wider text-subtle transition-colors hover:text-fg';
+
 export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () => void } = {}) {
   const [search, setSearch] = useState('');
   const query = useDeferredValue(search.trim());
@@ -124,7 +129,21 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
   const sessions = (searching ? searchSessions : allSessions).filter((s) => s.messages.length > 0 && !hidden.includes(s.cwd) && (!searching || matches.has(s.id)));
   const [removing, setRemoving] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]') as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleCollapsed = (key: string) => setCollapsed((current) => {
+    const next = new Set(current);
+    if (!next.delete(key)) {
+      next.add(key);
+    }
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
+    return next;
+  });
   const projects = useHub((s) => s.data.projects);
   const chatListSettings = useHub((s) => s.data.settings.chatList);
   const groupBy: ChatGroupBy = chatListSettings?.groupBy ?? 'project';
@@ -316,6 +335,19 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
     );
   };
 
+  const renderMultiItem = (m: (typeof multis)[number]) => (
+    <NavLink key={m.id} to={`/multi/${m.id}`} viewTransition className={({ isActive }) => cx('group flex items-center gap-2 rounded-lumen-sm px-2 py-1.5 transition-colors hover:bg-hover', isActive && 'bg-active', leaving.has(m.id) && 'row-leave')}>
+      <span className={cx('size-2 shrink-0 rounded-full', m.status === 'running' ? 'pulse-dot bg-accent' : m.status === 'done' ? 'bg-ok' : m.status === 'failed' ? 'bg-bad' : 'bg-subtle')} />
+      <span className="flex-1 truncate text-[12.5px]">{m.title}</span>
+      <button className="icon-btn hidden !size-5 group-hover:grid" onClick={(e) => { e.preventDefault(); leave(m.id, () => { delMulti(m.id); if (location.hash.includes(m.id)) navigate('/multi', { viewTransition: true }); }); }}><Icon name="lucide:trash-2" size={12} /></button>
+    </NavLink>
+  );
+  // Eingeklappte Kategorien behalten den geöffneten Eintrag, damit der aktuelle Ort sichtbar bleibt.
+  const teamsOpen = !collapsed.has(TEAMS_SECTION);
+  const chatsOpen = searching || !collapsed.has(CHATS_SECTION);
+  const activeMulti = multis.find((m) => m.id === id);
+  const activeSession = sessions.find((s) => s.id === id);
+
   return (
     <aside className="flex h-full min-h-0 w-full min-w-0 flex-col select-none">
       <div className="flex items-center gap-1.5 px-2.5 pb-2 pt-2.5">
@@ -346,21 +378,23 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
         {!searching && multis.length > 0 && (
           <>
-            <div className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-wider text-subtle">{t('Teams')}</div>
-            {multis.slice(0, 6).map((m) => (
-              <NavLink key={m.id} to={`/multi/${m.id}`} viewTransition className={({ isActive }) => cx('group flex items-center gap-2 rounded-lumen-sm px-2 py-1.5 transition-colors hover:bg-hover', isActive && 'bg-active', leaving.has(m.id) && 'row-leave')}>
-                <span className={cx('size-2 shrink-0 rounded-full', m.status === 'running' ? 'pulse-dot bg-accent' : m.status === 'done' ? 'bg-ok' : m.status === 'failed' ? 'bg-bad' : 'bg-subtle')} />
-                <span className="flex-1 truncate text-[12.5px]">{m.title}</span>
-                <button className="icon-btn hidden !size-5 group-hover:grid" onClick={(e) => { e.preventDefault(); leave(m.id, () => { delMulti(m.id); if (location.hash.includes(m.id)) navigate('/multi', { viewTransition: true }); }); }}><Icon name="lucide:trash-2" size={12} /></button>
-              </NavLink>
-            ))}
+            <button className={SECTION_TOGGLE} aria-expanded={teamsOpen} onClick={() => toggleCollapsed(TEAMS_SECTION)}>
+              <Icon name="lucide:chevron-right" size={11} className={cx('shrink-0 transition-transform duration-200', teamsOpen && 'rotate-90')} />
+              {t('Teams')}
+              {!teamsOpen && <span className="font-normal">({multis.length})</span>}
+            </button>
+            <Collapse open={teamsOpen}>
+              {multis.slice(0, 6).map((m) => renderMultiItem(m))}
+            </Collapse>
+            {!teamsOpen && activeMulti && renderMultiItem(activeMulti)}
           </>
         )}
         <div className="flex items-center justify-between px-2 pb-1.5 pt-2 text-[10.5px] font-semibold uppercase tracking-wider text-subtle">
-          <span className="flex items-center gap-1.5 text-muted">
+          <button className="-ml-1 flex items-center gap-1.5 rounded-lumen-sm px-1 py-0.5 uppercase tracking-wider text-muted transition-colors hover:text-fg" aria-expanded={chatsOpen} onClick={() => toggleCollapsed(CHATS_SECTION)}>
+            <Icon name="lucide:chevron-right" size={11} className={cx('shrink-0 text-subtle transition-transform duration-200', chatsOpen && 'rotate-90')} />
             {groupBy === 'project' ? t('Projekte') : t('Chats')}
             <span className="font-normal text-subtle">({sessions.length})</span>
-          </span>
+          </button>
           <div className="flex items-center gap-0.5">
             {groupBy === 'project' && (
               <button className="icon-btn !size-6" title={t('Projekt hinzufügen')} onClick={async () => { const d = await hub.pickFolder(); if (d) addProject(d); }}>
@@ -424,6 +458,8 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
           </div>
         </div>
 
+        {!chatsOpen && activeSession && renderSessionItem(activeSession)}
+        <Collapse open={chatsOpen}>
         {searching && sessions.length === 0 && <div className="px-2.5 py-4 text-[12px] text-subtle">{t('Keine passenden Chats gefunden.')}</div>}
         {!searching && sessions.length === 0 && (
           <div className="px-2.5 py-2 text-subtle">
@@ -443,7 +479,7 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
                 <div className="group/p flex items-center rounded-lumen-sm hover:bg-hover">
                   <button
                     className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-left"
-                    onClick={() => setCollapsed((c) => { const n = new Set(c); n.has(g.id) ? n.delete(g.id) : n.add(g.id); return n; })}
+                    onClick={() => toggleCollapsed(g.id)}
                     title={g.cwd || g.label}
                   >
                     <Icon name="lucide:chevron-right" size={12} className={cx('shrink-0 text-subtle transition-transform duration-200', open && 'rotate-90')} />
@@ -472,10 +508,14 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
                     {g.sessions.map((s) => renderSessionItem(s))}
                   </div>
                 </Collapse>
+                {!open && activeSession && g.sessions.includes(activeSession) && (
+                  <div className="ml-3 border-l border-edge pl-1">{renderSessionItem(activeSession)}</div>
+                )}
               </div>
             );
           })
         )}
+        </Collapse>
       </div>
       <div className="flex items-center gap-1 border-t border-edge p-2">
         <Popover
