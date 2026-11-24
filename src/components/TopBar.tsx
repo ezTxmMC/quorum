@@ -137,6 +137,8 @@ export function TopBar({ hover, minimal, sidebarVisible, onToggleSidebar }: { ho
   const { setSettings, togglePanel, openSettings } = useHub.getState();
   const mac = hub.platform === 'darwin';
   const chat = useMatch('/chat/:id');
+  const chatId = chat?.params.id ?? '';
+  const chatTerminalOpen = useHub((s) => (chatId ? Boolean(s.chatTerminals[chatId]) : false));
   const cwd = useHub((s) => s.activeCwd);
   const anyPanelOpen = PANELS.some((panel) => panels[panel.id].visible);
 
@@ -188,6 +190,15 @@ export function TopBar({ hover, minimal, sidebarVisible, onToggleSidebar }: { ho
       {chat ? <ChatHeader id={chat.params.id ?? ''} /> : <div className="flex-1" />}
       {!minimal && (
         <div className="no-drag flex items-center gap-1 pr-2">
+          {chatId && (
+            <button
+              className={cx('icon-btn !size-8', chatTerminalOpen && 'bg-active text-fg')}
+              title={`${t('Terminal')} (${t('nur für diesen Chat')} · Strg+\`)`}
+              onClick={() => useHub.getState().toggleChatTerminal(chatId)}
+            >
+              <Icon name="lucide:terminal" size={15} />
+            </button>
+          )}
           <Popover
             down
             align="right"

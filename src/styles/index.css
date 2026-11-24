@@ -24,25 +24,25 @@
 }
 
 :root {
-  --c-bg: #0c0e12;
-  --c-bg-elevated: #12151b;
-  --c-bg-overlay: #181c24;
-  --c-bg-input: #161a22;
-  --c-bg-hover: #1d222c;
-  --c-bg-active: #252b37;
-  --c-border: rgba(255, 255, 255, 0.075);
-  --c-border-strong: rgba(255, 255, 255, 0.14);
-  --c-text: #e8ebf0;
-  --c-text-muted: #98a2b3;
-  --c-text-subtle: #667085;
+  --c-bg: #171a21;
+  --c-bg-elevated: #1e222b;
+  --c-bg-overlay: #252a36;
+  --c-bg-input: #202530;
+  --c-bg-hover: #292f3d;
+  --c-bg-active: #32394a;
+  --c-border: rgba(255, 255, 255, 0.085);
+  --c-border-strong: rgba(255, 255, 255, 0.16);
+  --c-text: #eceff4;
+  --c-text-muted: #a3adbf;
+  --c-text-subtle: #758096;
   --c-accent: #7c8cff;
-  --c-accent-text: #0a0c10;
+  --c-accent-text: #0c0e14;
   --c-success: #4ade80;
   --c-warning: #fbbf24;
   --c-danger: #f87171;
-  --c-selection: rgba(124, 140, 255, 0.28);
-  --c-scrollbar: rgba(255, 255, 255, 0.14);
-  --c-sheen: rgba(255, 255, 255, 0.045);
+  --c-selection: rgba(124, 140, 255, 0.30);
+  --c-scrollbar: rgba(255, 255, 255, 0.16);
+  --c-sheen: rgba(255, 255, 255, 0.06);
   --radius: 10px;
   --radius-sm: 7px;
   --radius-lg: 14px;
@@ -218,8 +218,9 @@
 .diff-del { background: color-mix(in srgb, var(--c-danger) 14%, transparent); color: var(--c-danger); }
 .diff-hunk { color: var(--c-accent); }
 
-/* Schnell-Prompt-Fenster: transparent, milchglasartig wie macOS Spotlight */
-html[data-quick], html[data-quick] body, html[data-quick] #root { background: transparent !important; }
+/* Schnell-Prompt-Fenster & transparente Tauri-Rahmen für abgerundete Ecken */
+html[data-quick], html[data-quick] body, html[data-quick] #root,
+html[data-tauri], html[data-tauri] body, html[data-tauri] #root { background: transparent !important; }
 .quick-card { background: color-mix(in srgb, var(--c-bg-elevated) 86%, transparent); backdrop-filter: blur(28px) saturate(1.4); animation: pop-in 0.18s var(--ease-out) both; }
 
 /* Dock-Zonen: Ein-/Ausblenden über transform/opacity (läuft auf dem Compositor, kein Layout-Thrash) */

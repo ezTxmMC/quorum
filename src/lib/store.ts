@@ -65,6 +65,9 @@ interface State {
   /** Chat-Optionen (Seitenpanel) – wird in der Titelleiste umgeschaltet. */
   chatOptionsOpen: boolean;
   toggleChatOptions: (v?: boolean) => void;
+  /** Terminal-Sichtbarkeit pro Chat (nicht global für die gesamte App). */
+  chatTerminals: Record<string, boolean>;
+  toggleChatTerminal: (sessionId: string, open?: boolean) => void;
 
   createMulti: (config: MultiConfig, title?: string) => string;
   startMulti: (id: string) => void;
@@ -156,6 +159,11 @@ export const useHub = create<State>((set, get) => {
     ready: false,
     activeCwd: '',
     settingsTab: null,
+    chatTerminals: {},
+    toggleChatTerminal: (sessionId, open) => set((state) => {
+      const next = open ?? !state.chatTerminals[sessionId];
+      return { chatTerminals: { ...state.chatTerminals, [sessionId]: next } };
+    }),
     openSettings: (tab = 'general') => set({ settingsTab: tab }),
     closeSettings: () => set({ settingsTab: null }),
     setActiveCwd: (cwd) => { if (get().activeCwd !== cwd) set({ activeCwd: cwd }); },

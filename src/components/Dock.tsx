@@ -11,7 +11,6 @@ import { TerminalPanel } from './panels/TerminalPanel';
 import { MenuItem, Popover, cx, usePresence } from './ui';
 
 export const PANELS: { id: PanelId; icon: string; label: string }[] = [
-  { id: 'terminal', icon: 'lucide:terminal', label: 'Terminal' },
   { id: 'files', icon: 'lucide:folder-tree', label: 'Ordner' },
   { id: 'agents', icon: 'lucide:bot', label: 'Agenten & Aufgaben' },
   { id: 'changes', icon: 'lucide:git-compare', label: 'Änderungen' },

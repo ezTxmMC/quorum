@@ -1,13 +1,13 @@
 import { PROVIDER_ORDER } from '@shared/catalog';
 import { chatMode, CHAT_MODES } from '@shared/chat-modes';
 import { getLang, t } from '@/lib/i18n';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { PROVIDERS, isTextOnly, modelEfforts, canonicalModel, selectModelOptions, modelChoices } from '@shared/catalog';
 import type { ProviderId } from '@shared/types';
 import { Composer } from '@/components/Composer';
 import { MessageView } from '@/components/MessageView';
-const ModelPane = lazy(() => import('@/components/ModelPane').then(({ ModelPane }) => ({ default: ModelPane })));
+import { TerminalPanel } from '@/components/panels/TerminalPanel';
 import { OptionsPanel } from '@/components/OptionsPanel';
 import { ProviderMark, cx, usePresence } from '@/components/ui';
 import { hub } from '@/lib/api';
@@ -32,9 +32,9 @@ export function ChatPage() {
     (a: ChatSession | undefined, b: ChatSession | undefined) => a === b || (!!a && !!b && a.id === b.id && a.provider === b.provider && a.options === b.options && a.cwd === b.cwd && a.limit === b.limit && a.modeSettings === b.modeSettings && a.providerSessions === b.providerSessions && a.fallbacks === b.fallbacks),
   );
   const panelPresence = usePresence(optionsOpen, 170);
-  // Modell aus dem Chat: wird die Projekt-ID gemeldet, zeigt die Ansicht rechts das Modell.
-  const [modelPaneOpen, setModelPaneOpen] = useState(() => !!session && chatMode(session.options) === 'model' && window.innerWidth >= 1100);
-  useEffect(() => { setModelPaneOpen(!!session && chatMode(session.options) === 'model' && window.innerWidth >= 1100); }, [id, session?.options.chatMode]);
+  const terminalOpen = useHub((s) => Boolean(s.chatTerminals[id]));
+  const [terminalHeight, setTerminalHeight] = useState(240);
+  const [terminalSlot, setTerminalSlot] = useState<HTMLElement | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -80,13 +80,14 @@ export function ChatPage() {
   const setActiveCwd = useHub.getState().setActiveCwd;
   useEffect(() => { if (session) setActiveCwd(session.cwd); }, [session?.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
   const onStopRun = useCallback(() => cancel(id), [cancel, id]);
-  const onOpenModel = useCallback((projectId: string) => { patchSession(id, { modelProjectId: projectId }); setModelPaneOpen(true); }, [patchSession, id]);
+  const onOpenModel = useCallback((projectId: string) => { navigate('/3d', { state: { projectId }, viewTransition: true }); }, [navigate]);
   const onSendMsg = useCallback((txt: string, imgs: string[], mode: 'direct' | 'queue', attachments: import('@shared/types').Attachment[], files: import('@shared/types').MessageFile[]) => submit(id, txt, { images: imgs, mode, attachments, files }), [submit, id]);
   const commandRef = useRef<(cmd: string, arg: string) => boolean>(() => false);
   const onCommandStable = useCallback((cmd: string, arg: string) => commandRef.current(cmd, arg), []);
   if (!session) return <Navigate to="/" replace />;
   const meta = PROVIDERS[session.provider];
-  const mode = chatMode(session.options);
+  const rawMode = chatMode(session.options);
+  const mode = rawMode === 'model' ? 'text' : rawMode;
   const status = statuses[session.provider];
 
   const setOpts = (patch: object) => patchSession(id, { options: { ...session.options, ...patch } });
@@ -199,7 +200,6 @@ export function ChatPage() {
             <Icon name="lucide:triangle-alert" size={14} /> <span>{session.provider === 'ollama' ? t('Ollama ist nicht erreichbar. Starte es mit „ollama serve“ und lade ein Modell (ollama pull …).') : <><b>{meta.bin}</b> {t('wurde nicht gefunden. Pfad unter Einstellungen angeben.')}</>}</span>
           </div>
         )}
-        {mode === 'model' && !modelPaneOpen && <button className="btn mx-auto mb-2" onClick={() => setModelPaneOpen(true)}><Icon name="lucide:cuboid" size={14} />{t('3D-Modell öffnen')}</button>}
         {banner && (
           <div className={cx('mx-auto mb-2 flex w-full max-w-5xl items-center gap-2 rounded-lumen border px-3 py-2 text-[12.5px] xl:max-w-6xl', banner.kind === 'error' ? 'border-bad/30 bg-bad/10 text-bad' : 'border-accent/30 bg-accent/10 text-fg')}>
             <Icon name={banner.kind === 'error' ? 'lucide:triangle-alert' : 'lucide:info'} size={14} className="shrink-0" /><span className="min-w-0 flex-1">{t(banner.text)}</span>
@@ -207,9 +207,51 @@ export function ChatPage() {
           </div>
         )}
         <Composer session={composerSession ?? session} running={running} onSend={onSendMsg} onStop={onStopRun} onCommand={onCommandStable} />
+        {terminalOpen && (
+          <section className="relative flex shrink-0 flex-col border-t border-edge bg-surface" style={{ height: terminalHeight }}>
+            <div
+              className="group absolute -top-1 left-0 right-0 z-10 h-2 cursor-row-resize"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                const startY = event.clientY;
+                const startHeight = terminalHeight;
+                const onMove = (moveEvent: PointerEvent) => {
+                  const next = Math.max(150, Math.min(window.innerHeight * 0.65, startHeight - (moveEvent.clientY - startY)));
+                  setTerminalHeight(next);
+                };
+                const onUp = () => {
+                  window.removeEventListener('pointermove', onMove);
+                  window.removeEventListener('pointerup', onUp);
+                };
+                window.addEventListener('pointermove', onMove);
+                window.addEventListener('pointerup', onUp);
+              }}
+            >
+              <div className="mx-auto mt-1 h-px w-full bg-accent opacity-0 transition-opacity group-hover:opacity-60" />
+            </div>
+            <div className="flex h-8 shrink-0 items-center gap-2 border-b border-edge px-2.5 text-[11.5px]">
+              <Icon name="lucide:terminal" size={13} className="text-muted" />
+              <span className="font-medium text-fg">{t('Terminal')}</span>
+              <div ref={setTerminalSlot} className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" />
+              <button
+                className="icon-btn !size-6"
+                title={t('Schließen')}
+                onClick={() => useHub.getState().toggleChatTerminal(id, false)}
+              >
+                <Icon name="lucide:x" size={13} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <TerminalPanel
+                key={session.id}
+                cwd={session.cwd || useHub.getState().data.recentProjects[0] || ''}
+                slot={terminalSlot}
+                onCloseAll={() => useHub.getState().toggleChatTerminal(id, false)}
+              />
+            </div>
+          </section>
+        )}
       </div>
-
-      {modelPaneOpen && (mode === 'model' || !!session.modelProjectId) && !panelPresence.mounted && <Suspense fallback={null}><ModelPane projectId={session.modelProjectId} onProject={(projectId) => patchSession(id, { modelProjectId: projectId })} onClose={() => setModelPaneOpen(false)} /></Suspense>}
 
       {panelPresence.mounted && (
         <aside data-state={panelPresence.state} className="dock-zone dock-right flex w-[380px] shrink-0 flex-col border-l border-edge bg-surface">

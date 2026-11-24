@@ -56,6 +56,7 @@ function collectCompletedWorkers(profile: unknown): CompletedWorkerMessage[] {
 }
 
 export async function installTauri(api: TauriApi) {
+  document.documentElement.dataset.tauri = '1';
   const current = api.window.getCurrentWindow();
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   const publish = (channel: string, payload: unknown) => {

@@ -110,7 +110,13 @@ export default function App() {
       const st = useHub.getState();
       if (e.key === 'n' && !e.shiftKey) { e.preventDefault(); void hub.newWindow(); }
       else if (e.key === 'b') { e.preventDefault(); st.setSettings({ sidebarPinned: !st.data.settings.sidebarPinned }); }
-      else if (e.key === '`') { e.preventDefault(); st.togglePanel('terminal'); }
+      else if (e.key === '`') {
+        const match = /^#\/chat\/([^/?#]+)/.exec(location.hash);
+        if (match?.[1]) {
+          e.preventDefault();
+          st.toggleChatTerminal(match[1]);
+        }
+      }
     };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
@@ -134,17 +140,23 @@ export default function App() {
 }
 
 function Shell() {
-  const pinnedPreference = useHub((s) => s.data.settings.sidebarPinned);
+  const preference = useHub((s) => s.data.settings.sidebarPinned);
   const [workspaceSidebar, setWorkspaceSidebar] = useState(false);
+  const [winState, setWinState] = useState({ maximized: false, fullscreen: false });
   const setSettings = useHub.getState().setSettings;
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const location = useLocation();
   const workspace = location.pathname.startsWith('/plan');
-  const pinned = workspace ? workspaceSidebar : pinnedPreference;
+  const pinned = workspace ? workspaceSidebar : preference;
+  const roundedFrame = Boolean(window.__TAURI__) && !winState.maximized && !winState.fullscreen;
+  useEffect(() => {
+    void hub.winState().then(setWinState);
+    return hub.onWinState(setWinState);
+  }, []);
   const toggleSidebar = () => {
     if (workspace) { setWorkspaceSidebar((previous) => !previous); return; }
-    setSettings({ sidebarPinned: !pinnedPreference });
+    setSettings({ sidebarPinned: !preference });
   };
   // Hover-Absicht: die Leiste öffnet erst, wenn die Maus kurz am Rand verweilt – beim bloßen Vorbeifahren springt sie nicht auf.
   const enter = () => { clearTimeout(timer.current); if (!open) timer.current = setTimeout(() => setOpen(true), 220); };
@@ -155,7 +167,7 @@ function Shell() {
   useEffect(() => { if (pinned) setOpen(false); }, [pinned]);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className={cx('flex h-full flex-col overflow-hidden bg-bg', roundedFrame && 'rounded-[14px] border border-edge-strong/80 shadow-2xl')}>
       <TopBar hover={{ open, enter, leave }} sidebarVisible={pinned} onToggleSidebar={toggleSidebar} />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* Angeheftete Seitenleiste mit flüssiger Breiten- und Einblendanimation */}

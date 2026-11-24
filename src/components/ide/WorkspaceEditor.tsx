@@ -5,10 +5,12 @@ import { lspLanguage } from '@shared/ide/lsp';
 import { useEffect, useRef, useState } from 'react';
 import type { EditorDocument, WorkspaceEntry } from '@shared/ide/types';
 import { hub } from '@/lib/api';
+import { Icon } from '@/lib/icons';
+import { cx } from '@/components/ui';
 
 type Buffer = EditorDocument & { savedText: string; conflict?: boolean };
 
-function Tree({ root, directory, onOpen, onError }: { root: string; directory?: string; onOpen: (path: string) => void; onError: (error: unknown) => void }) {
+function Tree({ root, directory, selected, depth = 0, onOpen, onError }: { root: string; directory?: string; selected: string; depth?: number; onOpen: (path: string) => void; onError: (error: unknown) => void }) {
   const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
   const [expanded, setExpanded] = useState<string[]>([]);
   useEffect(() => {
@@ -16,13 +18,47 @@ function Tree({ root, directory, onOpen, onError }: { root: string; directory?: 
     void hub.ideList(root, directory).then((result) => { if (active) { setEntries(result); } }).catch(onError);
     return () => { active = false; };
   }, [root, directory, onError]);
-  return <div className="pl-2">{entries.map((entry) => <div key={entry.path}>
-    <button className="block w-full truncate py-1 text-left hover:bg-hover" title={entry.path} onClick={() => {
-      if (!entry.isDirectory) { onOpen(entry.path); return; }
-      setExpanded((previous) => previous.includes(entry.path) ? previous.filter((path) => path !== entry.path) : [...previous, entry.path]);
-    }}>{entry.isDirectory ? (expanded.includes(entry.path) ? '▾ ' : '▸ ') : '  '}{entry.name}</button>
-    {expanded.includes(entry.path) && <Tree root={root} directory={entry.path} onOpen={onOpen} onError={onError} />}
-  </div>)}</div>;
+  return (
+    <div>
+      {entries.map((entry) => {
+        const isOpen = expanded.includes(entry.path);
+        const isSelected = selected === entry.path;
+        return (
+          <div key={entry.path}>
+            <button
+              className={cx(
+                'flex w-full items-center gap-1.5 rounded-lumen-sm py-1 pr-2 text-left text-[12px] transition-colors',
+                isSelected ? 'bg-active text-fg' : 'text-muted hover:bg-hover hover:text-fg',
+              )}
+              style={{ paddingLeft: `${8 + depth * 12}px` }}
+              title={entry.path}
+              onClick={() => {
+                if (!entry.isDirectory) {
+                  onOpen(entry.path);
+                  return;
+                }
+                setExpanded((previous) => previous.includes(entry.path) ? previous.filter((path) => path !== entry.path) : [...previous, entry.path]);
+              }}
+            >
+              {entry.isDirectory ? (
+                <>
+                  <Icon name={isOpen ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={12} className="shrink-0 text-subtle" />
+                  <Icon name={isOpen ? 'lucide:folder-open' : 'lucide:folder'} size={13} className="shrink-0 text-accent/80" />
+                </>
+              ) : (
+                <>
+                  <span className="w-3 shrink-0" />
+                  <Icon name="lucide:file-code" size={13} className="shrink-0 text-subtle" />
+                </>
+              )}
+              <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+            </button>
+            {isOpen && <Tree root={root} directory={entry.path} selected={selected} depth={depth + 1} onOpen={onOpen} onError={onError} />}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function WorkspaceEditor({ root, file, onDirty }: { root: string; file?: string; onDirty: (dirty: boolean) => void }) {
@@ -140,53 +176,164 @@ export function WorkspaceEditor({ root, file, onDirty }: { root: string; file?: 
     return true;
   };
 
-  return <div className="flex min-h-0 flex-1 border-t border-edge" onKeyDownCapture={(event) => {
-    if (!(event.ctrlKey || event.metaKey)) { return; }
-    if (event.key.toLowerCase() === 'p' && !event.shiftKey) { event.preventDefault(); event.stopPropagation(); setQuickOpen('files'); }
-    if (event.key.toLowerCase() === 'f' && event.shiftKey) { event.preventDefault(); event.stopPropagation(); setQuickOpen('content'); }
-  }}>
-    {quickOpen && <QuickOpen root={root} mode={quickOpen} onOpen={navigate} onClose={() => setQuickOpen(null)} />}
-    <aside className="w-52 shrink-0 overflow-auto border-r border-edge p-2 text-xs"><div className="mb-2 flex gap-1"><button className="btn" onClick={() => setQuickOpen('files')}>Öffnen</button><button className="btn" onClick={() => setQuickOpen('content')}>Suche</button></div><Tree root={root} onOpen={(path) => { void open(path); }} onError={report} /></aside>
-    <div className="flex min-w-0 flex-1 flex-col" onKeyDown={(event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === 's') { event.preventDefault(); void save(); }
-    }}>
-      <div className="flex overflow-x-auto border-b border-edge">{buffers.map((buffer) => <div key={buffer.path} className="flex shrink-0 items-center border-r border-edge">
-        <button className={`px-3 py-2 text-xs ${selected === buffer.path ? 'bg-hover' : ''}`} title={buffer.path} onClick={() => { setSelected(buffer.path); setDiskText(null); }}>{buffer.path.split(/[\\/]/).pop()}{buffer.text !== buffer.savedText ? ' •' : ''}{buffer.conflict ? ' ⚠' : ''}</button>
-        <button className="px-2" aria-label={`Schließen: ${buffer.path}`} onClick={() => {
-          if (buffer.text !== buffer.savedText && !window.confirm('Ungespeicherte Änderungen verwerfen?')) { return; }
-          setBuffers((previous) => previous.filter((item) => item.path !== buffer.path));
-          if (selected === buffer.path) { setSelected(buffers.find((item) => item.path !== buffer.path)?.path ?? ''); }
-        }}>×</button>
-      </div>)}</div>
-      {error && <div role="alert" className="p-2 text-sm text-red-400">{error}</div>}
-      {current && <>
-        <div className="flex flex-wrap items-center gap-2 border-b border-edge p-2 text-xs">
-          <button className="btn" disabled={busy || current.conflict || current.text === current.savedText} onClick={() => { void save(); }}>Speichern</button>
-          <button className="btn" onClick={() => { void reload(); }}>Neu laden</button>
-          <button className="btn" onClick={() => editor.current?.find()}>Suchen / Ersetzen</button>
-          <button className="btn" onClick={() => editor.current?.commands()}>Befehlspalette</button>
-          {language && <>
-            <span title={status?.message}>LSP: {status?.state ?? 'deaktiviert'}</span>
-            <button className="btn" disabled={status?.state === 'starting'} onClick={() => { void lsp.start(language, !!status && status.state !== 'stopped'); }}>{status?.state === 'ready' ? 'LSP neu starten' : 'LSP aktivieren'}</button>
-            {status?.state === 'ready' && <button className="btn" onClick={() => { void lsp.stop(language); }}>LSP stoppen</button>}
-          </>}
-          <button className="btn" onClick={() => setProblemsOpen((previous) => !previous)}>Probleme ({problems.length})</button>
-          <span className="text-muted">{current.languageId} · UTF-8 · {current.lineEnding}</span>
+  return (
+    <div
+      className="flex min-h-0 flex-1"
+      onKeyDownCapture={(event) => {
+        if (!(event.ctrlKey || event.metaKey)) { return; }
+        if (event.key.toLowerCase() === 'p' && !event.shiftKey) { event.preventDefault(); event.stopPropagation(); setQuickOpen('files'); }
+        if (event.key.toLowerCase() === 'f' && event.shiftKey) { event.preventDefault(); event.stopPropagation(); setQuickOpen('content'); }
+      }}
+    >
+      {quickOpen && <QuickOpen root={root} mode={quickOpen} onOpen={navigate} onClose={() => setQuickOpen(null)} />}
+      <aside className="flex w-60 shrink-0 flex-col border-r border-edge bg-surface/50">
+        <div className="flex items-center justify-between border-b border-edge px-2.5 py-1.5">
+          <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-subtle">Explorer</span>
+          <div className="flex items-center gap-0.5">
+            <button className="icon-btn !size-6" title="Datei öffnen (Strg+P)" onClick={() => setQuickOpen('files')}>
+              <Icon name="lucide:file-search" size={13} />
+            </button>
+            <button className="icon-btn !size-6" title="Im Projekt suchen (Strg+Shift+F)" onClick={() => setQuickOpen('content')}>
+              <Icon name="lucide:search" size={13} />
+            </button>
+          </div>
         </div>
-        {status?.message && <div role="status" className="px-2 py-1 text-xs text-warn">{status.message}</div>}
-        {current.conflict && <div className="p-2 text-sm text-amber-400">Externe Änderung erkannt. Der Buffer bleibt erhalten. <button className="btn" onClick={() => { void hub.ideRead(root, current.path).then((document) => setDiskText(document.text)).catch(report); }}>Datenträger vergleichen</button></div>}
-        {diskText !== null && <div className="flex items-center gap-2 px-2 py-1 text-xs"><span>Links: Datenträger · Rechts: aktueller Buffer</span><button className="btn" onClick={() => setDiskText(null)}>Vergleich schließen</button></div>}
-        <MonacoPane ref={editor} documents={buffers} selected={selected} diskText={diskText}
-          onChange={(path, text) => setBuffers((previous) => previous.map((buffer) => buffer.path === path ? { ...buffer, text } : buffer))}
-          onModel={lsp.onModel} onCloseModel={lsp.onCloseModel} onSave={() => { void save(); }} onNavigate={navigate} />
-        {problemsOpen && <div className="max-h-44 shrink-0 overflow-auto border-t border-edge p-2 text-xs" aria-label="LSP-Probleme">
-          {!problems.length && <p className="text-muted">Keine Diagnosen für die geöffneten Dokumentversionen.</p>}
-          {problems.map((problem, index) => <button key={`${problem.path}:${index}`} className="block w-full py-1 text-left hover:bg-hover" onClick={() => { void navigate(problem.path, problem.range.start.line + 1, problem.range.start.character + 1); }}>
-            <span className={(problem.severity ?? 1) === 1 ? 'text-bad' : 'text-warn'}>{(problem.severity ?? 1) === 1 ? 'Fehler' : 'Hinweis'}</span> {problem.path.split(/[\\/]/).pop()}:{problem.range.start.line + 1} · {problem.message}
-          </button>)}
-        </div>}
-      </>}
-      {!current && <div className="p-6 text-muted">Datei im Baum öffnen. Strg+S speichert den aktiven Buffer.</div>}
+        <div className="min-h-0 flex-1 overflow-auto p-1.5">
+          <Tree root={root} selected={selected} onOpen={(path) => { void open(path); }} onError={report} />
+        </div>
+      </aside>
+      <div
+        className="flex min-w-0 flex-1 flex-col bg-bg"
+        onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key === 's') { event.preventDefault(); void save(); }
+        }}
+      >
+        {buffers.length > 0 && (
+          <div className="flex overflow-x-auto border-b border-edge bg-surface/40">
+            {buffers.map((buffer) => {
+              const active = selected === buffer.path;
+              const modified = buffer.text !== buffer.savedText;
+              return (
+                <div
+                  key={buffer.path}
+                  className={cx(
+                    'group flex shrink-0 items-center border-r border-edge transition-colors',
+                    active ? 'bg-bg text-fg' : 'text-muted hover:bg-hover/60 hover:text-fg',
+                  )}
+                >
+                  <button
+                    className="flex items-center gap-1.5 px-3 py-2 text-[12px]"
+                    title={buffer.path}
+                    onClick={() => { setSelected(buffer.path); setDiskText(null); }}
+                  >
+                    <Icon name="lucide:file-code" size={12} className={active ? 'text-accent' : 'text-subtle'} />
+                    <span>{buffer.path.split(/[\\/]/).pop()}</span>
+                    {modified && <span className="size-1.5 rounded-full bg-accent" />}
+                    {buffer.conflict && <span className="text-warn">⚠</span>}
+                  </button>
+                  <button
+                    className="mr-1.5 grid size-5 place-items-center rounded text-subtle opacity-60 transition-opacity hover:bg-hover hover:text-fg group-hover:opacity-100"
+                    aria-label={`Schließen: ${buffer.path}`}
+                    onClick={() => {
+                      if (modified && !window.confirm('Ungespeicherte Änderungen verwerfen?')) { return; }
+                      setBuffers((previous) => previous.filter((item) => item.path !== buffer.path));
+                      if (selected === buffer.path) { setSelected(buffers.find((item) => item.path !== buffer.path)?.path ?? ''); }
+                    }}
+                  >
+                    <Icon name="lucide:x" size={11} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {error && <div role="alert" className="border-b border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">{error}</div>}
+        {current && (
+          <>
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-edge bg-surface/30 px-3 py-1.5 text-[11.5px]">
+              <button className="btn !py-0.5 text-[11.5px]" disabled={busy || current.conflict || current.text === current.savedText} onClick={() => void save()}>
+                <Icon name="lucide:save" size={12} />
+                <span>Speichern</span>
+              </button>
+              <button className="icon-btn !size-6" title="Neu laden" onClick={() => void reload()}>
+                <Icon name="lucide:refresh-cw" size={12} />
+              </button>
+              <button className="icon-btn !size-6" title="Suchen / Ersetzen" onClick={() => editor.current?.find()}>
+                <Icon name="lucide:search" size={12} />
+              </button>
+              <button className="icon-btn !size-6" title="Befehlspalette" onClick={() => editor.current?.commands()}>
+                <Icon name="lucide:terminal" size={12} />
+              </button>
+              {language && (
+                <div className="ml-1 flex items-center gap-1.5 border-l border-edge pl-2">
+                  <span className="inline-flex items-center gap-1 text-subtle" title={status?.message}>
+                    <span className={cx('size-1.5 rounded-full', status?.state === 'ready' ? 'bg-ok' : status?.state === 'starting' ? 'bg-warn animate-pulse' : 'bg-subtle')} />
+                    LSP
+                  </span>
+                  <button className="btn !px-2 !py-0.5 text-[11px]" disabled={status?.state === 'starting'} onClick={() => void lsp.start(language, !!status && status.state !== 'stopped')}>
+                    {status?.state === 'ready' ? 'Neu starten' : 'Aktivieren'}
+                  </button>
+                  {status?.state === 'ready' && (
+                    <button className="btn !px-2 !py-0.5 text-[11px]" onClick={() => void lsp.stop(language)}>Stoppen</button>
+                  )}
+                </div>
+              )}
+              <div className="flex-1" />
+              <button className={cx('btn !px-2 !py-0.5 text-[11px]', problems.length > 0 && 'border-warn/40 text-warn')} onClick={() => setProblemsOpen((previous) => !previous)}>
+                Probleme ({problems.length})
+              </button>
+              <span className="text-[11px] text-subtle">{current.languageId} · UTF-8 · {current.lineEnding}</span>
+            </div>
+            {status?.message && <div role="status" className="border-b border-edge bg-warn/10 px-3 py-1 text-[11.5px] text-warn">{status.message}</div>}
+            {current.conflict && (
+              <div className="flex items-center gap-2 border-b border-edge bg-warn/10 px-3 py-1.5 text-[12px] text-warn">
+                <span>Externe Änderung erkannt.</span>
+                <button className="btn !py-0.5 text-[11.5px]" onClick={() => void hub.ideRead(root, current.path).then((document) => setDiskText(document.text)).catch(report)}>
+                  Datenträger vergleichen
+                </button>
+              </div>
+            )}
+            {diskText !== null && (
+              <div className="flex items-center gap-2 border-b border-edge bg-surface px-3 py-1 text-[11.5px] text-muted">
+                <span>Links: Datenträger · Rechts: aktueller Buffer</span>
+                <button className="btn !py-0.5 text-[11px]" onClick={() => setDiskText(null)}>Vergleich schließen</button>
+              </div>
+            )}
+            <MonacoPane
+              ref={editor}
+              documents={buffers}
+              selected={selected}
+              diskText={diskText}
+              onChange={(path, text) => setBuffers((previous) => previous.map((buffer) => buffer.path === path ? { ...buffer, text } : buffer))}
+              onModel={lsp.onModel}
+              onCloseModel={lsp.onCloseModel}
+              onSave={() => { void save(); }}
+              onNavigate={navigate}
+            />
+            {problemsOpen && (
+              <div className="max-h-44 shrink-0 overflow-auto border-t border-edge bg-surface/60 p-2 text-[12px]" aria-label="LSP-Probleme">
+                {!problems.length && <p className="px-2 py-1 text-subtle">Keine Diagnosen für die geöffneten Dateien.</p>}
+                {problems.map((problem, index) => (
+                  <button key={`${problem.path}:${index}`} className="block w-full rounded px-2 py-1 text-left hover:bg-hover" onClick={() => void navigate(problem.path, problem.range.start.line + 1, problem.range.start.character + 1)}>
+                    <span className={(problem.severity ?? 1) === 1 ? 'text-bad' : 'text-warn'}>{(problem.severity ?? 1) === 1 ? 'Fehler' : 'Hinweis'}</span> {problem.path.split(/[\\/]/).pop()}:{problem.range.start.line + 1} · {problem.message}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {!current && (
+          <div className="flex flex-1 flex-col items-center justify-center p-6 text-center text-subtle">
+            <Icon name="lucide:code-2" size={28} className="mb-3 opacity-40" />
+            <p className="text-[13px] text-muted">Datei im Explorer öffnen</p>
+            <div className="mt-3 flex items-center gap-3 text-[11.5px]">
+              <span className="inline-flex items-center gap-1"><kbd className="kbd-pill">Strg+P</kbd> Öffnen</span>
+              <span className="inline-flex items-center gap-1"><kbd className="kbd-pill">Strg+Shift+F</kbd> Suche</span>
+              <span className="inline-flex items-center gap-1"><kbd className="kbd-pill">Strg+S</kbd> Speichern</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
-  </div>;
+  );
 }
