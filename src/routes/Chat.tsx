@@ -127,7 +127,7 @@ export function ChatPage() {
         if (session.provider === 'codex') send(id, '/review (Codex: uncommitted changes)', { review: { target: 'uncommitted' } });
         else send(id, getLang() === 'en' ? 'Review the current uncommitted changes in this project (git diff, git status) thoroughly as a code review. Name concrete bugs, risks and improvements with file references. Do not change anything.' : 'Prüfe die aktuellen, nicht committeten Änderungen in diesem Projekt (git diff, git status) gründlich als Code-Review. Nenne konkrete Fehler, Risiken und Verbesserungen mit Dateiverweisen. Ändere nichts.');
         return true;
-      case 'compact': void useHub.getState().compact(id); return true;
+      case 'compact': void useHub.getState().compact(id, { focus: arg }); return true;
       case 'continue': send(id, arg || 'Fahre fort.', { continueLast: true }); return true;
       case 'fork': send(id, arg || 'Fahre fort.', { fork: true }); return true;
     }
@@ -165,6 +165,7 @@ export function ChatPage() {
         {banner && (
           <div className={cx('mx-auto mb-2 flex w-full max-w-5xl items-center gap-2 rounded-lumen border px-3 py-2 text-[12.5px] xl:max-w-6xl', banner.kind === 'error' ? 'border-bad/30 bg-bad/10 text-bad' : 'border-accent/30 bg-accent/10 text-fg')}>
             <Icon name={banner.kind === 'error' ? 'lucide:triangle-alert' : 'lucide:info'} size={14} className="shrink-0" /><span className="min-w-0 flex-1">{t(banner.text)}</span>
+            {banner.action === 'undo-compact' && <button className="btn !py-0.5 text-[11.5px]" onClick={() => useHub.getState().undoCompact(id)}><Icon name="lucide:undo-2" size={12} /> {t('Rückgängig')}</button>}
             <button className="icon-btn !size-5" onClick={() => useHub.getState().setBanner(id, null)}><Icon name="lucide:x" size={12} /></button>
           </div>
         )}

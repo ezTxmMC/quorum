@@ -39,7 +39,7 @@ const BUILTIN = [
   { name: 'continue', desc: 'Letzte CLI-Session fortsetzen' },
   { name: 'fork', desc: 'Aktuelle Session verzweigen und weitermachen' },
   { name: 'diff', desc: 'Änderungsübersicht öffnen' },
-  { name: 'compact', desc: 'Verlauf zusammenfassen und kompaktieren' },
+  { name: 'compact', desc: 'Verlauf kompaktieren – optional mit Schwerpunkt, z. B. /compact die API-Entscheidungen' },
 ];
 
 /** Entwürfe je Chat: beim Wechsel zwischen Chats geht getippter Text nicht verloren und landet nicht im falschen Chat. */

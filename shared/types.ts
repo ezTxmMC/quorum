@@ -232,6 +232,10 @@ export interface Message {
   createdAt: number;
   usage?: { inputTokens?: number; outputTokens?: number; cachedTokens?: number; costUsd?: number; durationMs?: number; turns?: number };
   error?: string;
+  /** Antwort nach einem Anbieterwechsel: so viel Kontext wurde dem neuen Anbieter übergeben. */
+  handoff?: import('./chat-context').HandoffInfo;
+  /** Zusammenfassung (role = system): Umfang des ersetzten Verlaufs. */
+  compaction?: { messages: number; tokensBefore: number; tokensAfter: number; auto?: boolean };
 }
 
 export interface FallbackModel { provider: ProviderId; model: string }
@@ -339,6 +343,8 @@ export interface Settings {
   /** Globale Ausweich-Modelle für alle Chats ohne eigene Liste. */
   fallbacks?: FallbackModel[];
   sidebarPinned: boolean;
+  /** Kompaktieren: automatisch bei Anbietern ohne eigene Sitzung (API, Ollama, lokal), ab dieser geschätzten Tokenzahl. */
+  compaction?: { auto?: boolean; thresholdTokens?: number };
   /** Zuletzt genutzte Auswahl (Anbieter, Modus, Modell, Berechtigungen, Effort) – Vorlage für neue Chats. */
   lastChat?: { provider: ProviderId; options: ProviderOptions };
   showOlderModels?: boolean;

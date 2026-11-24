@@ -1,6 +1,7 @@
 import { markProfileReady } from './tauri';
 import { PROVIDER_ORDER } from '@shared/catalog';
 import { recoverChats } from '@shared/chat-host/recovery';
+import { compactionPrompt, compactionSummary, estimateTokens, handoff, planCompaction } from '@shared/chat-context';
 import { chatMode, modeOptions } from '@shared/chat-modes';
 import { useRef } from 'react';
 import { create } from 'zustand';
@@ -12,6 +13,13 @@ import { hub, uid } from './api';
 import { queryCliUsage } from './cliUsage';
 import { currentMeters, limitUsage } from './usageMeters';
 import { applyEvent, messageText } from './reduce';
+
+export interface ChatBanner {
+  kind: 'info' | 'error';
+  text: string;
+  /** Zusätzlicher Knopf im Banner. */
+  action?: 'undo-compact';
+}
 
 interface RunRoute { sessionId: string; messageId: string; provider: ProviderId }
 
@@ -97,11 +105,13 @@ interface State {
   installUpdate: () => Promise<boolean>;
   setChatListSettings: (patch: Partial<ChatListSettings>) => void;
   /** Verlauf des Chats vom aktuellen Modell zusammenfassen lassen und durch die Zusammenfassung ersetzen. */
-  compact: (sessionId: string) => Promise<void>;
+  compact: (sessionId: string, request?: { focus?: string; auto?: boolean }) => Promise<boolean>;
+  compactUndo: Record<string, { messages: Message[]; providerSessions: ChatSession['providerSessions']; summaryId: string }>;
+  undoCompact: (sessionId: string) => boolean;
   compacting: Record<string, boolean>;
   /** Kurze Hinweise über dem Eingabefeld (z. B. Wechsel auf ein Ausweich-Modell, Fehler beim Kompaktieren). */
-  banners: Record<string, { kind: 'info' | 'error'; text: string }>;
-  setBanner: (sessionId: string, banner: { kind: 'info' | 'error'; text: string } | null) => void;
+  banners: Record<string, ChatBanner>;
+  setBanner: (sessionId: string, banner: ChatBanner | null) => void;
   /** Bei erreichtem Limit: zum nächsten Ausweich-Modell wechseln und die letzte Anfrage wiederholen. */
   switchToFallback: (sessionId: string, retry?: boolean) => boolean;
   /** Prüft das Prozent-Limit des Chats vor einem neuen Lauf. true = senden, false = gestoppt (Hinweis wurde gezeigt). */
@@ -125,18 +135,14 @@ const emptyData = (): Persisted => ({
 
 const titleOf = (t: string) => (t.replace(/\s+/g, ' ').trim().slice(0, 56) || 'Neuer Chat');
 
-/** Wenn zwischen Anbietern gewechselt wird, bekommt der neue Anbieter den bisherigen Verlauf als Kontext. */
-function contextPreamble(s: ChatSession): string {
-  const lines: string[] = [];
-  for (const m of s.messages.slice(-12)) {
-    const t = messageText(m);
-    if (!t) continue;
-    if (m.role === 'system') { lines.push(`Zusammenfassung des früheren Verlaufs: ${t}`); continue; }
-    lines.push(`${m.role === 'user' ? 'Nutzer' : `Assistent (${m.provider ?? '?'})`}: ${t.length > 1800 ? t.slice(0, 1800) + '…' : t}`);
-  }
-  if (!lines.length) return '';
-  return `[Bisheriger Gesprächsverlauf mit einem anderen Assistenten – nur als Kontext:]\n${lines.join('\n\n')}\n\n[Aktuelle Nachricht des Nutzers:]\n`;
-}
+
+/** Zeichenbudget des Kontexts, der einem Anbieter bei der Übergabe mitgegeben wird. */
+const HANDOFF_BUDGET = 24_000;
+/** Zeichenbudget des Verlaufs, den das Modell beim Kompaktieren zu lesen bekommt. */
+const COMPACT_BUDGET = 120_000;
+/** So viel Text der jüngsten Nachrichten bleibt beim Kompaktieren wörtlich erhalten. */
+const COMPACT_KEEP_CHARS = 8_000;
+const AUTO_COMPACT_TOKENS = 60_000;
 
 /** Nachrichten, die seit der letzten Antwort des aktuellen Anbieters von einem anderen Anbieter geschrieben wurden (sonst leer). */
 function missedMessages(s: ChatSession): Message[] {
@@ -419,7 +425,11 @@ export const useHub = create<State>((set, get) => {
       const isApi = isTextOnly(s.provider);
       // Wurde zwischenzeitlich von einem anderen Anbieter geantwortet, bekommt die fortgesetzte Session die verpassten Nachrichten als Kontext.
       const missed = providerSession && !opts.continueLast ? missedMessages(s) : [];
-      const prompt = !isApi && !opts.continueLast && s.messages.length && (!providerSession || missed.length) ? contextPreamble(missed.length ? { ...s, messages: missed } : s) + text : text;
+      const needsContext = !isApi && !opts.continueLast && s.messages.length > 0 && (!providerSession || missed.length > 0);
+      const given = needsContext ? handoff(missed.length ? missed : s.messages, s.provider, get().data.settings.language, HANDOFF_BUDGET, s.cwd) : undefined;
+      const prompt = given ? given.text + text : text;
+      // Nur ein echter Anbieterwechsel wird im Chat als Übergabe markiert – nicht das Fortsetzen nach dem Kompaktieren.
+      if (given && given.from !== s.provider) asst.handoff = { from: given.from, messages: given.messages, tokens: given.tokens };
       // Ollama-Chat (API) hat keine eigene Session: der Verlauf kommt aus dem Hub.
       const history = isApi ? s.messages.slice(-40).map((m) => ({ role: m.role === 'assistant' ? 'assistant' as const : 'user' as const, content: m.role === 'system' ? `[Zusammenfassung des früheren Verlaufs]\n${messageText(m)}` : messageText(m) })).filter((m) => m.content) : undefined;
       mutSession(sessionId, (x) => ({
@@ -448,6 +458,11 @@ export const useHub = create<State>((set, get) => {
       if (!s) return false;
       if (!get().isRunning(sessionId)) {
         if (!(await get().checkLimit(sessionId))) return false;
+        // Anbieter ohne eigene Sitzung bekommen den Verlauf bei jeder Anfrage komplett mit: rechtzeitig verdichten statt abschneiden.
+        const compaction = get().data.settings.compaction;
+        if (compaction?.auto !== false && isTextOnly(s.provider) && estimateTokens(s.messages) > (compaction?.thresholdTokens ?? AUTO_COMPACT_TOKENS)) {
+          await get().compact(sessionId, { auto: true });
+        }
         // Währenddessen kann ein anderer Lauf gestartet sein – dann einreihen statt stillschweigend zu verwerfen.
         if (!get().isRunning(sessionId)) {
           get().send(sessionId, text, { images: opts.images, attachments: opts.attachments, files: opts.files });
@@ -518,32 +533,21 @@ export const useHub = create<State>((set, get) => {
         return { banners: banner ? { ...rest, [sessionId]: banner } : rest };
       });
     },
-    async compact(sessionId) {
+    async compact(sessionId, request = {}) {
       const s = get().data.sessions.find((x) => x.id === sessionId);
-      if (!s || get().isRunning(sessionId) || get().compacting[sessionId]) return;
+      if (!s || get().isRunning(sessionId) || get().compacting[sessionId]) return false;
       const mode = chatMode(s.options);
-      if (mode === 'image' || mode === 'model') return;
-      const body = s.messages.filter((m) => messageText(m));
-      if (body.length < 4) { get().setBanner(sessionId, { kind: 'info', text: 'Der Verlauf ist noch zu kurz zum Kompaktieren.' }); return; }
+      if (mode === 'image' || mode === 'model') return false;
+      const lang = get().data.settings.language;
+      const en = lang === 'en';
+      const plan = planCompaction(s.messages, COMPACT_KEEP_CHARS);
+      if (plan.head.filter((m) => messageText(m)).length < 2) {
+        if (!request.auto) get().setBanner(sessionId, { kind: 'info', text: en ? 'The conversation is still too short to compact.' : 'Der Verlauf ist noch zu kurz zum Kompaktieren.' });
+        return false;
+      }
       get().setBanner(sessionId, null);
       set((st) => ({ compacting: { ...st.compacting, [sessionId]: true } }));
-      const en = get().data.settings.language === 'en';
-      // Neueste Nachrichten zuerst auswählen, damit bei sehr langen Chats das Aktuelle erhalten bleibt.
-      let budget = 90_000;
-      const parts: string[] = [];
-      for (const m of [...body].reverse()) {
-        let t = messageText(m);
-        if (t.length > 6000) t = t.slice(0, 3500) + ' […] ' + t.slice(-2000);
-        const tools = m.blocks.filter((b) => b.kind === 'tool').length;
-        const line = `${m.role === 'user' ? (en ? 'User' : 'Nutzer') : m.role === 'system' ? (en ? 'Earlier summary' : 'Frühere Zusammenfassung') : (en ? 'Assistant' : 'Assistent')}: ${t}${tools ? ` [${tools} ${en ? 'tool calls' : 'Werkzeugaufrufe'}]` : ''}`;
-        if (budget - line.length < 0 && parts.length) break;
-        budget -= line.length;
-        parts.unshift(line);
-      }
-      const intro = en
-        ? "Summarize the following conversation so it can be continued in a fresh context without losing anything important. Keep: the user's goals, decisions made, files/paths/commands/identifiers mentioned, current state of the work, open tasks and constraints. Be dense and factual, use short bullet points, no preface. Do not use any tools."
-        : 'Fasse die folgende Unterhaltung so zusammen, dass sie in einem frischen Kontext ohne Verlust des Wichtigen fortgesetzt werden kann. Behalte: Ziele des Nutzers, getroffene Entscheidungen, genannte Dateien/Pfade/Befehle/Bezeichner, aktuellen Arbeitsstand, offene Aufgaben und Rahmenbedingungen. Kompakt und sachlich, kurze Stichpunkte, keine Einleitung. Nutze keine Werkzeuge.';
-      const prompt = [intro, en ? '--- CONVERSATION ---' : '--- UNTERHALTUNG ---', parts.join('\n\n')].join('\n\n');
+      const prompt = compactionPrompt(plan.head, lang, COMPACT_BUDGET, request.focus);
       const runId = uid();
       const result = await new Promise<{ ok: boolean; text: string; error?: string }>((resolve) => {
         let text = '';
@@ -557,15 +561,40 @@ export const useHub = create<State>((set, get) => {
         });
       });
       set((st) => ({ compacting: { ...st.compacting, [sessionId]: false } }));
-      if (!result.ok) { get().setBanner(sessionId, { kind: 'error', text: `${en ? 'Compacting failed' : 'Kompaktieren fehlgeschlagen'}${result.error ? `: ${result.error}` : ''}` }); return; }
+      if (!result.ok) { get().setBanner(sessionId, { kind: 'error', text: `${en ? 'Compacting failed' : 'Kompaktieren fehlgeschlagen'}${result.error ? `: ${result.error}` : ''}` }); return false; }
       const cur = get().data.sessions.find((x) => x.id === sessionId);
-      if (!cur) return;
-      // Die letzten zwei Nachrichten bleiben wörtlich erhalten, alles davor wird durch die Zusammenfassung ersetzt.
-      const keep = cur.messages.slice(-2).filter((m) => m.role !== 'system');
-      const replaced = cur.messages.length - keep.length;
-      const summary: Message = { id: uid(), role: 'system', provider: s.provider, blocks: [{ kind: 'text', text: result.text }], createdAt: Date.now(), usage: { turns: replaced } };
-      mutSession(sessionId, (x) => ({ ...x, messages: [summary, ...keep], providerSessions: {}, updatedAt: Date.now() }));
-      get().setBanner(sessionId, { kind: 'info', text: en ? `Conversation compacted: ${replaced} messages summarized.` : `Verlauf kompaktiert: ${replaced} Nachrichten zusammengefasst.` });
+      if (!cur) return false;
+      // Während der Zusammenfassung können neue Nachrichten dazugekommen sein; sie bleiben hinter dem erhaltenen Teil stehen.
+      const added = cur.messages.slice(s.messages.length);
+      const tail = [...plan.tail, ...added];
+      const text = compactionSummary(result.text, plan.head, lang);
+      const summary: Message = {
+        id: uid(), role: 'system', provider: s.provider, blocks: [{ kind: 'text', text }], createdAt: Date.now(), usage: { turns: plan.head.length },
+        compaction: { messages: plan.head.length, tokensBefore: estimateTokens(plan.head), tokensAfter: Math.round(text.length / 4), auto: request.auto },
+      };
+      set((st) => ({ compactUndo: { ...st.compactUndo, [sessionId]: { messages: cur.messages, providerSessions: cur.providerSessions, summaryId: summary.id } } }));
+      mutSession(sessionId, (x) => ({ ...x, messages: [summary, ...tail], providerSessions: {}, updatedAt: Date.now() }));
+      const saved = Math.max(0, summary.compaction!.tokensBefore - summary.compaction!.tokensAfter);
+      const count = plan.head.length;
+      get().setBanner(sessionId, {
+        kind: 'info', action: 'undo-compact',
+        text: en ? `Conversation compacted: ${count} messages summarized, about ${saved.toLocaleString()} tokens freed.` : `Verlauf kompaktiert: ${count} Nachrichten zusammengefasst, etwa ${saved.toLocaleString()} Token frei.`,
+      });
+      return true;
+    },
+    compactUndo: {},
+    /** Stellt den Verlauf vor dem letzten Kompaktieren wieder her (nur in dieser Sitzung der App, solange seither nichts gesendet wurde). */
+    undoCompact(sessionId) {
+      const backup = get().compactUndo[sessionId];
+      const cur = get().data.sessions.find((x) => x.id === sessionId);
+      if (!backup || !cur || cur.messages[0]?.id !== backup.summaryId || get().isRunning(sessionId)) return false;
+      mutSession(sessionId, (x) => ({ ...x, messages: backup.messages, providerSessions: backup.providerSessions, updatedAt: Date.now() }));
+      set((st) => {
+        const { [sessionId]: _used, ...rest } = st.compactUndo;
+        return { compactUndo: rest };
+      });
+      get().setBanner(sessionId, null);
+      return true;
     },
     /** Wechselt auf das nächste Ausweich-Modell. retry: die fehlgeschlagene Anfrage wird neu gesendet; sonst gilt der Wechsel für die nächste Nachricht. */
     switchToFallback(sessionId, retry = true) {

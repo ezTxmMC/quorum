@@ -74,14 +74,40 @@ function GeneratedImage({ path, engine }: { path: string; engine?: string }) {
 function CompactedSummary({ m }: { m: Message }) {
   const [open, setOpen] = useState(false);
   const text = m.blocks.map((b) => (b.kind === 'text' ? b.text : '')).join('');
+  const count = m.compaction?.messages ?? m.usage?.turns;
+  const saved = m.compaction ? Math.max(0, m.compaction.tokensBefore - m.compaction.tokensAfter) : 0;
   return (
     <div className="fade-in rounded-lumen-lg border border-dashed border-edge-strong bg-surface/60 px-3.5 py-2.5 text-[12.5px]">
       <button className="flex w-full items-center gap-2 text-left text-muted hover:text-fg" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon name="lucide:fold-vertical" size={14} />
-        <span className="flex-1 font-medium">{t('Verlauf kompaktiert')}{m.usage?.turns ? ` · ${m.usage.turns} ${t('Nachrichten zusammengefasst')}` : ''}</span>
+        <span className="flex-1 font-medium">
+          {m.compaction?.auto ? t('Verlauf automatisch kompaktiert') : t('Verlauf kompaktiert')}
+          {count ? ` · ${count} ${t('Nachrichten zusammengefasst')}` : ''}
+        </span>
+        {saved > 0 && <span className="shrink-0 rounded-full bg-ok/15 px-2 py-0.5 text-[10.5px] text-ok">−{fmtTok(saved)} {t('Token')}</span>}
         <Icon name={open ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={12} />
       </button>
       <Collapse open={open}><div className="pt-2"><Markdown text={text} /></div></Collapse>
+    </div>
+  );
+}
+
+/** Markierung im Verlauf: ab hier antwortet ein anderer Anbieter, mit dem angegebenen übergebenen Kontext. */
+function HandoffMark({ m }: { m: Message }) {
+  if (!m.handoff || !m.provider) {
+    return null;
+  }
+  return (
+    <div className="flex items-center gap-3 pb-3 text-[11px] text-subtle" title={t('Der neue Anbieter hat den bisherigen Verlauf, die geänderten Dateien und die zuletzt ausgeführten Befehle als Kontext bekommen.')}>
+      <span className="h-px flex-1 bg-edge" />
+      <span className="flex items-center gap-1.5 rounded-full border border-edge bg-surface/70 px-2.5 py-1">
+        <ProviderMark id={m.handoff.from} size={12} />
+        <Icon name="lucide:arrow-right" size={11} />
+        <ProviderMark id={m.provider} size={12} />
+        <span className="text-muted">{t('Übergabe')}</span>
+        <span>· {m.handoff.messages} {t('Nachrichten')} · ~{fmtTok(m.handoff.tokens)} {t('Token')}</span>
+      </span>
+      <span className="h-px flex-1 bg-edge" />
     </div>
   );
 }
@@ -114,6 +140,7 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop, o
   return (
     <div className="fade-in group/asst">
       {/* Volle Breite wie das Eingabefeld: Anbieter-Icon steht in der Kopfzeile statt in einer eigenen Spalte. */}
+      <HandoffMark m={m} />
       <div className="min-w-0 space-y-2.5 [overflow-wrap:anywhere]">
         {(label || m.provider) && <div className="flex items-center gap-2 text-[11.5px] font-medium text-subtle">{m.provider && <ProviderMark id={m.provider} size={12} />}{label ?? PROVIDERS[m.provider!].name}</div>}
         {m.blocks.map((b, i) => {
