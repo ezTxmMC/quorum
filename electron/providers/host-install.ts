@@ -179,7 +179,9 @@ export async function installOnHost(provider: ProviderId, hostBinaries: Partial<
     if (!result.ok) {
       return result;
     }
-    const installed = target ? [PROVIDERS[provider].bin, `${PROVIDERS[provider].bin}.cmd`].map((name) => join(target.binDir, name)).find((file) => existsSync(file)) : undefined;
+    // Auf Windows legt npm zusätzlich ein Shell-Skript ohne Endung ab, das sich nicht direkt starten lässt.
+    const names = process.platform === 'win32' ? [`${PROVIDERS[provider].bin}.cmd`, `${PROVIDERS[provider].bin}.exe`] : [PROVIDERS[provider].bin];
+    const installed = target ? names.map((name) => join(target.binDir, name)).find((file) => existsSync(file)) : undefined;
     if (!installed) {
       return { ok: false, error: `npm lief durch, aber „${PROVIDERS[provider].bin}“ liegt nicht im Zielordner.` };
     }

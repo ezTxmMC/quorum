@@ -1,5 +1,6 @@
 import { app, shell } from 'electron';
-import { promises as fsp } from 'node:fs';
+import { createReadStream, promises as fsp } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -91,6 +92,7 @@ interface RawAsset {
   browser_download_url: string;
   size: number;
   content_type: string;
+  digest?: string | null;
 }
 
 interface RawRelease {
@@ -125,6 +127,7 @@ function pickAsset(assets: RawAsset[]): UpdateAsset | undefined {
       downloadUrl: match.browser_download_url,
       size: match.size,
       contentType: match.content_type,
+      digest: match.digest ?? undefined,
     };
   }
   return undefined;
@@ -231,6 +234,16 @@ export async function checkUpdate(channel: UpdateChannel = 'release'): Promise<U
   }
 }
 
+/** Release, zu dem die heruntergeladene Datei gehört. */
+let downloadedTag: string | undefined;
+
+function sha256(file: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256');
+    createReadStream(file).on('error', reject).on('data', (chunk) => hash.update(chunk)).on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
 export async function downloadUpdate(): Promise<boolean> {
   const asset = state.updateInfo?.asset;
   if (!asset?.downloadUrl) {
@@ -293,7 +306,13 @@ export async function downloadUpdate(): Promise<boolean> {
       await fileHandle.close();
     }
 
+    // Nur eine Datei installieren, die der von GitHub gemeldeten Prüfsumme entspricht.
+    if (asset.digest?.startsWith('sha256:') && (await sha256(tempFile)) !== asset.digest.slice(7).toLowerCase()) {
+      await fsp.rm(tempFile, { force: true });
+      throw new Error('Die Prüfsumme des Downloads stimmt nicht – Update verworfen.');
+    }
     await fsp.rename(tempFile, targetFile);
+    downloadedTag = state.updateInfo?.tag;
 
     // Auf Linux ausführbar machen
     if (process.platform === 'linux') {
@@ -333,6 +352,13 @@ export async function installUpdate(): Promise<boolean> {
     return false;
   }
 
+  // Seit dem Download kann eine neuere Version gefunden worden sein: dann nicht stillschweigend die ältere installieren.
+  if (downloadedTag && state.updateInfo?.tag && downloadedTag !== state.updateInfo.tag) {
+    state = { ...state, status: 'available', downloadPath: undefined, error: undefined };
+    emitStatus();
+    return false;
+  }
+
   try {
     await fsp.access(filePath);
   } catch {
@@ -341,6 +367,11 @@ export async function installUpdate(): Promise<boolean> {
     return false;
   }
 
+  if (process.platform === 'linux' && !filePath.endsWith('.AppImage')) {
+    // Ein .deb lässt sich nicht als AppImage starten: dem Nutzer zur Installation zeigen.
+    shell.showItemInFolder(filePath);
+    return false;
+  }
   if (process.platform === 'linux') {
     // Linux AppImage Update
     const currentAppImage = process.env.APPIMAGE;
@@ -357,18 +388,21 @@ export async function installUpdate(): Promise<boolean> {
 
       // Skript für nahtlosen Neustart und Austausch im Hintergrund vorbereiten
       const updaterScript = join(dataDir(), 'updates', 'apply-update.sh');
+      // Pfade kommen als Argumente statt in den Skripttext, damit Sonderzeichen nichts auslösen. Erst wenn die App wirklich
+      // beendet ist, wird ausgetauscht – bricht der Nutzer das Beenden ab, bleibt die Installation unberührt.
       const scriptContent = `#!/usr/bin/env bash
-sleep 0.8
-cp -f "${filePath}" "${targetInstallPath}"
-chmod +x "${targetInstallPath}"
-ln -sf "${targetInstallPath}" "${binLink}"
-setsid "${targetInstallPath}" >/dev/null 2>&1 &
-rm -f "${filePath}"
+src="$1"; dst="$2"; link="$3"; pid="$4"
+for _ in $(seq 1 900); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$pid" 2>/dev/null; then exit 0; fi
+cp -f "$src" "$dst.new" && chmod +x "$dst.new" && mv -f "$dst.new" "$dst" || exit 1
+ln -sf "$dst" "$link"
+setsid "$dst" >/dev/null 2>&1 &
+rm -f "$src"
 `;
       await fsp.writeFile(updaterScript, scriptContent, { mode: 0o755 });
 
       // Starte das Update-Skript entkoppelt
-      const child = spawn('/bin/bash', [updaterScript], {
+      const child = spawn('/bin/bash', [updaterScript, filePath, targetInstallPath, binLink, String(process.pid)], {
         detached: true,
         stdio: 'ignore',
       });
@@ -385,8 +419,10 @@ rm -f "${filePath}"
   }
   if (process.platform === 'win32' && filePath.toLowerCase().endsWith('.exe')) {
     // Windows: Installer starten und die App beenden, damit er die Dateien ersetzen kann.
-    spawn(filePath, [], { detached: true, stdio: 'ignore' }).unref();
-    app.quit();
+    // Erst beenden, wenn der Installer wirklich läuft; ein fehlgeschlagener Start darf den Hauptprozess nicht mitreißen.
+    const installer = spawn(filePath, [], { detached: true, stdio: 'ignore' });
+    installer.once('error', () => { shell.showItemInFolder(filePath); });
+    installer.once('spawn', () => { installer.unref(); app.quit(); });
     return true;
   }
   if (process.platform === 'darwin' && filePath.toLowerCase().endsWith('.dmg')) {

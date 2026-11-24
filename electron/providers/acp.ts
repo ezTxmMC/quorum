@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { ACP_PRESETS, type AcpAgent } from '../../shared/acp';
 import type { HubEvent, ModelInfo, RunRequest } from '../../shared/types';
+import { isWindowsShim, shimLaunch } from './win-shim';
 
 // ACP-Client (Protokollversion 1): startet einen Agenten als Kindprozess und spricht JSON-RPC 2.0 zeilenweise über stdio.
 // Ausgabe der Session-Updates wird auf HubEvents abgebildet. Dateisystem- und Terminal-Methoden des Clients werden nicht angeboten,
@@ -16,7 +17,7 @@ export const acpAgents = (): AcpAgent[] => {
   return [...extra, ...ACP_PRESETS.filter((p) => !extra.some((e) => e.id === p.id))];
 };
 
-const EXTRA_DIRS = [join(homedir(), '.local', 'bin'), join(homedir(), '.npm-global', 'bin'), join(homedir(), '.bun', 'bin'), '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin'];
+const EXTRA_DIRS = [...(process.platform === 'win32' && process.env.APPDATA ? [join(process.env.APPDATA, 'npm')] : []), join(homedir(), '.local', 'bin'), join(homedir(), '.npm-global', 'bin'), join(homedir(), '.bun', 'bin'), '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin'];
 export function findOnPath(command: string): string | undefined {
   const direct = command.includes('/') || command.includes('\\');
   const names = process.platform === 'win32' && !/\.[^/\\]+$/.test(command)
@@ -76,7 +77,17 @@ export async function runAcp(req: RunRequest, emit: (e: HubEvent) => void): Prom
   const allow = !!req.options.fullAccess || req.options.permission === 'allow';
 
   return new Promise((resolve) => {
-    const child = spawn(bin, agent.args, { cwd: req.cwd, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, NO_COLOR: '1' }, detached: process.platform !== 'win32' && process.env.QUORUM_CHAT_WORKER !== '1' });
+    // npm legt CLIs auf Windows als .cmd ab; die startet Node nicht direkt (EINVAL), deshalb über das dahinterliegende Skript.
+    const launch = isWindowsShim(bin) ? shimLaunch(bin, agent.args) : { cmd: bin, args: agent.args, verbatim: false };
+    const start = () => spawn(launch.cmd, launch.args, { cwd: req.cwd, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, NO_COLOR: '1' }, windowsVerbatimArguments: !!launch.verbatim, detached: process.platform !== 'win32' && process.env.QUORUM_CHAT_WORKER !== '1' });
+    let child: ReturnType<typeof start>;
+    try {
+      child = start();
+    } catch (error) {
+      emit({ type: 'done', ok: false, error: `${agent.name}: ${(error as Error).message}` });
+      resolve({ ok: false, text: '' });
+      return;
+    }
     let nextId = 1;
     const pending = new Map<number, { res: (v: Json) => void; rej: (e: Error) => void }>();
     let sessionId: string | undefined;

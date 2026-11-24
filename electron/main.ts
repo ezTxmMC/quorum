@@ -15,7 +15,7 @@ import { setLlamaBinary } from './runtimes/llamacpp';
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray, type WebContents } from 'electron';
 import { existsSync, promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join, relative } from 'node:path';
+import { basename, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROVIDERS } from '../shared/catalog';
 import { rasterize } from '../shared/brand';
@@ -240,11 +240,23 @@ function refreshUsage(): Promise<UsageReport> {
     if (!usageWorker) {
       usageWorker = new Worker(join(here, 'usage-worker.js'));
       usageWorker.unref();
-      usageWorker.on('error', () => { usageWorker = null; });
+      // Dauerhaft, damit ein Fehler außerhalb einer laufenden Anfrage den Hauptprozess nicht beendet.
+      const created = usageWorker;
+      created.on('error', () => { if (usageWorker === created) usageWorker = null; });
     }
     const w = usageWorker;
+    // Stirbt der Worker mitten in der Auswertung, muss die Anfrage enden – sonst hinge jede spätere an demselben Versprechen.
+    const onGone = (reason: unknown) => {
+      w.off('message', onMsg);
+      if (usageWorker === w) usageWorker = null;
+      reject(reason instanceof Error ? reason : new Error('Nutzungs-Auswertung wurde unerwartet beendet'));
+    };
+    w.once('error', onGone);
+    w.once('exit', onGone);
     const onMsg = (m: { report?: UsageReport; error?: string }) => {
       w.off('message', onMsg);
+      w.off('error', onGone);
+      w.off('exit', onGone);
       if (!m.report) { reject(new Error(m.error ?? 'Nutzung konnte nicht gelesen werden')); return; }
       usageReport = m.report; usageAt = Date.now();
       for (const win of allWindows()) sendTo(win.webContents, 'usage:report', m.report);
@@ -442,7 +454,7 @@ function registerIpc() {
   ipcMain.handle('shell:open', (_e, p: string) => shell.openPath(p));
   ipcMain.handle('shell:reveal', (_e, p: string) => shell.showItemInFolder(p));
   // Erzeugte Bilder: nur Dateien aus dem Bilderordner der App.
-  const ownImage = (p: string) => p.startsWith(imagesDir()) && existsSync(p);
+  const ownImage = (p: string) => typeof p === 'string' && resolve(p).startsWith(resolve(imagesDir()) + sep) && existsSync(p);
   ipcMain.handle('image:preview', async (_e, p: string) => {
     if (typeof p !== 'string' || !/\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(p)) { throw new Error('Keine unterstützte Bilddatei'); }
     const stat = await fsp.stat(p);

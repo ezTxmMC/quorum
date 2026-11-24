@@ -40,8 +40,9 @@ export function buildCodex(req: RunRequest): { args: string[]; stdin?: string } 
   if (o.ephemeral) rest.push('--ephemeral');
   if (o.worktree) rest.push('--worktree');
   if (o.jsonSchema) rest.push('--output-schema', o.jsonSchema);
-  const args = ['exec', ...pre, ...(resuming ? ['resume'] : []), '--json', '--skip-git-repo-check', ...rest];
-  for (const img of req.images ?? []) args.push('-i', img);
+  // --image nimmt beliebig viele Werte: stünde es zuletzt, verschluckte es Sitzungs-ID und das „-“ für stdin. Darum vor einer anderen Option.
+  const images = (req.images ?? []).flatMap((img) => ['-i', img]);
+  const args = ['exec', ...pre, ...(resuming ? ['resume'] : []), ...images, '--json', '--skip-git-repo-check', ...rest];
   args.push(...splitArgs(o.extraArgs));
   if (resuming) args.push(req.resume!.sessionId ?? '--last');
   args.push('-'); // Prompt von stdin

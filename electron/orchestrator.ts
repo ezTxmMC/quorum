@@ -462,8 +462,10 @@ function fail(c: Ctx, msg: string) {
 }
 
 export async function startMulti(multiId: string, config: MultiConfig, emit: Emit, binaries: Partial<Record<ProviderId, string>>, dataDir: string) {
+  // Ein gestoppter Lauf meldet sein Ende sonst doppelt: erst als Fehler der Strategie, dann als Abbruch.
+  let finished = false;
   const c: Ctx = {
-    multiId, config: { ...config, agents: config.agents.map((a) => ({ ...a })) }, emit: (e) => emit(e.type === 'log' ? { ...e, text: loc(c, e.text) } : e.type === 'finished' ? { ...e, summary: e.summary.replace(/^[^\n]{1,100}/, (first) => loc(c, first)) } : e), binaries,
+    multiId, config: { ...config, agents: config.agents.map((a) => ({ ...a })) }, emit: (e) => { if (e.type === 'finished') { if (finished) return; finished = true; } emit(e.type === 'log' ? { ...e, text: loc(c, e.text) } : e.type === 'finished' ? { ...e, summary: e.summary.replace(/^[^\n]{1,100}/, (first) => loc(c, first)) } : e); }, binaries,
     worktreeRoot: join(dataDir, 'worktrees'), trees: new Map(), stopped: false, activeRuns: new Set(), activeTurns: new Map(), userStopped: new Set(), failures: [], stageSeq: 0, board: [], providerSessions: new Map(),
   };
   active.set(multiId, c);
@@ -477,7 +479,7 @@ export async function startMulti(multiId: string, config: MultiConfig, emit: Emi
       case 'debate': await debate(c); break;
       case 'review-loop': await reviewLoop(c); break;
     }
-    if (c.stopped) emit({ type: 'finished', ok: false, summary: 'Abgebrochen.' });
+    if (c.stopped) c.emit({ type: 'finished', ok: false, summary: 'Abgebrochen.' });
   } catch (err) {
     emit({ type: 'log', level: 'error', text: String(err instanceof Error ? err.message : err) });
     c.stopped = true;

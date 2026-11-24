@@ -439,6 +439,8 @@ export interface UpdateAsset {
   downloadUrl: string;
   size: number;
   contentType: string;
+  /** Prüfsumme laut GitHub, z. B. „sha256:…“. */
+  digest?: string;
 }
 
 export interface UpdateInfo {
