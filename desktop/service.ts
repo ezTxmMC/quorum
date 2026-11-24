@@ -35,6 +35,7 @@ import { createTerminal, killAllTerminals, killTerminal, listShells, resizeTermi
 import { LspManager } from '../core/ide/lsp/manager';
 import { installedServer } from '../core/ide/lsp/servers';
 import { slashCommands } from '../core/ide/composer-files';
+import { openThreeDRoutes } from '../electron/3d/routes';
 import { openWorkflowRoutes } from '../electron/workflows/routes';
 
 const assets = process.argv[2];
@@ -76,8 +77,10 @@ async function launch(request: RunRequest) {
   event('chat:changed');
 }
 const workflows = openWorkflowRoutes(event, () => data.settings.binaries);
+const threed = openThreeDRoutes(event, () => data.settings.binaries);
 const routes = {
   ...workflows,
+  ...threed,
   'app:home': homedir, 'app:isPrimary': () => true, 'launch:take': () => null, 'quick:take': () => null,
   'store:seed': load,
   'store:adopt': (next: Partial<Persisted>) => {

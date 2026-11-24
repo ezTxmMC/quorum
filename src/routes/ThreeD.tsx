@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { PROVIDERS } from '@shared/catalog';
+import { canonicalModel } from '@shared/catalog';
 import type { ChatEngine } from '@shared/contracts/threed';
+import type { ProviderId } from '@shared/types';
 import { hub } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { imageUrl } from '@/components/MessageView';
 import { ModelAnimations, ModelTextures } from '@/components/ModelAssets';
+import { ModelButton, defaultModel } from '@/components/ModelPicker';
 import { ModelViewer3D } from '@/components/ModelViewer3D';
 import { ModelWorkfiles } from '@/components/ModelWorkfiles';
 import { ThreeDTools } from '@/components/ThreeDTools';
@@ -16,9 +18,6 @@ import { cx } from '@/components/ui';
 type Detail = Awaited<ReturnType<typeof hub.threedGet>>;
 type Project = Awaited<ReturnType<typeof hub.threedList>>[number];
 type StudioTab = 'viewport' | 'workfiles' | 'textures' | 'animations' | 'history';
-type CliEngineProvider = 'claude' | 'codex' | 'antigravity' | 'kimi' | 'opencode';
-
-const CLI_PROVIDERS: CliEngineProvider[] = ['claude', 'codex', 'antigravity', 'kimi', 'opencode'];
 
 const STUDIO_TABS: { id: StudioTab; label: string; icon: string }[] = [
   { id: 'viewport', label: 'Viewport', icon: 'lucide:cuboid' },
@@ -31,6 +30,7 @@ const STUDIO_TABS: { id: StudioTab; label: string; icon: string }[] = [
 export function ThreeDPage() {
   const location = useLocation();
   const statuses = useHub((state) => state.statuses);
+  const settings = useHub((state) => state.data.settings);
   const initialProjectId = (location.state as { projectId?: string } | null)?.projectId;
 
   const [projects, setProjects] = useState<Project[]>([]);
@@ -41,13 +41,13 @@ export function ThreeDPage() {
   const [frame, setFrame] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [prompt, setPrompt] = useState('');
-  const [provider, setProvider] = useState<CliEngineProvider>('claude');
+  const [provider, setProvider] = useState<ProviderId>(settings.defaultProvider);
+  const [model, setModel] = useState<string | undefined>(() => settings.providerDefaults[settings.defaultProvider]?.model);
   const [running, setRunning] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [error, setError] = useState('');
 
-  const availableProviders = CLI_PROVIDERS.filter((id) => statuses[id]?.installed);
-  const activeProvider = availableProviders.includes(provider) ? provider : (availableProviders[0] ?? 'claude');
+  const resolvedModel = model ?? defaultModel(provider, statuses[provider]);
 
   const loadProjects = async () => {
     const list = await hub.threedList();
@@ -193,7 +193,12 @@ export function ThreeDPage() {
     }
     setRunning(true);
     setStatusText(t('Starte 3D-Generierung …'));
-    const engine: ChatEngine = { type: 'cli', provider: activeProvider };
+    const defaults = settings.providerDefaults[provider] ?? {};
+    const engine: ChatEngine = {
+      type: 'provider',
+      provider,
+      options: { ...defaults, model: resolvedModel },
+    };
     const started = await hub.threedRun(targetId, goal, engine, 6);
     if (!started) {
       setRunning(false);
@@ -421,19 +426,16 @@ export function ThreeDPage() {
               placeholder={t('Beschreibe das 3D-Modell, Materialien, Texturen oder Animationen …')}
               className="block max-h-[140px] w-full resize-none overflow-x-hidden bg-transparent px-4 pb-1 pt-3 text-[13.5px] leading-relaxed outline-none placeholder:text-subtle"
             />
-            <div className="flex items-center gap-2 border-t border-edge/60 px-3 py-2">
-              <select
-                aria-label={t('Anbieter')}
-                value={activeProvider}
-                onChange={(event) => setProvider(event.target.value as CliEngineProvider)}
-                className="field !w-auto !py-1 text-[12px]"
-              >
-                {CLI_PROVIDERS.map((id) => (
-                  <option key={id} value={id}>
-                    {PROVIDERS[id].name}{statuses[id]?.installed === false ? ` (${t('nicht installiert')})` : ''}
-                  </option>
-                ))}
-              </select>
+            <div className="flex items-center gap-2 border-t border-edge/60 px-2.5 py-2">
+              <ModelButton
+                kind="text"
+                provider={provider}
+                model={resolvedModel}
+                onPick={(nextProvider, nextModel) => {
+                  setProvider(nextProvider);
+                  setModel(canonicalModel(nextProvider, nextModel));
+                }}
+              />
               <div className="flex-1" />
               {running ? (
                 <button className="btn !rounded-full border-bad/40 bg-bad/15 text-bad hover:bg-bad/25" onClick={() => void stopGeneration()}>

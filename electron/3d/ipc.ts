@@ -1,87 +1,15 @@
 // IPC für 3D-Projekte: Verwalten, Modellierungslauf mit einem wählbaren Modell, Verlauf, Blender-Status.
 import { ipcMain } from 'electron';
-import { existsSync } from 'node:fs';
 import type { ProviderId } from '../../shared/types';
-import { describe, summarize } from '../../shared/bbmodel';
-import type { ChatEngine } from './llm';
-import { blenderScript, blenderVersion, findBlender, pythonDir } from './blender';
-import { animationPreviews, exportFile, cancelProjectRun, createProject, deleteProject, exportProject, getWorkfiles, history, listProjects, projectDir, readModel, renders, restoreVersion, runProject } from './service';
-import { closeViewer, findBlockbench, hasViewer, openBlenderWindow, openViewer, openWindow } from './viewer';
-import { dataDir } from '../store';
-import { cancelInstall, installTool, setMcp, toolStatus, uninstallTool } from './tools';
-import type { ToolId } from '../../shared/threed';
-import { join as joinPath } from 'node:path';
+import { openThreeDRoutes } from './routes';
 
 type Send = (channel: string, payload: unknown) => void;
 
 export { pythonDir } from './blender';
 
 export function register3dIpc(send: Send, binaries: () => Partial<Record<ProviderId, string>>): void {
-  ipcMain.handle('3d:list', () => listProjects());
-  ipcMain.handle('3d:create', (_e, name: string) => createProject(name));
-  ipcMain.handle('3d:delete', async (_e, id: string) => { cancelProjectRun(id); await deleteProject(id); return true; });
-  ipcMain.handle('3d:get', async (_e, id: string) => {
-    const [model, r, h, animations, exported] = await Promise.all([readModel(id), renders(id), history(id), animationPreviews(id), exportFile(id)]);
-    return { model, summary: summarize(model), description: describe(model), renders: r, history: h, animationPreviews: animations, exportFile: exported };
-  });
-  ipcMain.handle('3d:restore', (_e, id: string, file: string) => restoreVersion(id, file));
-  ipcMain.handle('3d:cancel', (_e, id: string) => cancelProjectRun(id));
-
-  // Live-Ansicht: Blockbench headless, Bildstrom an die Oberfläche.
-  const profile = (id: string) => joinPath(dataDir(), 'blockbench-profile', id);
-  const viewerOn = async (id: string, file: string) => {
-    const bin = findBlockbench();
-    if (!bin) throw new Error('Blockbench nicht gefunden (unter 3D installieren oder QUORUM_BLOCKBENCH setzen).');
-    await openViewer({
-      projectId: id,
-      file,
-      profileDir: profile(id),
-      bin,
-      onFrame: (jpeg) => send('3d:frame', { projectId: id, jpeg }),
-      onError: (message) => send('3d:frame', { projectId: id, error: message }),
-    });
-  };
-  ipcMain.handle('3d:viewer-open', (_e, id: string) => viewerOn(id, joinPath(projectDir(id), 'model.bbmodel')).then(() => true));
-  ipcMain.handle('3d:viewer-close', (_e, id: string) => closeViewer(id));
-  ipcMain.handle('3d:viewer-status', (_e, id: string) => hasViewer(id));
-  ipcMain.handle('3d:open-window', async (_e, id: string) => {
-    const bin = findBlockbench();
-    if (!bin) throw new Error('Blockbench nicht gefunden (unter 3D installieren oder QUORUM_BLOCKBENCH setzen).');
-    await openWindow(bin, joinPath(projectDir(id), 'model.bbmodel'), joinPath(dataDir(), 'blockbench-window'));
-    return true;
-  });
-  ipcMain.handle('3d:open-blender', async (_e, id?: string) => {
-    const bin = findBlender();
-    if (!bin) throw new Error('Blender nicht gefunden – unter 3D → Werkzeuge installieren (oder QUORUM_BLENDER setzen).');
-    const blendFile = id ? joinPath(projectDir(id), 'model.blend') : undefined;
-    const glbFile = id ? joinPath(projectDir(id), 'exports', 'model.glb') : undefined;
-    const file = blendFile && existsSync(blendFile) ? blendFile : (glbFile && existsSync(glbFile) ? glbFile : undefined);
-    await openBlenderWindow(bin, file, joinPath(dataDir(), 'blender-window'));
-    return true;
-  });
-  ipcMain.handle('3d:workfiles', (_e, id: string) => getWorkfiles(id));
-  ipcMain.handle('3d:export', (_e, id: string, format: 'glb' | 'gltf' | 'obj' | 'fbx') => exportProject(id, format));
-  // Eigene (Sandbox-)Installation von Blender und Blockbench, je Werkzeug einzeln.
-  const toolEmit = (p: unknown) => send('3d:tool-progress', p);
-  ipcMain.handle('3d:tools', () => toolStatus());
-  ipcMain.handle('3d:tool-install', (_e, id: ToolId, opts: { mcp?: boolean } = {}) => { void installTool(id, opts, toolEmit); return true; });
-  ipcMain.handle('3d:tool-cancel', (_e, id: ToolId) => cancelInstall(id));
-  ipcMain.handle('3d:tool-remove', async (_e, id: ToolId) => { await uninstallTool(id); return toolStatus(); });
-  ipcMain.handle('3d:tool-mcp', async (_e, enabled: boolean) => { await setMcp(enabled, toolEmit); return toolStatus(); });
-  ipcMain.handle('3d:blender', () => {
-    const bin = findBlender();
-    return { bin, version: bin ? blenderVersion(bin) : undefined, script: blenderScript(pythonDir()) };
-  });
-
-  // Modellierungslauf im Hintergrund; Fortschritt kommt als `3d:event`. Ergebnis wird gespeichert, wenn der Lauf endet.
-  ipcMain.handle('3d:run', (_e, id: string, goal: string, engine: ChatEngine, maxIterations = 3) => {
-    const blender = findBlender();
-    if (!blender) throw new Error('Blender nicht gefunden – unter 3D → Werkzeuge installieren (oder QUORUM_BLENDER setzen).');
-    const emit = (event: unknown) => send('3d:event', { projectId: id, event });
-    // Läuft eine Live-Ansicht, zeigt sie nach jeder Runde den neuen Stand.
-    const onIteration = (file: string) => { if (hasViewer(id)) void viewerOn(id, file).catch((err: Error) => emit({ type: 'log', text: `Live-Ansicht: ${err.message}` })); };
-    void runProject({ projectId: id, goal, engine, binaries: binaries(), blender, script: blenderScript(pythonDir()), maxIterations: Math.min(Math.max(1, maxIterations), 6), emit: emit as never, onIteration })
-      .catch((err: Error) => { emit({ type: 'log', text: `Fehler: ${err.message}` }); emit({ type: 'done', ok: false, iterations: 0, reason: err.message }); });
-    return true;
-  });
+  const routes = openThreeDRoutes(send, binaries);
+  for (const [channel, handler] of Object.entries(routes)) {
+    ipcMain.handle(channel, (_event, ...args: unknown[]) => (handler as (...values: unknown[]) => unknown)(...args));
+  }
 }
