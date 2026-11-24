@@ -224,12 +224,10 @@ function GeneralTab() {
       </SettingsCard>
 
       <SettingsCard
-        title={t('Ausweich-Modelle (global)')}
-        description={t('Bei erreichtem Nutzungs- oder Prozent-Limit wechselt der Chat automatisch auf das nächste Modell.')}
+        title={t('Ausweich-Modelle für alle Chats')}
+        description={t('Ist das Kontingent eines Modells aufgebraucht, wechselt der Chat der Reihe nach auf diese Modelle. Pro Chat anpassbar über das Rettungsring-Symbol in der Titelleiste.')}
       >
-        <div className="rounded-lumen border border-edge bg-bg/50 p-1">
-          <FallbackList value={settings.fallbacks ?? []} onChange={(fallbacks) => setSettings({ fallbacks })} />
-        </div>
+        <FallbackList value={settings.fallbacks ?? []} onChange={(fallbacks) => setSettings({ fallbacks })} />
       </SettingsCard>
 
       {hidden.length > 0 && (

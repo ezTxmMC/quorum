@@ -11,7 +11,6 @@ import { ModeButton, ModelButton, TuneButton, defaultModel } from './ModelPicker
 import { chatMode, switchChatMode } from '@shared/chat-modes';
 import { ChatModeButton } from './ChatModeButton';
 import { ComposerUsage } from './ComposerUsage';
-import { FallbackButton } from './FallbackModels';
 import { cx } from './ui';
 
 function arrayToB64(bytes: Uint8Array): string {
@@ -293,7 +292,6 @@ function ComposerInner({ session, running, onSend, onStop, onCommand, centered }
               <Icon name={compacting ? 'lucide:loader-circle' : 'lucide:fold-vertical'} size={14} className={compacting ? 'spin' : ''} />
             </button>
           )}
-          {mode !== 'image' && <FallbackButton session={session} />}
           <ComposerUsage session={session} />
           {/* Reihenfolge: Einreihen · Stopp · Senden – alle drei gleich hoch (h-8), Stopp in sanftem Rot direkt neben „Senden“ */}
           {running && canDirect && (

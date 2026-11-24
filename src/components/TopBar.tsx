@@ -1,3 +1,4 @@
+import { FallbackButton } from './FallbackModels';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useMatch, useNavigate } from 'react-router-dom';
 import { Logo } from './Logo';
@@ -190,6 +191,7 @@ export function TopBar({ hover, minimal, sidebarVisible, onToggleSidebar }: { ho
       {chat ? <ChatHeader id={chat.params.id ?? ''} /> : <div className="flex-1" />}
       {!minimal && (
         <div className="no-drag flex items-center gap-1 pr-2">
+          {chatId && <FallbackButton chatId={chatId} />}
           {chatId && (
             <button
               className={cx('icon-btn !size-8', chatTerminalOpen && 'bg-active text-fg')}
