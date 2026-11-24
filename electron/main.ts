@@ -550,7 +550,7 @@ function registerIpc() {
   });
   ipcMain.handle('updater:check', (_e, channel?: UpdateChannel) => checkUpdate(channel ?? data?.settings.updateChannel));
   ipcMain.handle('updater:download', () => downloadUpdate());
-  ipcMain.handle('updater:install', () => installUpdate());
+  ipcMain.handle('updater:install', () => installUpdate(data.settings.language));
   ipcMain.handle('updater:state', () => getUpdateState());
 }
 

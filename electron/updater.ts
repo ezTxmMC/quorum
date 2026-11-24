@@ -2,7 +2,8 @@ import { app, shell } from 'electron';
 import { createReadStream, promises as fsp } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import type { UpdateAsset, UpdateChannel, UpdateInfo, UpdateProgress, UpdateState } from '../shared/types';
 import { dataDir } from './store';
@@ -387,10 +388,49 @@ async function desktopIntegrationSettled(appImage: string, since: number): Promi
   }
 }
 
-/** Tauscht das AppImage aus, solange die App noch läuft, und startet erst danach neu. */
-async function installAppImage(filePath: string): Promise<boolean> {
+/** Mitgeliefertes Update-Fenster (native/updater); fehlt in Entwicklungsständen ohne gebautes Rust-Programm. */
+function bundledUpdater(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'updater', 'quorum-updater')
+    : join(dirname(fileURLToPath(import.meta.url)), '..', 'native', 'bin', 'quorum-updater');
+}
+
+/**
+ * Übergibt das Update an das eigenständige Update-Fenster: es wartet auf das Ende dieser App, tauscht das AppImage aus,
+ * zeigt solange den Fortschritt und startet danach die neue Version. Liefert false, wenn das Programm nicht verfügbar ist.
+ */
+async function handOverToUpdater(filePath: string, target: string, binLink: string, language: string, switches: string[]): Promise<boolean> {
+  // Aus dem AppImage heraus würde das Programm mit dem Ende der App seine eigene Datei verlieren, deshalb läuft eine Kopie.
+  const copy = join(dataDir(), 'updates', 'quorum-updater');
+  try {
+    await fsp.mkdir(dirname(copy), { recursive: true });
+    await fsp.copyFile(bundledUpdater(), copy);
+    await fsp.chmod(copy, 0o755);
+  } catch {
+    return false;
+  }
+  const args = ['--source', filePath, '--target', target, '--pid', String(process.pid), '--link', binLink, '--lang', language, '--', ...switches];
+  return new Promise((resolve) => {
+    const child = spawn(copy, args, { detached: true, stdio: 'ignore' });
+    child.once('error', () => resolve(false));
+    child.once('spawn', () => {
+      child.unref();
+      resolve(true);
+    });
+  });
+}
+
+/** Installiert das AppImage und startet erst neu, wenn die neue Version eingerichtet ist. */
+async function installAppImage(filePath: string, language: string): Promise<boolean> {
   const target = process.env.APPIMAGE || join(homedir(), '.local', 'share', 'ai-hub', 'Quorum.AppImage');
   const binLink = join(homedir(), '.local', 'bin', 'quorum');
+  // Ohne den Schalter startet Electron aus einem AppImage auf Systemen ohne freie User-Namespaces nicht.
+  const switches = process.argv.includes('--no-sandbox') ? ['--no-sandbox'] : [];
+  if (installedAppImage !== target && (await handOverToUpdater(filePath, target, binLink, language, switches))) {
+    app.quit();
+    return true;
+  }
+  // Ohne Update-Fenster: im laufenden Betrieb austauschen und danach neu starten.
   try {
     if (installedAppImage !== target) {
       state = { ...state, status: 'installing', error: undefined };
@@ -420,8 +460,6 @@ setsid "$app" "$@" >/dev/null 2>&1 &
 `;
     await fsp.mkdir(join(relaunchScript, '..'), { recursive: true });
     await fsp.writeFile(relaunchScript, scriptContent, { mode: 0o755 });
-    // Ohne den Schalter startet Electron aus einem AppImage auf Systemen ohne freie User-Namespaces nicht.
-    const switches = process.argv.includes('--no-sandbox') ? ['--no-sandbox'] : [];
     const child = spawn('/bin/bash', [relaunchScript, target, String(process.pid), ...switches], { detached: true, stdio: 'ignore' });
     child.unref();
     state = { ...state, status: 'downloaded', error: undefined };
@@ -436,7 +474,7 @@ setsid "$app" "$@" >/dev/null 2>&1 &
   }
 }
 
-export async function installUpdate(): Promise<boolean> {
+export async function installUpdate(language: 'de' | 'en' = 'en'): Promise<boolean> {
   const filePath = state.downloadPath;
   if (!filePath) {
     state = { ...state, status: 'error', error: 'Keine heruntergeladene Datei vorhanden.' };
@@ -452,7 +490,7 @@ export async function installUpdate(): Promise<boolean> {
   }
 
   if (process.platform === 'linux' && installedAppImage) {
-    return installAppImage(filePath);
+    return installAppImage(filePath, language);
   }
 
   try {
@@ -471,7 +509,7 @@ export async function installUpdate(): Promise<boolean> {
     return true;
   }
   if (process.platform === 'linux') {
-    return installAppImage(filePath);
+    return installAppImage(filePath, language);
   }
   if (process.platform === 'win32' && filePath.toLowerCase().endsWith('.exe')) {
     // Windows: Installer starten und die App beenden, damit er die Dateien ersetzen kann.

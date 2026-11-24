@@ -1,0 +1,16 @@
+[package]
+name = "quorum-updater"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Small standalone window that installs a downloaded Quorum AppImage and restarts the app."
+
+[dependencies]
+eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "wayland", "x11"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+panic = "abort"

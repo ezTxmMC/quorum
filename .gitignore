@@ -6,6 +6,7 @@ release
 dist-cli
 
 native/chat-host/target/
+native/updater/target/
 native/bin/
 
 native/quorum-core/target/

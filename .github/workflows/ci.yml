@@ -20,7 +20,7 @@ jobs:
       - run: npm run build
       - run: xvfb-run -a npm run test:ide-ui
       - run: |
-          for crate in native/chat-host native/quorum-core; do
+          for crate in native/chat-host native/quorum-core native/updater; do
             cargo fmt --manifest-path "$crate/Cargo.toml" --check
             cargo clippy --locked --manifest-path "$crate/Cargo.toml" --all-targets -- -D warnings
             cargo test --locked --manifest-path "$crate/Cargo.toml"

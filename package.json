@@ -7,7 +7,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "npm run build:chat-host && vite",
-    "build": "npm run typecheck && vite build && vite build -c vite.cli.config.ts && npm run build:chat-host",
+    "build": "npm run typecheck && vite build && vite build -c vite.cli.config.ts && npm run build:chat-host && npm run build:updater",
     "typecheck": "tsc -p tsconfig.web.json && tsc -p tsconfig.node.json",
     "test:providers": "node --experimental-strip-types scripts/check-provider-management.mjs && node scripts/integration-ollama.mjs",
     "test:chat-controls": "node --experimental-strip-types scripts/check-chat-controls.mjs",
@@ -34,6 +34,7 @@
     "test:lsp-servers": "python3 scripts/check-lsp-servers.py",
     "test:ide-ui": "electron --no-sandbox scripts/check-ide-electron.cjs",
     "test:workspace-search": "node --experimental-strip-types scripts/check-workspace-search.mjs",
+    "build:updater": "node scripts/build-updater.mjs",
     "build:chat-host": "cargo build --release --locked --manifest-path native/chat-host/Cargo.toml && node scripts/build-chat-host.mjs",
     "build:worker": "vite build -c vite.worker.config.ts",
     "test:chat-host": "python3 scripts/check-chat-host.py",
@@ -176,6 +177,13 @@
         "to": "chat-host",
         "filter": [
           "quorum-chat-host*"
+        ]
+      },
+      {
+        "from": "native/bin",
+        "to": "updater",
+        "filter": [
+          "quorum-updater*"
         ]
       }
     ],
