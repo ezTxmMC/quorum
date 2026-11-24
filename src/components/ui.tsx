@@ -69,7 +69,7 @@ export function Select<T extends string>({ value, onChange, options, placeholder
   );
 }
 
-export function Popover({ trigger, children, align = 'left', down }: { trigger: (open: boolean, toggle: () => void) => ReactNode; children: (close: () => void) => ReactNode; align?: 'left' | 'right'; down?: boolean }) {
+export function Popover({ trigger, children, align = 'left', down, className }: { trigger: (open: boolean, toggle: () => void) => ReactNode; children: (close: () => void) => ReactNode; align?: 'left' | 'right'; down?: boolean; className?: string }) {
   const [open, setOpen] = useState(false);
   const { mounted, state } = usePresence(open);
   const ref = useRef<HTMLDivElement>(null);
@@ -82,7 +82,7 @@ export function Popover({ trigger, children, align = 'left', down }: { trigger: 
     return () => { window.removeEventListener('mousedown', h); window.removeEventListener('keydown', k); };
   }, [open]);
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className={cx('relative', className)}>
       {trigger(open, () => setOpen((o) => !o))}
       {mounted && (
         <div data-state={state} className={cx('pop absolute z-40 min-w-56 rounded-lumen border border-edge-strong bg-overlay/95 p-1 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md', down ? 'top-full mt-2 origin-top' : 'bottom-full mb-2 origin-bottom', align === 'right' ? 'right-0' : 'left-0')}>

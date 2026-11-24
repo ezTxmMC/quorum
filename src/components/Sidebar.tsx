@@ -489,13 +489,14 @@ export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; on
       <div className="flex items-center gap-1 border-t border-edge p-2">
         <Popover
           align="left"
+          className="min-w-0 flex-1"
           trigger={(open, toggle) => (
             <button
-              className={cx('flex flex-1 items-center gap-2 rounded-lumen-sm px-2.5 py-1.5 text-[12px] text-muted transition-colors hover:bg-hover hover:text-fg', open && 'bg-active text-fg')}
+              className={cx('flex w-full items-center gap-2 rounded-lumen-sm px-2.5 py-1.5 text-[12px] text-muted transition-colors hover:bg-hover hover:text-fg', open && 'bg-active text-fg')}
               onClick={toggle}
             >
               <Icon name="lucide:layout-grid" size={14} />
-              <span>{t('Werkzeuge & Mehr')}</span>
+              <span className="truncate">{t('Werkzeuge & Mehr')}</span>
             </button>
           )}
         >
