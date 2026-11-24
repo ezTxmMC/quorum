@@ -333,7 +333,7 @@ function Shell() {
         )}
 
         <SettingsModal />
-        <Dock><main className="page-root island absolute inset-0 flex min-w-0 flex-col bg-bg"><Outlet /></main></Dock>
+        <Dock><main className="page-root island absolute inset-0 flex min-w-0 flex-col"><Outlet /></main></Dock>
       </div>
       <ProcessStatus />
     </div>

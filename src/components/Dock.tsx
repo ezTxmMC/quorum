@@ -102,7 +102,7 @@ function Zone({ pos, opened }: { pos: DockPos; opened: Set<PanelId> }) {
         style={islandStyle}>
         {!isMax && handle}
         {/* Die Insel schneidet ihren Inhalt ab; der Griff zum Ziehen liegt deshalb außerhalb im Zwischenraum. */}
-        <div className={cx('island flex min-h-0 flex-1 flex-col bg-surface', isMax && '!border-edge-strong')}>
+        <div className={cx('island flex min-h-0 flex-1 flex-col', isMax && '!border-edge-strong')}>
         {cur && (
           <div className="flex h-9 shrink-0 items-center gap-0.5 border-b border-edge px-1.5">
             {visible.map((p) => (
