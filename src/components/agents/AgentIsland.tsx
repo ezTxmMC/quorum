@@ -7,12 +7,14 @@ interface AgentIslandProps {
   chatId: string;
 }
 
-/** Schwebende Anzeige im Chat, solange Sub-Agenten arbeiten: wie viele, und was der jüngste gerade tut. Ein Klick öffnet das Agenten-Panel. */
+/** Schwebende Anzeige im Chat, solange Sub-Agenten arbeiten und das Agenten-Panel geschlossen ist: wie viele, und was der jüngste gerade tut. Ein Klick öffnet das Agenten-Panel. */
 export function AgentIsland({ chatId }: AgentIslandProps) {
   const messages = useHub((s) => s.data.sessions.find((x) => x.id === chatId)?.messages);
   const runs = useHub((s) => s.runs);
+  const panelOpen = useHub((s) => s.data.settings.dock.panels.agents.visible);
   const liveIds = new Set(Object.values(runs).filter((run) => run.sessionId === chatId).map((run) => run.messageId));
-  if (!messages || liveIds.size === 0) {
+  // Das offene Agenten-Panel zeigt dieselben Agenten ausführlicher; die Anzeige wäre dort nur doppelt.
+  if (panelOpen || !messages || liveIds.size === 0) {
     return null;
   }
   const active = detectAgents(messages.filter((message) => liveIds.has(message.id)), liveIds).filter(isActive);
