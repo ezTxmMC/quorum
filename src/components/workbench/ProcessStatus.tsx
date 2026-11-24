@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { ChatJob } from '@shared/chat-host/types';
 import { useHub } from '@/lib/store';
 import { hub } from '@/lib/api';
@@ -12,6 +12,7 @@ export function ProcessStatus() {
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const cwd = useHub((state) => state.activeCwd);
+  const location = useLocation();
   const navigate = useNavigate();
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -30,12 +31,18 @@ export function ProcessStatus() {
     dialog.current?.close();
   }, [open]);
   const running = jobs.filter(active);
+  const showFooter = location.pathname.startsWith('/plan') || running.length > 0;
+  if (!showFooter && !open) {
+    return null;
+  }
   return <>
-    <footer className="workbench-status flex h-7 shrink-0 items-center gap-4 border-t border-edge px-3 text-[11px] text-muted">
-      <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate" title={cwd}><Icon name="lucide:folder-open" size={12} className="shrink-0 text-subtle" />{cwd || 'Kein Workspace'}</span>
-      <button className="flex items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors hover:bg-hover hover:text-fg" onClick={() => setOpen(true)}><span className={`size-1.5 rounded-full ${running.length ? 'animate-pulse bg-ok' : 'bg-subtle'}`} />{running.length} {running.length === 1 ? 'Chat-Prozess' : 'Chat-Prozesse'}<Icon name="lucide:activity" size={12} /></button>
-      <span className="hidden items-center gap-1.5 text-subtle sm:flex"><kbd className="kbd-pill">Strg+P</kbd> Öffnen · <kbd className="kbd-pill">Strg+Shift+F</kbd> Suche</span>
-    </footer>
+    {showFooter && (
+      <footer className="workbench-status flex h-7 shrink-0 items-center gap-4 border-t border-edge px-3 text-[11px] text-muted">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate" title={cwd}><Icon name="lucide:folder-open" size={12} className="shrink-0 text-subtle" />{cwd || 'Kein Workspace'}</span>
+        <button className="flex items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors hover:bg-hover hover:text-fg" onClick={() => setOpen(true)}><span className={`size-1.5 rounded-full ${running.length ? 'animate-pulse bg-ok' : 'bg-subtle'}`} />{running.length} {running.length === 1 ? 'Chat-Prozess' : 'Chat-Prozesse'}<Icon name="lucide:activity" size={12} /></button>
+        {location.pathname.startsWith('/plan') && <span className="hidden items-center gap-1.5 text-subtle sm:flex"><kbd className="kbd-pill">Strg+P</kbd> Öffnen · <kbd className="kbd-pill">Strg+Shift+F</kbd> Suche</span>}
+      </footer>
+    )}
     <dialog ref={dialog} onCancel={(event) => { event.preventDefault(); setOpen(false); }} className="m-auto w-[min(640px,90vw)] rounded-lumen-lg border border-edge-strong bg-surface p-5 text-fg shadow-2xl backdrop:bg-black/65 backdrop:backdrop-blur-xs" aria-label="Chat-Prozesse">
       <div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold">Chat-Prozesse</h2><p className="mt-1 text-xs text-muted">Unabhängige Ausführung mit gespeichertem Verlauf.</p></div><button className="icon-btn" aria-label="Schließen" onClick={() => setOpen(false)}><Icon name="lucide:x" size={16} /></button></div>
       {error && <p role="alert" className="mb-2 text-xs text-bad">{error}</p>}

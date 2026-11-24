@@ -286,8 +286,8 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
           {mode === 'coding' && <ModeButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} onMore={() => useHub.getState().toggleChatOptions(true)} />}
           {mode !== 'image' && <TuneButton provider={session.provider} options={session.options} onChange={(p) => patch(session.id, { options: { ...session.options, ...p } })} />}
           <div className="flex-1" />
-          {(mode === 'text' || mode === 'coding') && (
-            <button className="btn btn-ghost !gap-1 !px-2 text-subtle disabled:opacity-35" disabled={running || compacting || msgCount < 4} onClick={() => onCommand('compact', '')} title={compacting ? t('Verlauf wird kompaktiert …') : t('Verlauf kompaktieren (/compact)')}>
+          {(mode === 'text' || mode === 'coding') && (msgCount >= 4 || compacting) && (
+            <button className="btn btn-ghost !gap-1 !px-2 text-subtle disabled:opacity-35" disabled={running || compacting} onClick={() => onCommand('compact', '')} title={compacting ? t('Verlauf wird kompaktiert …') : t('Verlauf kompaktieren (/compact)')}>
               <Icon name={compacting ? 'lucide:loader-circle' : 'lucide:fold-vertical'} size={14} className={compacting ? 'spin' : ''} />
             </button>
           )}

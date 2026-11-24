@@ -1,4 +1,3 @@
-import { ActivityRail } from '@/components/workbench/ActivityRail';
 import { ProcessStatus } from '@/components/workbench/ProcessStatus';
 import { lazy, Suspense } from 'react';
 import { setLang } from '@/lib/i18n';
@@ -159,7 +158,6 @@ function Shell() {
     <div className="flex h-full flex-col">
       <TopBar hover={{ open, enter, leave }} sidebarVisible={pinned} onToggleSidebar={toggleSidebar} />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <ActivityRail />
         {/* Angeheftete Seitenleiste mit flüssiger Breiten- und Einblendanimation */}
         <div
           className="relative shrink-0 overflow-hidden"
@@ -185,7 +183,7 @@ function Shell() {
         {/* Nicht angeheftet: Feiner linker Hover-Rand zum bequemen Öffnen */}
         {!pinned && (
           <div
-            className="absolute bottom-0 left-11 top-0 z-20 w-3 cursor-pointer"
+            className="absolute bottom-0 left-0 top-0 z-20 w-3 cursor-pointer"
             onMouseEnter={enter}
             onMouseLeave={leave}
           />
@@ -206,7 +204,7 @@ function Shell() {
         {!pinned && (
           <div
             className={cx(
-              'absolute bottom-0 left-11 top-0 z-40 flex w-[280px]',
+              'absolute bottom-0 left-0 top-0 z-40 flex w-[280px]',
               open ? 'pointer-events-auto' : 'pointer-events-none'
             )}
             style={{
