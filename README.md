@@ -11,7 +11,7 @@ npm ci
 npm run tauri:dev
 ```
 
-The Tauri preview uses the existing Quorum React workbench. Rust owns the window, SQLite profile and chat supervisors. Install Node 24+ on the machine running the preview for the transitional provider and workspace service. Use `npm run tauri:build` to create a platform bundle. Electron remains the full-featured release desktop, started with `npm run dev`. The older GPUI experiment is available with `npm run gpui:dev`.
+The Tauri preview uses the existing Quorum React workbench. Rust owns the window, SQLite profile and chat supervisors. Install Node 24+ on the machine running the preview for the transitional provider and workspace service. Use `npm run tauri:build` to create a platform bundle. Electron remains the full-featured release desktop, started with `npm run dev`.
 
 ## Kimi
 

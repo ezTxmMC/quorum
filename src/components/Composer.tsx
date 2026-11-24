@@ -96,11 +96,15 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
   }, []);
   useEffect(() => {
     const el = ta.current;
-    if (!el) return;
+    if (!el) {
+      return;
+    }
     const raf = requestAnimationFrame(() => {
       el.style.height = 'auto';
-      const targetHeight = Math.min(el.scrollHeight, 220);
+      const maxHeight = 220;
+      const targetHeight = Math.min(el.scrollHeight, maxHeight);
       el.style.height = `${targetHeight}px`;
+      el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
     });
     return () => cancelAnimationFrame(raf);
   }, [text]);
@@ -274,7 +278,7 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
         {!imageReady && <div className="px-4 pt-3 text-[12px] text-warn">{t('Wähle ein Bildmodell. Verbinde bei Bedarf einen Anbieter in den Einstellungen.')}</div>}
         <textarea title="↑ / ↓: frühere Eingaben im leeren Feld durchgehen" ref={ta} rows={1} value={text} onChange={(e) => { historyIndex.current = -1; setText(e.target.value); setSel(0); }} onKeyDown={onKey} onPaste={onPaste}
           placeholder={mode === 'model' ? t('Beschreibe das 3D-Modell, Texturen, Materialien oder Animationen …') : mode === 'image' ? (getLang() === 'en' ? 'Describe the image … (or a change to the last one)' : 'Beschreibe das Bild … (oder eine Änderung am letzten)') : getLang() === 'en' ? `Message ${meta.name} …   (/ for commands, @ for files)` : `Nachricht an ${meta.name} …   (/ für Befehle, @ für Dateien)`}
-          className="block max-h-[220px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-relaxed outline-none placeholder:text-subtle" />
+          className="block max-h-[220px] w-full resize-none overflow-x-hidden overflow-y-hidden bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-relaxed outline-none placeholder:text-subtle" />
         <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
           <label className="icon-btn cursor-pointer" title={t('Bilder oder Dateien anhängen')}><Icon name="lucide:paperclip" /><input aria-label={t('Bilder oder Dateien anhängen')} className="hidden" type="file" multiple onChange={(event) => { const selected = [...(event.target.files ?? [])]; event.target.value = ''; void ingest(selected); }} /></label>
           <ChatModeButton value={mode} onChange={changeMode} disabled={running} />

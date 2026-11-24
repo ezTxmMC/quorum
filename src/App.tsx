@@ -5,7 +5,6 @@ import { setLang } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, Outlet, RouterProvider, createHashRouter, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Dock, PanelBody } from '@/components/Dock';
-import { QuickPage } from '@/routes/Quick';
 import { Sidebar } from '@/components/Sidebar';
 import { TopBar } from '@/components/TopBar';
 import { cx } from '@/components/ui';
@@ -13,15 +12,20 @@ import type { PanelId } from '@shared/types';
 import { hub } from '@/lib/api';
 import { useHub, wireEvents, wirePersistence } from '@/lib/store';
 import { ChatPage } from '@/routes/Chat';
-import { MultiBuilder } from '@/routes/MultiBuilder';
-import { MultiRunPage } from '@/routes/MultiRun';
 import { SettingsModal } from '@/components/SettingsModal';
-import { ToolsPage } from '@/routes/Tools';
-import { ModelsPage } from '@/routes/Models';
-import { WorkflowsPage } from '@/routes/Workflows';
-import { ThreeDPage } from '@/routes/ThreeD';
 
 const PlanWorkspace = lazy(() => import('@/routes/plan/PlanWorkspace').then((module) => ({ default: module.PlanWorkspace })));
+const MultiBuilder = lazy(() => import('@/routes/MultiBuilder').then((module) => ({ default: module.MultiBuilder })));
+const MultiRunPage = lazy(() => import('@/routes/MultiRun').then((module) => ({ default: module.MultiRunPage })));
+const ToolsPage = lazy(() => import('@/routes/Tools').then((module) => ({ default: module.ToolsPage })));
+const ModelsPage = lazy(() => import('@/routes/Models').then((module) => ({ default: module.ModelsPage })));
+const WorkflowsPage = lazy(() => import('@/routes/Workflows').then((module) => ({ default: module.WorkflowsPage })));
+const ThreeDPage = lazy(() => import('@/routes/ThreeD').then((module) => ({ default: module.ThreeDPage })));
+const QuickPage = lazy(() => import('@/routes/Quick').then((module) => ({ default: module.QuickPage })));
+
+function RouteFallback() {
+  return <div className="p-4 text-[12.5px] text-muted">Ansicht wird geladen …</div>;
+}
 
 
 /** Startseite: öffnet immer einen neuen Chat (ein vorhandener leerer Chat wird wiederverwendet, es entstehen keine Duplikate). */
@@ -255,17 +259,17 @@ const router = createHashRouter([
     children: [
       { path: '/', element: <Home /> },
       { path: '/chat/:id', element: <ChatPage /> },
-      { path: '/multi', element: <MultiBuilder /> },
-      { path: '/multi/:id', element: <MultiRunPage /> },
+      { path: '/multi', element: <Suspense fallback={<RouteFallback />}><MultiBuilder /></Suspense> },
+      { path: '/multi/:id', element: <Suspense fallback={<RouteFallback />}><MultiRunPage /></Suspense> },
       { path: '/plan', element: <Suspense fallback={<div className="p-4 text-muted">Editor wird geladen…</div>}><PlanWorkspace /></Suspense> },
-      { path: '/tools', element: <ToolsPage /> },
-      { path: '/models', element: <ModelsPage /> },
-      { path: '/workflows', element: <WorkflowsPage /> },
-      { path: '/workflows/:id', element: <WorkflowsPage /> },
-      { path: '/3d', element: <ThreeDPage /> },
+      { path: '/tools', element: <Suspense fallback={<RouteFallback />}><ToolsPage /></Suspense> },
+      { path: '/models', element: <Suspense fallback={<RouteFallback />}><ModelsPage /></Suspense> },
+      { path: '/workflows', element: <Suspense fallback={<RouteFallback />}><WorkflowsPage /></Suspense> },
+      { path: '/workflows/:id', element: <Suspense fallback={<RouteFallback />}><WorkflowsPage /></Suspense> },
+      { path: '/3d', element: <Suspense fallback={<RouteFallback />}><ThreeDPage /></Suspense> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
   { path: '/popout/:panel', element: <PopoutPage /> },
-  { path: '/quick', element: <QuickPage /> },
+  { path: '/quick', element: <Suspense fallback={<RouteFallback />}><QuickPage /></Suspense> },
 ]);

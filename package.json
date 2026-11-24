@@ -61,7 +61,6 @@
     "tauri:build": "tauri build",
     "dev:web": "vite --mode tauri --host 127.0.0.1 --port 1420 --strictPort",
     "build:web": "vite build --mode tauri",
-    "gpui:dev": "npm run build:chat-host && cargo run --locked --manifest-path native/quorum-desktop/Cargo.toml",
     "lint": "biome lint .",
     "format": "biome format --write ."
   },

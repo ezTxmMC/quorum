@@ -64,8 +64,32 @@ export function TopBar({ hover, minimal, sidebarVisible, onToggleSidebar }: { ho
   const chat = useMatch('/chat/:id');
   const cwd = useHub((s) => s.activeCwd);
 
+  const startWindowDrag = (event: React.MouseEvent<HTMLElement>) => {
+    if (!window.__TAURI__ || event.button !== 0 || event.detail > 1) {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('.no-drag, button, input, select, textarea, a')) {
+      return;
+    }
+    void window.__TAURI__.window.getCurrentWindow().startDragging();
+  };
+
+  const toggleMaximizeOnDoubleClick = (event: React.MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('.no-drag, button, input, select, textarea, a')) {
+      return;
+    }
+    void hub.winMaximize();
+  };
+
   return (
-    <header className="drag relative z-50 flex h-10 shrink-0 items-center border-b border-edge bg-bg">
+    <header
+      data-tauri-drag-region
+      onMouseDown={startWindowDrag}
+      onDoubleClick={toggleMaximizeOnDoubleClick}
+      className="drag relative z-50 flex h-10 shrink-0 select-none items-center border-b border-edge bg-bg"
+    >
       {mac && <div className="w-[78px] shrink-0" />}
       {!minimal && (
         <div className="no-drag flex items-center gap-1 pl-2">
@@ -110,7 +134,7 @@ export function TopBar({ hover, minimal, sidebarVisible, onToggleSidebar }: { ho
           )}
         </div>
       )}
-      {!mac && !window.__TAURI__ && <WindowControls />}
+      {!mac && <WindowControls />}
     </header>
   );
 }

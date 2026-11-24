@@ -31,9 +31,13 @@ export function QuickPage() {
   useEffect(() => { try { localStorage.setItem('quick-choice', JSON.stringify(choice)); } catch { /* ignorieren */ } }, [choice]);
   useEffect(() => {
     const el = ta.current;
-    if (!el) return;
+    if (!el) {
+      return;
+    }
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+    const maxHeight = 150;
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }, [prompt]);
 
   // Standardmodell ergänzen und Projekt vorbelegen
@@ -71,7 +75,7 @@ export function QuickPage() {
         <div className="flex items-start gap-3 px-5 pb-2 pt-4">
           <Icon name="lucide:sparkles" size={22} className="mt-1 shrink-0 text-accent" />
           <textarea ref={ta} rows={1} value={prompt} autoFocus onChange={(e) => { setPrompt(e.target.value); setSel(-1); }} onKeyDown={onKey}
-            placeholder={t('Frag etwas oder gib eine Aufgabe …')} className="max-h-[150px] w-full resize-none bg-transparent text-[20px] leading-snug outline-none placeholder:text-subtle" />
+            placeholder={t('Frag etwas oder gib eine Aufgabe …')} className="max-h-[150px] w-full resize-none overflow-x-hidden overflow-y-hidden bg-transparent text-[20px] leading-snug outline-none placeholder:text-subtle" />
         </div>
         <div className="flex items-center gap-1 px-3 pb-3">
           <ModelButton down compact includeImages provider={choice.provider} model={choice.options.model} imageGen={choice.options.imageGen}

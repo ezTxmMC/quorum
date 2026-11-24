@@ -4,9 +4,11 @@ interface TauriWindow {
   close(): Promise<void>;
   minimize(): Promise<void>;
   toggleMaximize(): Promise<void>;
+  startDragging(): Promise<void>;
   isMaximized(): Promise<boolean>;
   isFullscreen(): Promise<boolean>;
   setBackgroundColor(color: string): Promise<void>;
+  onResized(callback: () => void): Promise<() => void>;
   onCloseRequested(callback: (event: { preventDefault(): void }) => void): Promise<() => void>;
 }
 interface TauriApi {
@@ -112,6 +114,9 @@ export async function installTauri(api: TauriApi) {
     },
     platform: /Mac/.test(navigator.platform) ? 'darwin' : /Win/.test(navigator.platform) ? 'win32' : 'linux',
     pathForFile: () => '',
+  });
+  await current.onResized(() => {
+    void state().then((next) => publish('win:state', next));
   });
   await current.onCloseRequested((event) => {
     if (!listeners.get('chat:prepare-close')?.size || !profileReady) return;
