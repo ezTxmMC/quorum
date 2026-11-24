@@ -1,6 +1,6 @@
 import { ProcessStatus } from '@/components/workbench/ProcessStatus';
 import { lazy, Suspense } from 'react';
-import { setLang } from '@/lib/i18n';
+import { setLang, t } from '@/lib/i18n';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, Outlet, RouterProvider, createHashRouter, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Dock, PanelBody } from '@/components/Dock';
@@ -38,6 +38,14 @@ function Home() {
 const isQuick = location.hash.startsWith('#/quick');
 
 const SIDEBAR_WIDTH = 272;
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 520;
+
+/** Hält die Seitenleiste bedienbar und lässt dem Hauptbereich mindestens die halbe Fensterbreite. */
+function clampSidebarWidth(width: number): number {
+  const max = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, window.innerWidth * 0.5));
+  return Math.round(Math.max(SIDEBAR_MIN_WIDTH, Math.min(max, width)));
+}
 /** Abstand zwischen den Inseln der Arbeitsfläche (entspricht Tailwind `gap-2`). */
 const ISLAND_GAP = 8;
 
@@ -149,6 +157,10 @@ function Shell() {
   const pinned = useHub((s) => s.data.settings.sidebarPinned);
   const [winState, setWinState] = useState({ maximized: false, fullscreen: false });
   const [hoverOpen, setHoverOpen] = useState(false);
+  const storedWidth = useHub((s) => s.data.settings.sidebarWidth);
+  // Während des Ziehens gilt die lokale Breite; gespeichert wird erst beim Loslassen, damit nicht jede Bewegung das Profil schreibt.
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const sidebarWidth = clampSidebarWidth(dragWidth ?? storedWidth ?? SIDEBAR_WIDTH);
   const openTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const insideWindow = useRef(true);
@@ -225,6 +237,31 @@ function Shell() {
   useEffect(() => { cancelAndClose(); }, [location.pathname, pinned, cancelAndClose]);
   useEffect(() => () => clearTimers(), [clearTimers]);
 
+  const startSidebarResize = (event: React.PointerEvent) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    let latest = startWidth;
+    const onMove = (moveEvent: PointerEvent) => {
+      latest = clampSidebarWidth(startWidth + moveEvent.clientX - startX);
+      setDragWidth(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setDragWidth(null);
+      if (latest !== startWidth) {
+        setSettings({ sidebarWidth: latest });
+      }
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
   const toggleSidebar = () => {
     cancelAndClose();
     setSettings({ sidebarPinned: !pinned });
@@ -257,19 +294,31 @@ function Shell() {
           className="relative shrink-0 overflow-hidden"
           inert={!pinned}
           style={{
-            width: pinned ? SIDEBAR_WIDTH + ISLAND_GAP : 0,
-            transition: 'width 220ms cubic-bezier(0.16, 1, 0.3, 1)',
+            width: pinned ? sidebarWidth + ISLAND_GAP : 0,
+            transition: dragWidth === null ? 'width 220ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
           }}
         >
           <div
-            className="h-full w-[280px] pr-2"
+            className="h-full pr-2"
             style={{
+              width: sidebarWidth + ISLAND_GAP,
               transform: pinned ? 'none' : 'translateX(-100%)',
               opacity: pinned ? 1 : 0,
               transition: 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease',
             }}
           >
             <div className="island h-full">{renderSidebar({ pinned })}</div>
+          </div>
+          {/* Ziehgriff im Spalt zwischen Seitenleiste und Hauptbereich; Doppelklick stellt die Standardbreite wieder her. */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title={t('Breite ziehen – Doppelklick setzt zurück')}
+            className="group absolute bottom-3 right-0 top-3 z-10 flex w-2 cursor-col-resize justify-center"
+            onPointerDown={startSidebarResize}
+            onDoubleClick={() => setSettings({ sidebarWidth: undefined })}
+          >
+            <span className={cx('h-full w-0.5 rounded-full bg-accent transition-opacity duration-150', dragWidth === null ? 'opacity-0 group-hover:opacity-60' : 'opacity-90')} />
           </div>
         </div>
 
@@ -308,10 +357,11 @@ function Shell() {
         {!pinned && (
           <div
             className={cx(
-              'island absolute bottom-2 left-2 top-0 z-40 flex w-[272px] transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
+              'island absolute bottom-2 left-2 top-0 z-40 flex transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
               hoverOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'pointer-events-none -translate-x-full opacity-0',
             )}
             style={{
+              width: sidebarWidth,
               boxShadow: hoverOpen
                 ? '0 18px 44px -10px rgba(0, 0, 0, 0.6)'
                 : 'none',

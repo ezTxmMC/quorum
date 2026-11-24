@@ -38,7 +38,7 @@ const sessionsEqual = (a: ChatSession[], b: ChatSession[]) =>
   a === b || (a.length === b.length && a.every((x, i) => {
     const y = b[i];
     return x.id === y.id && x.title === y.title && x.cwd === y.cwd && x.provider === y.provider &&
-      x.updatedAt === y.updatedAt && x.createdAt === y.createdAt &&
+      x.updatedAt === y.updatedAt && x.createdAt === y.createdAt && !x.pinned === !y.pinned &&
       (x.messages.length > 0) === (y.messages.length > 0) &&
       x.messages.length === y.messages.length &&
       x.options.chatMode === y.options.chatMode;
@@ -106,6 +106,7 @@ interface ChatGroup {
 const COLLAPSED_KEY = 'quorum.sidebar.collapsed';
 const TEAMS_SECTION = 'section:teams';
 const CHATS_SECTION = 'section:chats';
+const PINNED_SECTION = 'section:pinned';
 const SECTION_TOGGLE = 'flex w-full items-center gap-1.5 rounded-lumen-sm px-1 pb-1 pt-2 text-left text-[10.5px] font-semibold uppercase tracking-wider text-subtle transition-colors hover:text-fg';
 
 export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () => void } = {}) {
@@ -152,16 +153,20 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
   const setChatListSettings = useHub((s) => s.setChatListSettings);
   const { addProject, removeProject, moveProject, moveSession, openSettings } = useHub.getState();
 
+  // Angeheftete Chats stehen in einem eigenen Abschnitt ganz oben; die Suche zeigt alle Treffer an ihrem gewohnten Platz.
+  const pinnedSessions = searching ? [] : sessions.filter((s) => s.pinned).sort((a, b) => compareSessions(a, b, sortBy, sortOrder));
+  const listed = pinnedSessions.length > 0 ? sessions.filter((s) => !s.pinned) : sessions;
+
   const groups: ChatGroup[] = useMemo(() => {
     if (groupBy === 'none') {
-      const sorted = [...sessions].sort((a, b) => compareSessions(a, b, sortBy, sortOrder));
+      const sorted = [...listed].sort((a, b) => compareSessions(a, b, sortBy, sortOrder));
       return [{ id: '__all', label: t('Alle Chats'), sessions: sorted }];
     }
 
     if (groupBy === 'project') {
       const map = new Map<string, ChatSession[]>();
       if (!searching) for (const p of projects) map.set(p, []);
-      for (const s of sessions) map.set(s.cwd, [...(map.get(s.cwd) ?? []), s]);
+      for (const s of listed) map.set(s.cwd, [...(map.get(s.cwd) ?? []), s]);
       const latest = (l: ChatSession[]) => (l.length ? Math.max(...l.map((x) => x.updatedAt)) : 0);
       return [...map.entries()]
         .map(([cwd, list]) => ({
@@ -186,7 +191,7 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
 
     if (groupBy === 'date') {
       const buckets: Record<string, { label: string; order: number; list: ChatSession[] }> = {};
-      for (const s of sessions) {
+      for (const s of listed) {
         const g = getDateBucket(sortBy === 'created' ? s.createdAt : s.updatedAt);
         if (!buckets[g.key]) buckets[g.key] = { label: g.label, order: g.order, list: [] };
         buckets[g.key].list.push(s);
@@ -203,7 +208,7 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
 
     if (groupBy === 'provider') {
       const map = new Map<ProviderId, ChatSession[]>();
-      for (const s of sessions) {
+      for (const s of listed) {
         map.set(s.provider, [...(map.get(s.provider) ?? []), s]);
       }
       return [...map.entries()]
@@ -226,7 +231,7 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
 
     if (groupBy === 'mode') {
       const map = new Map<ChatMode, ChatSession[]>();
-      for (const s of sessions) {
+      for (const s of listed) {
         const m = chatMode(s.options);
         map.set(m, [...(map.get(m) ?? []), s]);
       }
@@ -252,7 +257,7 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
     }
 
     return [];
-  }, [groupBy, sessions, sortBy, sortOrder, searching, projects]);
+  }, [groupBy, listed, sortBy, sortOrder, searching, projects]);
 
   const [leaving, setLeaving] = useState<Set<string>>(new Set());
   const leave = (key: string, fn: () => void) => { setLeaving((l) => new Set(l).add(key)); setTimeout(fn, 170); };
@@ -298,6 +303,17 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
         ) : (
           <span className="text-[10.5px] text-subtle group-hover:hidden">{ago(s.updatedAt)}</span>
         )}
+        <button
+          className={cx('icon-btn !size-5', s.pinned ? 'grid text-accent' : 'hidden group-hover:grid')}
+          title={s.pinned ? t('Chat lösen') : t('Chat anheften')}
+          aria-pressed={!!s.pinned}
+          onClick={(e) => {
+            e.preventDefault();
+            useHub.getState().patchSession(s.id, { pinned: !s.pinned });
+          }}
+        >
+          <Icon name={s.pinned ? 'lucide:pin-off' : 'lucide:pin'} size={12} />
+        </button>
         <button
           className="icon-btn hidden !size-5 group-hover:grid"
           title={t('Ordner dieses Chats ändern')}
@@ -345,6 +361,7 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
   // Eingeklappte Kategorien behalten den geöffneten Eintrag, damit der aktuelle Ort sichtbar bleibt.
   const teamsOpen = !collapsed.has(TEAMS_SECTION);
   const chatsOpen = searching || !collapsed.has(CHATS_SECTION);
+  const pinnedOpen = !collapsed.has(PINNED_SECTION);
   const activeMulti = multis.find((m) => m.id === id);
   const activeSession = sessions.find((s) => s.id === id);
 
@@ -376,6 +393,19 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
         {search.trim() && <div role="status" aria-live="polite" className="px-1 pt-1 text-[10.5px] text-subtle">{query !== search.trim() ? t('Suche …') : `${matches.size} ${t('Chats gefunden')}`}</div>}
       </div>
       <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
+        {pinnedSessions.length > 0 && (
+          <>
+            <button className={SECTION_TOGGLE} aria-expanded={pinnedOpen} onClick={() => toggleCollapsed(PINNED_SECTION)}>
+              <Icon name="lucide:chevron-right" size={11} className={cx('shrink-0 transition-transform duration-200', pinnedOpen && 'rotate-90')} />
+              {t('Angeheftet')}
+              {!pinnedOpen && <span className="font-normal">({pinnedSessions.length})</span>}
+            </button>
+            <Collapse open={pinnedOpen}>
+              <div className="space-y-0.5">{pinnedSessions.map((s) => renderSessionItem(s))}</div>
+            </Collapse>
+            {!pinnedOpen && activeSession?.pinned && renderSessionItem(activeSession)}
+          </>
+        )}
         {!searching && multis.length > 0 && (
           <>
             <button className={SECTION_TOGGLE} aria-expanded={teamsOpen} onClick={() => toggleCollapsed(TEAMS_SECTION)}>
@@ -458,7 +488,7 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
           </div>
         </div>
 
-        {!chatsOpen && activeSession && renderSessionItem(activeSession)}
+        {!chatsOpen && activeSession && listed.includes(activeSession) && renderSessionItem(activeSession)}
         <Collapse open={chatsOpen}>
         {searching && sessions.length === 0 && <div className="px-2.5 py-4 text-[12px] text-subtle">{t('Keine passenden Chats gefunden.')}</div>}
         {!searching && sessions.length === 0 && (

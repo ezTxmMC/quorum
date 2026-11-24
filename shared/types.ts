@@ -254,6 +254,8 @@ export interface ChatSession {
   limit?: ChatLimit;
   modeSettings?: Partial<Record<ChatMode, { provider: ProviderId; options: ProviderOptions }>>;
   modelProjectId?: string;
+  /** In der Chat-Seitenleiste oben angeheftet. */
+  pinned?: boolean;
   id: string;
   title: string;
   cwd: string;
@@ -343,6 +345,8 @@ export interface Settings {
   /** Globale Ausweich-Modelle für alle Chats ohne eigene Liste. */
   fallbacks?: FallbackModel[];
   sidebarPinned: boolean;
+  /** Vom Nutzer gezogene Breite der Seitenleiste in Pixeln (undefined = Standardbreite). */
+  sidebarWidth?: number;
   /** Kompaktieren: automatisch bei Anbietern ohne eigene Sitzung (API, Ollama, lokal), ab dieser geschätzten Tokenzahl. */
   compaction?: { auto?: boolean; thresholdTokens?: number };
   /** Zuletzt genutzte Auswahl (Anbieter, Modus, Modell, Berechtigungen, Effort) – Vorlage für neue Chats. */
