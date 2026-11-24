@@ -103,7 +103,7 @@ interface ChatGroup {
   sessions: ChatSession[];
 }
 
-export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; onTogglePin?: () => void; onClose?: () => void } = {}) {
+export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () => void } = {}) {
   const [search, setSearch] = useState('');
   const query = useDeferredValue(search.trim());
   const searching = query.length > 0;
@@ -323,15 +323,6 @@ export function Sidebar({ pinned, onTogglePin, onClose }: { pinned?: boolean; on
           <Icon name="lucide:plus" size={15} />
           <span className="truncate">{t('Neuer Chat')}</span>
         </button>
-        {onTogglePin && (
-          <button
-            className={cx('icon-btn !size-8 shrink-0', pinned ? 'text-fg' : 'text-muted hover:text-fg')}
-            title={pinned ? t('Seitenleiste lösen (schweben)') + ' (Strg+B)' : t('Seitenleiste anheften') + ' (Strg+B)'}
-            onClick={onTogglePin}
-          >
-            <Icon name={pinned ? 'lucide:pin-off' : 'lucide:pin'} size={14} />
-          </button>
-        )}
         {!pinned && onClose && (
           <button
             className="icon-btn !size-8 shrink-0 text-muted hover:text-fg md:hidden"

@@ -225,7 +225,7 @@ function Shell() {
     setSettings({ sidebarPinned: !pinned });
   };
 
-  const renderSidebar = (props?: { pinned?: boolean; onTogglePin?: () => void; onClose?: () => void }) => {
+  const renderSidebar = (props?: { pinned?: boolean; onClose?: () => void }) => {
     if (isThreeD) {
       return <ThreeDSidebar {...props} />;
     }
@@ -264,7 +264,7 @@ function Shell() {
               transition: 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease',
             }}
           >
-            {renderSidebar({ pinned, onTogglePin: toggleSidebar })}
+            {renderSidebar({ pinned })}
           </div>
         </div>
 
@@ -323,10 +323,6 @@ function Shell() {
           >
             {renderSidebar({
               pinned: false,
-              onTogglePin: () => {
-                cancelAndClose();
-                setSettings({ sidebarPinned: true });
-              },
               onClose: cancelAndClose,
             })}
           </div>

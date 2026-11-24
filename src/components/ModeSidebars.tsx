@@ -10,13 +10,12 @@ import { Modal, cx } from './ui';
 
 interface SidebarProps {
   pinned?: boolean;
-  onTogglePin?: () => void;
   onClose?: () => void;
 }
 
 type ThreeDProject = Awaited<ReturnType<typeof hub.threedList>>[number];
 
-export function ThreeDSidebar({ pinned, onTogglePin, onClose }: SidebarProps) {
+export function ThreeDSidebar({ pinned, onClose }: SidebarProps) {
   const projectId = useHub((state) => state.threeDProjectId);
   const revision = useHub((state) => state.threeDRevision);
   const { setThreeDProjectId, bumpThreeDRevision } = useHub.getState();
@@ -63,15 +62,6 @@ export function ThreeDSidebar({ pinned, onTogglePin, onClose }: SidebarProps) {
           <Icon name="lucide:plus" size={15} />
           <span className="truncate">{t('Neues 3D-Projekt')}</span>
         </button>
-        {onTogglePin && (
-          <button
-            className={cx('icon-btn !size-8 shrink-0', pinned ? 'text-fg' : 'text-muted hover:text-fg')}
-            title={pinned ? t('Seitenleiste lösen (schweben)') + ' (Strg+B)' : t('Seitenleiste anheften') + ' (Strg+B)'}
-            onClick={onTogglePin}
-          >
-            <Icon name={pinned ? 'lucide:pin-off' : 'lucide:pin'} size={14} />
-          </button>
-        )}
         {!pinned && onClose && (
           <button className="icon-btn !size-8 shrink-0 text-muted hover:text-fg md:hidden" title={t('Schließen')} onClick={onClose}>
             <Icon name="lucide:x" size={15} />
@@ -189,7 +179,7 @@ function IdeFileTree({ root, directory, selected, depth = 0, onOpen }: { root: s
   );
 }
 
-export function IdeSidebar({ pinned, onTogglePin, onClose }: SidebarProps) {
+export function IdeSidebar({ pinned, onClose }: SidebarProps) {
   const root = useHub((state) => state.ideRootPath);
   const selectedFile = useHub((state) => state.ideOpenFile?.path ?? '');
   const { setIdeRootPath, openIdeFile, triggerIdeQuickAction, triggerIdePlanAction, addProject } = useHub.getState();
@@ -225,15 +215,6 @@ export function IdeSidebar({ pinned, onTogglePin, onClose }: SidebarProps) {
           <Icon name="lucide:folder-open" size={14} className="shrink-0 text-accent" />
           <span className="truncate text-[12px]">{workspaceName || t('Workspace wählen')}</span>
         </button>
-        {onTogglePin && (
-          <button
-            className={cx('icon-btn !size-8 shrink-0', pinned ? 'text-fg' : 'text-muted hover:text-fg')}
-            title={pinned ? t('Seitenleiste lösen (schweben)') + ' (Strg+B)' : t('Seitenleiste anheften') + ' (Strg+B)'}
-            onClick={onTogglePin}
-          >
-            <Icon name={pinned ? 'lucide:pin-off' : 'lucide:pin'} size={14} />
-          </button>
-        )}
         {!pinned && onClose && (
           <button className="icon-btn !size-8 shrink-0 text-muted hover:text-fg md:hidden" title={t('Schließen')} onClick={onClose}>
             <Icon name="lucide:x" size={15} />
