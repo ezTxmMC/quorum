@@ -306,7 +306,7 @@ export const en: Record<string, string> = {
   'Limits': 'limits', '/usage abfragen': 'Query /usage', 'Frage /usage ab …': 'Querying /usage …', 'Keine Prozentwerte gefunden.': 'No percentages found.',
   'Startet die CLI kurz im Hintergrund und liest die Ausgabe von /usage.': 'Briefly starts the CLI in the background and reads the output of /usage.',
   'Rohausgabe anzeigen': 'Show raw output', 'Rohausgabe ausblenden': 'Hide raw output',
-  'Stand': 'As of', 'übrig': 'remaining', 'Wird automatisch im Hintergrund abgefragt.': 'Queried automatically in the background.',
+  'Stand': 'As of', 'Live': 'Live', 'aktualisiert alle 10 s': 'updates every 10 s', 'übrig': 'remaining', 'Wird automatisch im Hintergrund abgefragt.': 'Queried automatically in the background.',
   'Direkt': 'Direct', 'In der Warteschlange': 'Queued', 'Einreihen': 'Queue',
   'Einreihen (Alt+Enter): wird nach dem aktuellen Lauf gesendet': 'Queue (Alt+Enter): sent after the current run',
   'Direkt senden (Enter) – mitten im Lauf': 'Send directly (Enter) – mid-run', 'Einreihen (Enter) – wird nach dem aktuellen Lauf gesendet': 'Queue (Enter) – sent after the current run',
