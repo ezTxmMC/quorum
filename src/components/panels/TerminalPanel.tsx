@@ -98,7 +98,7 @@ interface Tab { key: string; title: string; exited: boolean; shell?: string }
 /** Mehrere Terminals als Tabs (je mit eigener Shell); jedes weitere kann auch in einem eigenen Fenster geöffnet werden. */
 export function TerminalPanel({ cwd, slot, popout, onCloseAll }: { cwd: string; slot?: HTMLElement | null; popout?: boolean; onCloseAll?: () => void }) {
   const counter = useRef(1);
-  const [tabs, setTabs] = useState<Tab[]>([{ key: uid(), title: 'Terminal 1', exited: false }]);
+  const [tabs, setTabs] = useState<Tab[]>(() => [{ key: uid(), title: 'Terminal 1', exited: false, shell: useHub.getState().data.settings.terminal.shell }]);
   const [cur, setCur] = useState(tabs[0].key);
   const [shells, setShells] = useState<{ id: string; name: string; path: string }[]>([]);
   const style = useHub((s) => s.data.settings.terminal);
