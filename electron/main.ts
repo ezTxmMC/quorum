@@ -160,18 +160,32 @@ function showMain() {
   return w;
 }
 
+/** Beschriftung in der eingestellten Sprache der App. */
+const tr = (de: string, en: string): string => (data.settings.language === 'en' ? en : de);
+
+let trayMenuState = '';
+/** Baut das Tray-Menü neu, sobald sich Sprache oder Tastenkürzel ändern. */
+function refreshTrayMenu() {
+  const state = `${data.settings.language}|${data.settings.quickHotkey}`;
+  if (!tray || state === trayMenuState) {
+    return;
+  }
+  trayMenuState = state;
+  const menu = Menu.buildFromTemplate([
+    { label: tr('Quorum öffnen', 'Open Quorum'), click: () => showMain() },
+    { label: tr('Schnell-Prompt', 'Quick prompt'), accelerator: data.settings.quickHotkey, click: () => toggleQuick() },
+    { label: tr('Neues Fenster', 'New window'), click: () => createWindow() },
+    { type: 'separator' },
+    { label: tr('Beenden', 'Quit'), click: () => { quitting = true; app.quit(); } },
+  ]);
+  tray.setContextMenu(menu);
+}
+
 function setupTray() {
   try {
     tray = new Tray(trayImage().resize({ width: 22, height: 22, quality: 'best' }));
     tray.setToolTip('Quorum');
-    const menu = () => Menu.buildFromTemplate([
-      { label: 'Quorum öffnen / Open', click: () => showMain() },
-      { label: 'Schnell-Prompt / Quick prompt', accelerator: data.settings.quickHotkey, click: () => toggleQuick() },
-      { label: 'Neues Fenster / New window', click: () => createWindow() },
-      { type: 'separator' },
-      { label: 'Beenden / Quit', click: () => { quitting = true; app.quit(); } },
-    ]);
-    tray.setContextMenu(menu());
+    refreshTrayMenu();
     tray.on('click', () => showMain());
   } catch { /* Tray nicht verfügbar (z. B. GNOME ohne AppIndicator) */ }
 }
@@ -359,6 +373,7 @@ function registerIpc() {
     data = d; save(d);
     scheduler.configure(data.settings.localRuntime);
     registerHotkey();
+    refreshTrayMenu();
     // Andere Fenster bekommen den neuen Stand (gleiche Daten in allen Fenstern); bei Ergänzungen auch das speichernde.
     for (const w of BrowserWindow.getAllWindows()) if (changed || w.webContents !== e.sender) sendTo(w.webContents, 'store:sync', d);
     await waitForSave();
@@ -599,15 +614,15 @@ app.on('web-contents-created', (_e, wc) => {
     const items: Electron.MenuItemConstructorOptions[] = [];
     if (p.isEditable) {
       items.push(
-        { role: 'cut', label: 'Ausschneiden / Cut', enabled: p.editFlags.canCut },
-        { role: 'copy', label: 'Kopieren / Copy', enabled: p.editFlags.canCopy },
-        { role: 'paste', label: 'Einfügen / Paste', enabled: p.editFlags.canPaste },
+        { role: 'cut', label: tr('Ausschneiden', 'Cut'), enabled: p.editFlags.canCut },
+        { role: 'copy', label: tr('Kopieren', 'Copy'), enabled: p.editFlags.canCopy },
+        { role: 'paste', label: tr('Einfügen', 'Paste'), enabled: p.editFlags.canPaste },
         { type: 'separator' },
-        { role: 'selectAll', label: 'Alles auswählen / Select all' },
+        { role: 'selectAll', label: tr('Alles auswählen', 'Select all') },
       );
-    } else if (p.selectionText) items.push({ role: 'copy', label: 'Kopieren / Copy' }, { role: 'selectAll', label: 'Alles auswählen / Select all' });
-    else if (p.linkURL) items.push({ label: 'Link kopieren / Copy link', click: () => clipboard.writeText(p.linkURL) });
-    else items.push({ role: 'selectAll', label: 'Alles auswählen / Select all' });
+    } else if (p.selectionText) items.push({ role: 'copy', label: tr('Kopieren', 'Copy') }, { role: 'selectAll', label: tr('Alles auswählen', 'Select all') });
+    else if (p.linkURL) items.push({ label: tr('Link kopieren', 'Copy link'), click: () => clipboard.writeText(p.linkURL) });
+    else items.push({ role: 'selectAll', label: tr('Alles auswählen', 'Select all') });
     Menu.buildFromTemplate(items).popup();
   });
 });
