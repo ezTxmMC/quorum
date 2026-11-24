@@ -403,7 +403,7 @@ export const en: Record<string, string> = {
   "Installiert die offizielle CLI in dein Benutzerverzeichnis – ohne Administratorrechte. Bestehende Installationen werden nie ersetzt.": "Installs the official CLI into your user directory – without administrator rights. Existing installations are never replaced.",
   "Dieser Befehl wird ausgeführt": "This command will be run",
   "Jetzt installieren": "Install now",
-  'Stand': 'As of', 'Live': 'Live', 'aktualisiert alle 10 s': 'updates every 10 s', 'übrig': 'remaining', 'Wird automatisch im Hintergrund abgefragt.': 'Queried automatically in the background.',
+  'Stand': 'As of', 'Live': 'Live', 'aktualisiert alle 10 s': 'updates every 10 s', 'aktualisiert jede Minute': 'updates every minute', 'Claude liefert die Limits pro Modell gerade nicht': 'Claude is not reporting per-model limits right now', 'gedrosselt bis': 'rate limited until', 'übrig': 'remaining', 'Wird automatisch im Hintergrund abgefragt.': 'Queried automatically in the background.',
   'Direkt': 'Direct', 'In der Warteschlange': 'Queued', 'Einreihen': 'Queue',
   'Einreihen (Alt+Enter): wird nach dem aktuellen Lauf gesendet': 'Queue (Alt+Enter): sent after the current run',
   'Direkt senden (Enter) – mitten im Lauf': 'Send directly (Enter) – mid-run', 'Einreihen (Enter) – wird nach dem aktuellen Lauf gesendet': 'Queue (Enter) – sent after the current run',

@@ -7,6 +7,8 @@ import { currentMeters } from '@/lib/usageMeters';
 import { Popover, cx } from './ui';
 
 const REFRESH_MS = 10_000;
+/** Claude und Antigravity starten für jede Abfrage die CLI; zu häufig gefragt drosselt Claude die Limit-Abfrage selbst. */
+const CLI_REFRESH_MS = 60_000;
 
 const compact = (n: number) => Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
 const clamp = (n: number) => Math.max(0, Math.min(100, n));
@@ -32,7 +34,7 @@ function useLiveLimits(provider: ProviderId, enabled: boolean) {
       }
     };
     refresh();
-    const timer = setInterval(refresh, REFRESH_MS);
+    const timer = setInterval(refresh, provider === 'codex' ? REFRESH_MS : CLI_REFRESH_MS);
     document.addEventListener('visibilitychange', refresh);
     return () => {
       clearInterval(timer);
@@ -81,7 +83,8 @@ export function ComposerUsage({ session }: { session: ChatSession }) {
         );
       })}
       {!meters.length && <p className="text-subtle">{t('Keine Kontingentdaten verfügbar. Token sind der gemessene Chat-Verbrauch.')}</p>}
-      {stamp && <div className="text-[10px] text-subtle">{t('Stand')}: {new Date(stamp).toLocaleTimeString()} · {t('aktualisiert alle 10 s')}</div>}
+      {cli?.ok && cli.partial && <p className="text-[10.5px] text-warn">{t('Claude liefert die Limits pro Modell gerade nicht')}{cli.partialUntil ? ` (${t('gedrosselt bis')} ${cli.partialUntil})` : ''}.</p>}
+      {stamp && <div className="text-[10px] text-subtle">{t('Stand')}: {new Date(stamp).toLocaleTimeString()} · {t(session.provider === 'codex' ? 'aktualisiert alle 10 s' : 'aktualisiert jede Minute')}</div>}
     </div>}
   </Popover>;
 }

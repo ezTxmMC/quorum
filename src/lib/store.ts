@@ -181,6 +181,16 @@ const localMultiIds = new Set<string>();
 /** Zeitpunkt des letzten Leseversuchs der Limit-Werte je Anbieter (auch fehlgeschlagene) – verhindert Endlos-Nachlesen. */
 const limitsTriedAt = new Map<string, number>();
 
+/** Liefert die CLI nur einen Teil der Limits, bleiben die zuletzt gelesenen übrigen Werte stehen statt zu verschwinden. */
+function withKnownMeters(next: CliUsage, previous: CliUsage | undefined): CliUsage {
+  if (!next.ok || !next.partial || !previous?.ok) {
+    return next;
+  }
+  const key = (meter: CliUsage['meters'][number]) => `${meter.group ?? ''}|${meter.label}`;
+  const fresh = new Set(next.meters.map(key));
+  return { ...next, meters: [...next.meters, ...previous.meters.filter((meter) => !fresh.has(key(meter)))] };
+}
+
 export const useHub = create<State>((set, get) => {
   const mutData = (fn: (d: Persisted) => Persisted) => set((s) => ({ data: fn(s.data) }));
   const mutSession = (id: string, fn: (s: ChatSession) => ChatSession) =>
@@ -378,7 +388,7 @@ export const useHub = create<State>((set, get) => {
         if (get().cliUsageBusy[p]) continue;
         set((s) => ({ cliUsageBusy: { ...s.cliUsageBusy, [p]: true } }));
         try {
-          const res = await queryCliUsage(p, '');
+          const res = withKnownMeters(await queryCliUsage(p, ''), get().cliUsage[p]);
           // Ein fehlgeschlagener Versuch überschreibt keine bereits gelesenen Werte.
           if (res.ok || !get().cliUsage[p]?.ok) set((s) => ({ cliUsage: { ...s.cliUsage, [p]: res } }));
         } finally { limitsTriedAt.set(p, Date.now()); set((s) => ({ cliUsageBusy: { ...s.cliUsageBusy, [p]: false } })); }

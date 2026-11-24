@@ -45,6 +45,11 @@ export function parseMeters(screen: string): UsageMeter[] {
   return out;
 }
 
+/** Die /usage-Ansicht lädt noch Werte nach. */
+const LOADING = /refreshing usage|scanning local sessions|loading/i;
+/** Claude liefert die Limits pro Modell nicht, solange die Abfrage selbst gedrosselt ist. */
+const PARTIAL = /per-model breakdown unavailable(?:[^\n]*?rate limited until ([^)\n]+))?/i;
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -118,6 +123,19 @@ export async function queryCliUsage(provider: 'claude' | 'antigravity', cwd: str
       }
 
       if (meters.length > 0) {
+        // Die Ansicht füllt sich nach und nach (erst das Gesamtlimit, dann die Modelle): warten, bis sie fertig geladen und stabil ist.
+        const settleStart = Date.now();
+        let stable = 0;
+        while (Date.now() - settleStart < 7000 && stable < 3) {
+          await sleep(300);
+          const nextText = screen();
+          const nextMeters = parseMeters(nextText);
+          const loading = LOADING.test(nextText);
+          stable = !loading && nextMeters.length === meters.length ? stable + 1 : 0;
+          text = nextText;
+          if (nextMeters.length > 0) { meters = nextMeters; }
+        }
+        const limited = PARTIAL.exec(text);
         // Scrollbare Ansicht weiterblättern (z. B. "(1–11 of 37 lines)" bei Antigravity)
         const seen = new Set(meters.map((m) => `${m.group}|${m.label}|${m.percent}`));
         for (let page = 0; page < 8; page++) {
@@ -140,6 +158,8 @@ export async function queryCliUsage(provider: 'claude' | 'antigravity', cwd: str
           meters,
           raw: text.split('\n').map((l) => l.trimEnd()).filter(Boolean).join('\n'),
           at: Date.now(),
+          partial: limited ? true : undefined,
+          partialUntil: limited?.[1]?.trim() || undefined,
         };
       }
     }

@@ -417,7 +417,13 @@ export interface RateWindow { used_percent: number; window_minutes: number; rese
 export interface UsageMeter { label: string; percent: number; reset?: string; group?: string; kind: 'used' | 'remaining' }
 
 /** Ergebnis von `/usage` aus der interaktiven CLI (Claude Code, Antigravity). */
-export interface CliUsage { provider: 'claude' | 'antigravity'; ok: boolean; meters: UsageMeter[]; raw: string; error?: string; at: number }
+export interface CliUsage {
+  provider: 'claude' | 'antigravity'; ok: boolean; meters: UsageMeter[]; raw: string; error?: string; at: number;
+  /** Die CLI hat nur einen Teil der Limits geliefert (z. B. Aufschlüsselung pro Modell wegen Rate-Limit nicht verfügbar). */
+  partial?: boolean;
+  /** Uhrzeit laut CLI, ab der die fehlenden Werte wieder abrufbar sind. */
+  partialUntil?: string;
+}
 
 export interface UsageReport {
   days: { date: string; claude: UsageTokens; codex: UsageTokens }[];
