@@ -171,6 +171,8 @@ function ComposerInner({ session, running, onSend, onStop, onCommand, centered }
   const onPaste = async (e: React.ClipboardEvent) => {
     const files = [...e.clipboardData.files];
     if (!files.length) return;
+    // Office-Programme legen zum kopierten Text zusätzlich ein Bild davon ab: dann zählt der Text.
+    if (e.clipboardData.getData('text/plain').trim() && files.every((file) => file.type.startsWith('image/'))) return;
     e.preventDefault();
     await ingest(files);
   };

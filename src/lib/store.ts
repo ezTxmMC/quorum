@@ -107,7 +107,7 @@ interface State {
   setChatListSettings: (patch: Partial<ChatListSettings>) => void;
   /** Verlauf des Chats vom aktuellen Modell zusammenfassen lassen und durch die Zusammenfassung ersetzen. */
   compact: (sessionId: string, request?: { focus?: string; auto?: boolean }) => Promise<boolean>;
-  compactUndo: Record<string, { messages: Message[]; providerSessions: ChatSession['providerSessions']; summaryId: string }>;
+  compactUndo: Record<string, { messages: Message[]; providerSessions: ChatSession['providerSessions']; summaryId: string; kept: number }>;
   undoCompact: (sessionId: string) => boolean;
   compacting: Record<string, boolean>;
   /** Kurze Hinweise über dem Eingabefeld (z. B. Wechsel auf ein Ausweich-Modell, Fehler beim Kompaktieren). */
@@ -157,9 +157,9 @@ function missedMessages(s: ChatSession): Message[] {
 }
 
 /** Läufe ohne Chat-Ziel (z. B. Zusammenfassung beim Kompaktieren): Events gehen direkt an den Sammler. */
-const collectors = new Map<string, (e: HubEvent) => void>();
+const collectors = new Map<string, (e: HubEvent, sequence?: number) => void>();
 /** Fehlertexte, die auf ein erreichtes Nutzungs-/Ratenlimit hindeuten. */
-const LIMIT_RE = /usage limit|rate.?limit|limit (has been )?(reached|exceeded)|hit your (usage )?limit|out of (extra )?usage|quota|exceeded|too many requests|\b429\b|resource.?exhausted|insufficient[_ ]credits?|credit balance|overloaded|billing/i;
+const LIMIT_RE = /usage limit|rate.?limit|limit (has been )?(reached|exceeded)|hit your (usage )?limit|out of (extra )?usage|quota|too many requests|\b429\b|resource.?exhausted|insufficient[_ ]credits?|credit balance|overloaded|billing/i;
 
 /** Anbieter und Optionen eines neuen Chats: die zuletzt genutzte Auswahl gilt vor den Anbieter-Standards. */
 function startChoice(settings: Persisted['settings'], init?: Partial<ChatSession>): Pick<ChatSession, 'provider' | 'options'> {
@@ -478,18 +478,28 @@ export const useHub = create<State>((set, get) => {
       const runIds = Object.entries(get().runs).filter(([, r]) => r.sessionId === sessionId).map(([runId]) => runId);
       const mode = chatMode(s.options);
       const direct = (mode === 'text' || mode === 'coding') && !item.images?.length && !item.attachments?.length && !item.files?.length && DIRECT_MESSAGES[s.provider] && s.options.liveInput !== false;
-      if (direct && runIds[0] && await hub.inject(runIds[0], item.text).catch(() => false)) {
-        set((st) => ({ queued: { ...st.queued, [sessionId]: rest() } }));
-        return;
+      if (direct && runIds[0]) {
+        if (await hub.inject(runIds[0], item.text).catch(() => false)) {
+          set((st) => ({ queued: { ...st.queued, [sessionId]: rest() } }));
+          return;
+        }
+        // Während des Zustellversuchs kann der Lauf geendet und die Warteschlange den Eintrag schon selbst gesendet haben.
+        if (!get().queued[sessionId]?.some((q) => q.id === id)) { return; }
+        if (!get().isRunning(sessionId)) {
+          set((st) => ({ queued: { ...st.queued, [sessionId]: rest() } }));
+          get().send(sessionId, item.text, { images: item.images, attachments: item.attachments, files: item.files });
+          return;
+        }
       }
       // Nach vorn stellen und nur den Lauf beenden: beim Ende eines Laufs wird automatisch der erste wartende Eintrag gesendet.
       set((st) => ({ queued: { ...st.queued, [sessionId]: [item, ...rest()] } }));
-      for (const runId of runIds) { interruptedRuns.add(runId); void hub.cancel(runId); }
+      for (const [runId, r] of Object.entries(get().runs)) if (r.sessionId === sessionId) { interruptedRuns.add(runId); void hub.cancel(runId); }
     },
     async submit(sessionId, text, opts = {}) {
       const s = get().data.sessions.find((x) => x.id === sessionId);
       if (!s) return false;
-      if (!get().isRunning(sessionId)) {
+      // Läuft gerade ein Kompaktieren, wird eingereiht: sonst ginge die Nachricht mit dem unverdichteten Verlauf vor der wartenden raus.
+      if (!get().isRunning(sessionId) && !get().compacting[sessionId]) {
         if (!(await get().checkLimit(sessionId))) return false;
         // Anbieter ohne eigene Sitzung bekommen den Verlauf bei jeder Anfrage komplett mit: rechtzeitig verdichten statt abschneiden.
         const compaction = get().data.settings.compaction;
@@ -497,7 +507,7 @@ export const useHub = create<State>((set, get) => {
           await get().compact(sessionId, { auto: true });
         }
         // Währenddessen kann ein anderer Lauf gestartet sein – dann einreihen statt stillschweigend zu verwerfen.
-        if (!get().isRunning(sessionId)) {
+        if (!get().isRunning(sessionId) && !get().compacting[sessionId]) {
           get().send(sessionId, text, { images: opts.images, attachments: opts.attachments, files: opts.files });
           return true;
         }
@@ -512,6 +522,11 @@ export const useHub = create<State>((set, get) => {
         } catch (error) {
           get().setBanner(sessionId, { kind: 'error', text: String(error) });
           return false;
+        }
+        // Der Lauf endete während des Zustellversuchs: direkt senden, sonst bliebe die Nachricht ohne Lauf in der Warteschlange liegen.
+        if (!get().isRunning(sessionId) && !get().compacting[sessionId]) {
+          get().send(sessionId, text, { images: opts.images, attachments: opts.attachments, files: opts.files });
+          return true;
         }
       }
       set((st) => ({ queued: { ...st.queued, [sessionId]: [...(st.queued[sessionId] ?? []), { id: uid(), text, images: opts.images, attachments: opts.attachments, files: opts.files }] } }));
@@ -584,7 +599,13 @@ export const useHub = create<State>((set, get) => {
       const runId = uid();
       const result = await new Promise<{ ok: boolean; text: string; error?: string }>((resolve) => {
         let text = '';
-        collectors.set(runId, (e) => {
+        let lastSequence = 0;
+        collectors.set(runId, (e, sequence) => {
+          // Beim erneuten Verbinden spielt der Chat-Host bereits gelesene Ereignisse noch einmal ab.
+          if (sequence !== undefined) {
+            if (sequence <= lastSequence) { return; }
+            lastSequence = sequence;
+          }
           if (e.type === 'text') text += e.delta;
           else if (e.type === 'text_full') text = e.text;
           else if (e.type === 'done') { collectors.delete(runId); resolve({ ok: e.ok && !!text.trim(), text: text.trim(), error: e.error }); }
@@ -594,6 +615,8 @@ export const useHub = create<State>((set, get) => {
         });
       });
       set((st) => ({ compacting: { ...st.compacting, [sessionId]: false } }));
+      // Während des manuellen Kompaktierens eingereihte Nachrichten danach senden; beim automatischen sendet submit() selbst weiter.
+      if (!request.auto) { setTimeout(() => drainQueue(sessionId), 0); }
       if (!result.ok) { get().setBanner(sessionId, { kind: 'error', text: `${en ? 'Compacting failed' : 'Kompaktieren fehlgeschlagen'}${result.error ? `: ${result.error}` : ''}` }); return false; }
       const cur = get().data.sessions.find((x) => x.id === sessionId);
       if (!cur) return false;
@@ -605,7 +628,7 @@ export const useHub = create<State>((set, get) => {
         id: uid(), role: 'system', provider: s.provider, blocks: [{ kind: 'text', text }], createdAt: Date.now(), usage: { turns: plan.head.length },
         compaction: { messages: plan.head.length, tokensBefore: estimateTokens(plan.head), tokensAfter: Math.round(text.length / 4), auto: request.auto },
       };
-      set((st) => ({ compactUndo: { ...st.compactUndo, [sessionId]: { messages: cur.messages, providerSessions: cur.providerSessions, summaryId: summary.id } } }));
+      set((st) => ({ compactUndo: { ...st.compactUndo, [sessionId]: { messages: cur.messages, providerSessions: cur.providerSessions, summaryId: summary.id, kept: tail.length } } }));
       mutSession(sessionId, (x) => ({ ...x, messages: [summary, ...tail], providerSessions: {}, updatedAt: Date.now() }));
       const saved = Math.max(0, summary.compaction!.tokensBefore - summary.compaction!.tokensAfter);
       const count = plan.head.length;
@@ -616,12 +639,14 @@ export const useHub = create<State>((set, get) => {
       return true;
     },
     compactUndo: {},
-    /** Stellt den Verlauf vor dem letzten Kompaktieren wieder her (nur in dieser Sitzung der App, solange seither nichts gesendet wurde). */
+    /** Stellt den Verlauf vor dem letzten Kompaktieren wieder her (nur in dieser Sitzung der App); später gesendete Nachrichten bleiben erhalten. */
     undoCompact(sessionId) {
       const backup = get().compactUndo[sessionId];
       const cur = get().data.sessions.find((x) => x.id === sessionId);
       if (!backup || !cur || cur.messages[0]?.id !== backup.summaryId || get().isRunning(sessionId)) return false;
-      mutSession(sessionId, (x) => ({ ...x, messages: backup.messages, providerSessions: backup.providerSessions, updatedAt: Date.now() }));
+      // Was nach dem Kompaktieren gesendet wurde, bleibt erhalten; dann gilt auch die seither genutzte Anbieter-Sitzung weiter.
+      const later = cur.messages.slice(1 + backup.kept);
+      mutSession(sessionId, (x) => ({ ...x, messages: [...backup.messages, ...later], providerSessions: later.length ? x.providerSessions : backup.providerSessions, updatedAt: Date.now() }));
       set((st) => {
         const { [sessionId]: _used, ...rest } = st.compactUndo;
         return { compactUndo: rest };
@@ -637,12 +662,16 @@ export const useHub = create<State>((set, get) => {
       if (!s || !next || get().isRunning(sessionId)) return false;
       let text = '';
       let images: string[] | undefined;
+      let attachments: Attachment[] | undefined;
+      let files: Message['files'];
       if (retry) {
         const last = s.messages.at(-1);
         const prev = s.messages.at(-2);
         if (last?.role !== 'assistant' || prev?.role !== 'user') return false;
         text = messageText(prev);
         images = prev.images?.filter((p) => /[\\/]/.test(p));
+        attachments = prev.attachments;
+        files = prev.files;
       }
       const model = canonicalModel(next.provider, next.model) ?? next.model;
       const info = modelChoices(next.provider, get().statuses).find((m) => m.id === model);
@@ -654,7 +683,7 @@ export const useHub = create<State>((set, get) => {
         ...x, provider: next.provider, options: selectModelOptions(base, model, info), fallbacks: list.slice(1), messages: retry ? x.messages.slice(0, -2) : x.messages,
       }));
       get().setBanner(sessionId, { kind: 'info', text: en ? `${retry ? 'Usage limit reached' : 'Chat limit reached'} – continuing with ${label}.` : `${retry ? 'Nutzungslimit erreicht' : 'Chat-Limit erreicht'} – weiter mit ${label}.` });
-      if (retry) get().send(sessionId, text, { images });
+      if (retry) get().send(sessionId, text, { images, attachments, files });
       return true;
     },
     /** Liest die Limit-Werte des Anbieters im Hintergrund neu ein (Claude/Antigravity: /usage im PTY – dauert Sekunden, Codex: Rate-Limits). */
@@ -721,6 +750,19 @@ let queue: QItem[] = [];
 const interruptedRuns = new Set<string>();
 let scheduled = false;
 
+/** Sendet den ersten wartenden Eintrag eines Chats, sobald nichts mehr läuft. */
+function drainQueue(sid: string) {
+  const st = useHub.getState();
+  const next = st.queued[sid]?.[0];
+  if (!next || st.isRunning(sid) || st.compacting[sid]) return;
+  useHub.setState({ queued: { ...st.queued, [sid]: st.queued[sid].slice(1) } });
+  void st.checkLimit(sid).then((ok) => {
+    // Bei erreichtem Limit oder neuem Lauf bleibt der Eintrag sichtbar in der Warteschlange statt verloren zu gehen.
+    if (!ok || useHub.getState().isRunning(sid)) useHub.setState((x) => ({ queued: { ...x.queued, [sid]: [next, ...(x.queued[sid] ?? [])] } }));
+    else useHub.getState().send(sid, next.text, { images: next.images, attachments: next.attachments, files: next.files });
+  });
+}
+
 function flush() {
   scheduled = false;
   const items = queue;
@@ -780,17 +822,7 @@ function flush() {
     return { data, runs };
   });
   for (const sid of finished) {
-    setTimeout(() => {
-      const st = useHub.getState();
-      const next = st.queued[sid]?.[0];
-      if (!next || st.isRunning(sid)) return;
-      useHub.setState({ queued: { ...st.queued, [sid]: st.queued[sid].slice(1) } });
-      void st.checkLimit(sid).then((ok) => {
-        if (ok && useHub.getState().isRunning(sid)) useHub.setState((x) => ({ queued: { ...x.queued, [sid]: [next, ...(x.queued[sid] ?? [])] } }));
-        else if (ok) useHub.getState().send(sid, next.text, { images: next.images, attachments: next.attachments, files: next.files });
-        else useHub.setState((x) => ({ queued: { ...x.queued, [sid]: [] } }));
-      });
-    }, 0);
+    setTimeout(() => drainQueue(sid), 0);
   }
   // Nach jedem Lauf die Limits sofort im Hintergrund neu einlesen und prüfen – so ist die Entscheidung vor der nächsten Nachricht schon getroffen.
   for (const sid of new Set([...finished, ...failed])) {
@@ -883,7 +915,7 @@ export function wireEvents(): () => void {
   const batch = hub.onRunBatch((events) => {
     for (const entry of events) {
       const collect = collectors.get(entry.runId);
-      if (collect) { collect(entry.event); continue; }
+      if (collect) { collect(entry.event, entry.sequence); continue; }
       queue.push({ kind: 'run', runId: entry.runId, event: entry.event, sequence: entry.sequence });
     }
     schedule();
