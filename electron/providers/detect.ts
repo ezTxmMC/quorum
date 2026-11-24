@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { PROVIDERS, CLAUDE_MODELS, KIMI_MODELS, modelLabel, isChatModel } from '../../shared/catalog';
 import { ollamaStatus } from './ollama';
+import { parseKimiModels } from '../../shared/kimi-models';
 import { sandboxHome, sandboxLaunch } from './sandbox';
 import { listModels } from '../models/registry';
 import { resolveRuntime } from '../runtimes/scheduler';
@@ -79,6 +80,12 @@ async function agyModels(bin: string): Promise<ModelInfo[]> {
   return [...groups.values()];
 }
 
+/** Modell-Aliase, wie sie in der Kimi-Konfiguration des Nutzers stehen; leer, wenn die CLI sie nicht liefert. */
+async function kimiModels(bin: string): Promise<ModelInfo[]> {
+  const r = await execCli(bin, ['provider', 'list', '--json'], undefined, 30000);
+  return r.ok ? parseKimiModels(r.stdout) : [];
+}
+
 /** `opencode models` listet "anbieter/modell" je Zeile. */
 async function opencodeModels(bin: string): Promise<ModelInfo[]> {
   const r = await execCli(bin, ['models'], undefined, 40000);
@@ -117,7 +124,7 @@ export async function providerStatus(id: ProviderId, overrides: Partial<Record<P
   const version = (v.stdout || v.stderr).trim().split('\n')[0];
   let models: ModelInfo[] = [];
   if (id === 'claude') models = CLAUDE_MODELS;
-  else if (id === 'kimi') models = KIMI_MODELS;
+  else if (id === 'kimi') { const listed = await kimiModels(bin); models = listed.length ? listed : KIMI_MODELS; }
   else if (id === 'codex') models = await codexModels(bin);
   else if (id === 'opencode') models = await opencodeModels(bin);
   else models = await agyModels(bin);

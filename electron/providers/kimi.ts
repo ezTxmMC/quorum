@@ -1,4 +1,5 @@
 import type { HubEvent, RunRequest } from '../../shared/types';
+import { kimiAlias } from '../../shared/kimi-models.ts';
 import { splitArgs } from './args.ts';
 import type { LineParser } from './runner';
 
@@ -6,28 +7,22 @@ const MAX_PROMPT_LENGTH = 110_000;
 
 export function buildKimi(req: RunRequest): { args: string[] } {
   const options = req.options;
-  const args = ['--print', '--output-format', 'stream-json'];
+  const args = ['--output-format', 'stream-json'];
 
   if (options.model) {
-    args.push('--model', options.model);
+    args.push('--model', kimiAlias(options.model));
   }
 
-  if (options.effort === 'low') {
-    args.push('--no-thinking');
-  } else if (options.effort === 'high') {
-    args.push('--thinking');
-  }
-
-  if (options.fullAccess || options.permission === 'auto') {
-    args.push('--auto');
-  } else if (options.permission === 'yolo') {
-    args.push('--yolo');
-  }
+  // Im Prompt-Modus lehnt die CLI --yolo, --auto und --plan ab („Cannot combine --prompt with …“); Freigaben regelt sie dort selbst.
 
   if (req.resume?.sessionId) {
     args.push('--session', req.resume.sessionId);
   } else if (req.resume?.continueLast) {
     args.push('--continue');
+  }
+
+  for (const dir of options.addDirs ?? []) {
+    args.push('--add-dir', dir);
   }
 
   args.push(...splitArgs(options.extraArgs));

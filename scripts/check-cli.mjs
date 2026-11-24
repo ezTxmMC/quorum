@@ -69,7 +69,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"Hallo vom 
   writeFileSync(agentPath, `#!/usr/bin/env node
 import { createInterface } from 'node:readline';
 import { createReadStream, writeSync } from 'node:fs';
-if (process.argv.includes('--print')) {
+if (process.argv.includes('--output-format')) {
   writeSync(1, JSON.stringify({ type: 'assistant', session_id: 'kimi-cli-1', message: { content: [{ type: 'text', text: 'Hallo von Kimi Code' }] } }) + '\\n');
   writeSync(1, JSON.stringify({ type: 'result', usage: { input_tokens: 10, output_tokens: 5 } }) + '\\n');
   process.exit(0);

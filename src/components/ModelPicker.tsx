@@ -25,7 +25,7 @@ export function useModelLabel(provider: ProviderId, model?: string): string {
 
 export function defaultModel(provider: ProviderId, status?: { models: { id: string }[] }): string | undefined {
   if (provider === 'claude') return 'claude-sonnet-5-5';
-  if (provider === 'kimi') return 'kimi-k3.1-pro';
+  if (provider === 'kimi') return status?.models[0]?.id ?? 'kimi-code/k3.1-pro';
   return status?.models[0]?.id;
 }
 

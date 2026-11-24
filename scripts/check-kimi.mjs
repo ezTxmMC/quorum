@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { API_PRESETS } from '../shared/api-presets.ts';
-import { KIMI_MODELS, PROVIDERS, modelLabel, modesFor } from '../shared/catalog.ts';
+import { KIMI_MODELS, PROVIDERS, canonicalModel, modelChoices, modelLabel, modesFor } from '../shared/catalog.ts';
+import { parseKimiModels } from '../shared/kimi-models.ts';
 import { apiCost, priceFor } from '../shared/pricing.ts';
 import { KimiParser, buildKimi } from '../electron/providers/kimi.ts';
 
@@ -10,9 +11,29 @@ assert.equal(kimiPreset.baseUrl, 'https://api.moonshot.ai/v1');
 assert.deepEqual(kimiPreset.models, ['kimi-k3.1-pro', 'kimi-k3.1-pro-highspeed', 'kimi-k3', 'kimi-k3-256k']);
 
 assert.equal(PROVIDERS.kimi.bin, 'kimi');
-assert.ok(KIMI_MODELS.some((model) => model.id === 'kimi-k3.1-pro'));
-assert.ok(KIMI_MODELS.some((model) => model.id === 'kimi-k3'));
-assert.deepEqual(modesFor('kimi'), ['ask', 'edit', 'auto', 'full']);
+assert.ok(KIMI_MODELS.some((model) => model.id === 'kimi-code/k3.1-pro'));
+assert.ok(KIMI_MODELS.some((model) => model.id === 'kimi-code/k3'));
+assert.equal(canonicalModel('kimi', 'kimi-k3.1-pro'), 'kimi-code/k3.1-pro', 'chats saved with the old CLI ids keep working');
+assert.equal(canonicalModel('kimi', 'kimi-code/k3'), 'kimi-code/k3');
+assert.equal(canonicalModel('api', 'kimi-k3.1-pro'), 'kimi-k3.1-pro', 'the Moonshot API keeps its own ids');
+
+const listed = parseKimiModels(JSON.stringify({ providers: { 'managed:kimi-code': { apiKey: 'secret' } }, models: {
+  'kimi-code/k3.1-pro': { provider: 'managed:kimi-code', model: 'k3.1-pro', displayName: 'K3.1 Pro', supportEfforts: ['low', 'high'] },
+  'kimi-code/kimi-for-coding': { provider: 'managed:kimi-code', model: 'kimi-for-coding', displayName: 'K2.8 Preview' },
+  'custom/x': { provider: 'managed:kimi-code', model: 'x' },
+} }));
+assert.deepEqual(listed, [
+  { id: 'kimi-code/k3.1-pro', label: 'Kimi K3.1 Pro', efforts: [], group: undefined },
+  { id: 'kimi-code/kimi-for-coding', label: 'Kimi K2.8 Preview', efforts: [], group: undefined },
+  { id: 'custom/x', label: 'custom/x', efforts: [], group: undefined },
+]);
+assert.ok(!JSON.stringify(listed).includes('secret'), 'credentials never leave the parser');
+assert.deepEqual(parseKimiModels('not json'), []);
+assert.equal(parseKimiModels(JSON.stringify({ models: { a: { provider: 'managed:one' }, b: { provider: 'two' } } }))[0].group, 'one', 'several providers are grouped');
+const dynamic = { kimi: { installed: true, models: listed } };
+assert.deepEqual(modelChoices('kimi', dynamic).map((model) => model.id), ['kimi-code/k3.1-pro', 'kimi-code/kimi-for-coding', 'custom/x'], 'the CLI list replaces the built-in fallback');
+assert.ok(modelChoices('kimi', {}).some((model) => model.id === 'kimi-code/k3'), 'fallback list without the CLI');
+assert.deepEqual(modesFor('kimi'), ['ask'], 'prompt mode accepts no permission flags');
 
 assert.equal(modelLabel({ id: 'kimi-k3.1-pro', label: 'kimi-k3.1-pro' }), 'Kimi K3.1 Pro');
 assert.equal(modelLabel({ id: 'kimi-k3.1-pro-highspeed', label: 'kimi-k3.1-pro-highspeed' }), 'Kimi K3.1 Pro Highspeed');
@@ -38,32 +59,33 @@ const built = buildKimi({
   resume: { sessionId: 'sess-42' },
   images: ['/tmp/shot.png'],
 });
-assert.deepEqual(built.args.slice(0, 10), [
-  '--print',
+assert.deepEqual(built.args.slice(0, 6), [
   '--output-format',
   'stream-json',
   '--model',
-  'kimi-k3.1-pro',
-  '--thinking',
-  '--yolo',
+  'kimi-code/k3.1-pro',
   '--session',
   'sess-42',
-  '-p',
 ]);
-assert.match(built.args[10], /Be concise/);
-assert.match(built.args[10], /@\/tmp\/shot\.png/);
-assert.match(built.args[10], /Explain this module/);
+assert.equal(built.args[6], '-p');
+assert.match(built.args[7], /Be concise/);
+assert.match(built.args[7], /@\/tmp\/shot\.png/);
+assert.match(built.args[7], /Explain this module/);
+for (const removed of ['--print', '--thinking', '--no-thinking', '--yolo', '--auto']) {
+  assert.ok(!built.args.includes(removed), `${removed} is rejected by the Kimi Code CLI in prompt mode`);
+}
 
 const builtAuto = buildKimi({
   runId: 'r2',
   provider: 'kimi',
   cwd: '/tmp',
   prompt: 'Fix tests',
-  options: { effort: 'low', fullAccess: true },
+  options: { effort: 'low', fullAccess: true, addDirs: ['/tmp/extra'] },
   resume: { continueLast: true },
 });
-assert.ok(builtAuto.args.includes('--no-thinking'));
-assert.ok(builtAuto.args.includes('--auto'));
+assert.ok(!builtAuto.args.includes('--no-thinking'));
+assert.deepEqual(builtAuto.args.slice(builtAuto.args.indexOf('--add-dir'), builtAuto.args.indexOf('--add-dir') + 2), ['--add-dir', '/tmp/extra']);
+assert.ok(!builtAuto.args.includes('--auto'));
 assert.ok(builtAuto.args.includes('--continue'));
 
 const parser = new KimiParser();

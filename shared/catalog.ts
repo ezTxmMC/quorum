@@ -1,4 +1,5 @@
 // Statischer Katalog: Welche Funktionen bietet welche CLI – die UI generiert daraus Formulare & Matrix.
+import { kimiAlias } from './kimi-models.ts';
 import type { DockState, ModelInfo, TerminalStyle, ProviderId, ProviderOptions } from './types';
 
 export interface Choice { value: string; label: string; hint?: string }
@@ -173,30 +174,28 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
     icon: 'lucide:moon-star',
     permissionLabel: 'Modus',
     permissions: [
-      { value: 'default', label: 'Standard', hint: 'Rückfragen werden im Headless-Betrieb nicht automatisch freigegeben' },
-      { value: 'yolo', label: 'Aktionen erlauben (--yolo)', hint: 'Routine-Edits und Shell-Befehle automatisch bestätigen' },
-      { value: 'auto', label: 'Auto (--auto)', hint: 'Unbeaufsichtigte Ausführung ohne Rückfragen' },
+      { value: 'default', label: 'Von der CLI vorgegeben', hint: 'Im Prompt-Modus nimmt Kimi Code keine Modus-Flags an; Aktionen, die eine Rückfrage bräuchten, lehnt die CLI ab' },
     ],
-    efforts: [
-      { value: 'low', label: 'Niedrig', hint: '--no-thinking' },
-      { value: 'high', label: 'Hoch', hint: '--thinking' },
-    ],
+    // Die Thinking-Stufe legt die CLI in ihrer config.toml fest; pro Aufruf lässt sie sich nicht setzen.
+    efforts: [],
     commands: [
-      { id: 'info', label: 'Info', icon: 'lucide:info', args: ['info'], hint: 'kimi info' },
-      { id: 'mcp', label: 'MCP-Server', icon: 'lucide:plug', args: ['mcp', 'list'], hint: 'kimi mcp list' },
+      { id: 'models', label: 'Anbieter & Modelle', icon: 'lucide:cpu', args: ['provider', 'list'], hint: 'kimi provider list' },
+      { id: 'sessions', label: 'Sitzungen', icon: 'lucide:history', args: ['session', 'list'], hint: 'kimi session list' },
+      { id: 'doctor', label: 'Konfiguration prüfen', icon: 'lucide:stethoscope', args: ['doctor'], hint: 'kimi doctor' },
       { id: 'version', label: 'Version', icon: 'lucide:tag', args: ['--version'], hint: 'kimi --version' },
     ],
-    features: ['Streaming (stream-json)', 'Kimi K3 / K3.1 Pro (1M Kontext)', 'Thinking-Modus (--thinking / --no-thinking)', 'Dateien & Shell-Tools', 'Session fortsetzen (--session / --continue)', 'MCP-Server', 'ACP-Kompatibel (kimi acp)'],
+    features: ['Streaming (stream-json)', 'Kimi K3 / K3.1 Pro (1M Kontext)', 'Modellliste aus der CLI (kimi provider list)', 'Dateien & Shell-Tools', 'Session fortsetzen (--session / --continue)', 'MCP-Server', 'ACP-Kompatibel (kimi acp)'],
   },
 };
 
 export const PROVIDER_ORDER: ProviderId[] = ['claude', 'codex', 'antigravity', 'kimi', 'opencode', 'acp', 'ollama', 'local', 'api'];
 
+/** Rückfall, solange die CLI nicht installiert ist oder ihre Modellliste nicht liefert; sonst kommt die Liste aus `kimi provider list`. */
 export const KIMI_MODELS: ModelInfo[] = [
-  { id: 'kimi-k3.1-pro', label: 'Kimi K3.1 Pro' },
-  { id: 'kimi-k3.1-pro-highspeed', label: 'Kimi K3.1 Pro Highspeed' },
-  { id: 'kimi-k3', label: 'Kimi K3' },
-  { id: 'kimi-k3-256k', label: 'Kimi K3 256K', legacy: true },
+  { id: 'kimi-code/k3.1-pro', label: 'Kimi K3.1 Pro', efforts: [] },
+  { id: 'kimi-code/k3.1-pro-highspeed', label: 'Kimi K3.1 Pro Highspeed', efforts: [] },
+  { id: 'kimi-code/k3', label: 'Kimi K3', efforts: [] },
+  { id: 'kimi-code/k3-256k', label: 'Kimi K3 256K', efforts: [], legacy: true },
 ];
 
 // Versioned IDs keep an explicit selection stable when CLI aliases move to a newer release.
@@ -225,6 +224,9 @@ const CLAUDE_ALIASES: Record<string, string> = {
 };
 
 export function canonicalModel(provider: ProviderId, id?: string): string | undefined {
+  if (provider === 'kimi' && id) {
+    return kimiAlias(id);
+  }
   return provider === 'claude' && id ? CLAUDE_ALIASES[id] ?? id : id;
 }
 
@@ -237,7 +239,7 @@ export const DEFAULT_OPTIONS: Record<ProviderId, ProviderOptions> = {
   claude: { permission: 'acceptEdits', model: 'claude-sonnet-5-5' },
   codex: { sandbox: 'workspace-write' },
   antigravity: { permission: 'allow-commands' },
-  kimi: { permission: 'yolo', model: 'kimi-k3.1-pro' },
+  kimi: { permission: 'default', model: 'kimi-code/k3.1-pro' },
   opencode: {},
   ollama: {},
   local: {},
@@ -271,8 +273,7 @@ const MODE_MAP: Partial<Record<ProviderId, Partial<Record<ModeId, ProviderOption
     auto: { permission: 'auto' }, full: { fullAccess: true },
   },
   kimi: {
-    ask: { permission: 'default' }, edit: { permission: 'yolo' },
-    auto: { permission: 'auto' }, full: { fullAccess: true },
+    ask: { permission: 'default' },
   },
 };
 
@@ -469,7 +470,9 @@ export function modelChoices(
   customIds: string[] = [],
   includeImages = false,
 ): ModelInfo[] {
-  const known = provider === 'claude' ? CLAUDE_MODELS : provider === 'kimi' ? KIMI_MODELS : [];
+  // Kimi: die feste Liste gilt nur, solange die CLI keine eigene liefert – sonst erschienen Modelle, die das Konto gar nicht hat.
+  const kimiKnown = statuses.kimi?.models.length ? [] : KIMI_MODELS;
+  const known = provider === 'claude' ? CLAUDE_MODELS : provider === 'kimi' ? kimiKnown : [];
   const regular = [...known, ...(statuses[provider]?.models ?? [])]
     .filter((m) => !m.image)
     .map((m) => {
