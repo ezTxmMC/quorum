@@ -57,8 +57,8 @@
     "test": "npm run build:cli && node scripts/suites.test.mjs",
     "test:integration": "npm run build:worker && npm run build:cli && npm run build:chat-host && npm run test:chat-host && npm run test:chat-provider-worker && npm run test:native-runtime && npm run test:native-provider-worker && npm run test:plan-cli && npm run test:lsp-servers && node scripts/integration-ollama.mjs",
     "build:tauri-assets": "npm run build:chat-host && npm run build:worker && vite build -c vite.service.config.ts",
-    "tauri:dev": "cargo tauri dev",
-    "tauri:build": "cargo tauri build",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
     "dev:web": "vite --mode tauri --host 127.0.0.1 --port 1420 --strictPort",
     "build:web": "vite build --mode tauri",
     "gpui:dev": "npm run build:chat-host && cargo run --locked --manifest-path native/quorum-desktop/Cargo.toml",
@@ -82,6 +82,7 @@
   "devDependencies": {
     "@iconify/types": "^2.0.0",
     "@tailwindcss/vite": "^4.0.0",
+    "@tauri-apps/cli": "^2.12.6",
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

@@ -8,7 +8,6 @@ Install Node.js 24 or newer, npm and stable Rust with Cargo. The Tauri desktop a
 
 ```sh
 npm ci
-cargo install tauri-cli --version '^2' --locked
 npm run tauri:dev
 ```
 
