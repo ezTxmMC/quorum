@@ -39,6 +39,8 @@ export function PlanWorkspace() {
   const root = useHub((state) => state.ideRootPath);
   const ideOpenFile = useHub((state) => state.ideOpenFile);
   const idePlanAction = useHub((state) => state.idePlanAction);
+  const ideWorkspaceRequest = useHub((state) => state.ideWorkspaceRequest);
+  const [fileRequest, setFileRequest] = useState(0);
   const { setIdeRootPath } = useHub.getState();
 
   const [editorDirty, setEditorDirty] = useState(false);
@@ -64,7 +66,7 @@ export function PlanWorkspace() {
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.repeat) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.repeat || useHub.getState().settingsTab) {
         return;
       }
       const key = event.key.toLowerCase();
@@ -103,18 +105,34 @@ export function PlanWorkspace() {
     return () => { active = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Aktionen aus der Seitenleiste bleiben im Store stehen; ohne Abgleich liefen sie bei jeder Rückkehr in den Workspace erneut.
+  const handledOpenFile = useRef(ideOpenFile?.seq ?? 0);
+  const handledPlanAction = useRef(idePlanAction?.seq ?? 0);
+  const handledWorkspaceRequest = useRef(ideWorkspaceRequest);
+
   useEffect(() => {
-    if (!ideOpenFile?.path) {
+    if (!ideOpenFile?.path || ideOpenFile.seq === handledOpenFile.current) {
       return;
     }
+    handledOpenFile.current = ideOpenFile.seq;
     setFile(ideOpenFile.path);
+    setFileRequest(ideOpenFile.seq);
     setTab('editor');
   }, [ideOpenFile]);
 
   useEffect(() => {
-    if (!idePlanAction) {
+    if (ideWorkspaceRequest === handledWorkspaceRequest.current) {
       return;
     }
+    handledWorkspaceRequest.current = ideWorkspaceRequest;
+    void pickWorkspace();
+  }, [ideWorkspaceRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!idePlanAction || idePlanAction.seq === handledPlanAction.current) {
+      return;
+    }
+    handledPlanAction.current = idePlanAction.seq;
     if (idePlanAction.kind === 'new') {
       if (!canLeave()) {
         return;
@@ -230,6 +248,10 @@ export function PlanWorkspace() {
       return;
     }
     const resolved = await hub.ideRoot(folder);
+    // Ein anderer Ordner lädt den Editor neu; offene Änderungen gingen sonst kommentarlos verloren.
+    if (resolved !== root && !canLeave()) {
+      return;
+    }
     setIdeRootPath(resolved);
     setFile(undefined);
     useHub.getState().addProject(resolved);
@@ -499,7 +521,7 @@ export function PlanWorkspace() {
 
         {root && (
           <div className={`${tab === 'editor' ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col`}>
-            <WorkspaceEditor key={root} root={root} file={file} onDirty={setEditorDirty} />
+            <WorkspaceEditor key={root} root={root} file={file} fileRequest={fileRequest} onDirty={setEditorDirty} />
           </div>
         )}
       </section>

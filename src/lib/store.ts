@@ -85,6 +85,8 @@ interface State {
   /** IDE-Sidebar ↔ WorkspaceEditor / PlanWorkspace Synchronisierung. */
   ideRootPath: string;
   setIdeRootPath: (root: string) => void;
+  ideWorkspaceRequest: number;
+  requestIdeWorkspace: () => void;
   ideOpenFile: { path: string; seq: number } | null;
   openIdeFile: (path: string) => void;
   ideQuickAction: { kind: 'files' | 'content'; seq: number } | null;
@@ -222,6 +224,8 @@ export const useHub = create<State>((set, get) => {
     bumpThreeDRevision: () => set((state) => ({ threeDRevision: state.threeDRevision + 1 })),
     ideRootPath: '',
     setIdeRootPath: (ideRootPath) => set({ ideRootPath }),
+    ideWorkspaceRequest: 0,
+    requestIdeWorkspace: () => set((state) => ({ ideWorkspaceRequest: state.ideWorkspaceRequest + 1 })),
     ideOpenFile: null,
     openIdeFile: (path) => set((state) => ({ ideOpenFile: { path, seq: (state.ideOpenFile?.seq ?? 0) + 1 } })),
     ideQuickAction: null,

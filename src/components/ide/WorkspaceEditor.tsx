@@ -11,7 +11,7 @@ import { cx } from '@/components/ui';
 
 type Buffer = EditorDocument & { savedText: string; conflict?: boolean };
 
-export function WorkspaceEditor({ root, file, onDirty }: { root: string; file?: string; onDirty: (dirty: boolean) => void }) {
+export function WorkspaceEditor({ root, file, fileRequest, onDirty }: { root: string; file?: string; fileRequest?: number; onDirty: (dirty: boolean) => void }) {
   const ideQuickAction = useHub((state) => state.ideQuickAction);
   const [buffers, setBuffers] = useState<Buffer[]>([]);
   const [selected, setSelected] = useState('');
@@ -60,7 +60,8 @@ export function WorkspaceEditor({ root, file, onDirty }: { root: string; file?: 
     } catch (reason) { report(reason); }
   };
 
-  useEffect(() => { if (file) { void open(file); } }, [file, root]);
+  // fileRequest zählt jeden Klick: dieselbe Datei erneut zu wählen öffnet bzw. fokussiert sie wieder.
+  useEffect(() => { if (file) { void open(file); } }, [file, root, fileRequest]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (buffersRef.current.some((buffer) => buffer.text !== buffer.savedText)) { event.preventDefault(); event.returnValue = ''; }
@@ -175,7 +176,7 @@ export function WorkspaceEditor({ root, file, onDirty }: { root: string; file?: 
                     onClick={() => {
                       if (modified && !window.confirm('Ungespeicherte Änderungen verwerfen?')) { return; }
                       setBuffers((previous) => previous.filter((item) => item.path !== buffer.path));
-                      if (selected === buffer.path) { setSelected(buffers.find((item) => item.path !== buffer.path)?.path ?? ''); }
+                      if (selected === buffer.path) { setDiskText(null); setSelected(buffers.find((item) => item.path !== buffer.path)?.path ?? ''); }
                     }}
                   >
                     <Icon name="lucide:x" size={11} />

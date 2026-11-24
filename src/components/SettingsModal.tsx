@@ -128,7 +128,10 @@ function HotkeyField({ value, onChange }: { value: string; onChange: (value: str
           if (!recording) {
             return;
           }
+          // Die aufgezeichnete Kombination darf nicht zugleich ein App-Kürzel auslösen oder den Dialog schließen.
           event.preventDefault();
+          event.stopPropagation();
+          event.nativeEvent.stopImmediatePropagation();
           if (event.key === 'Escape') {
             setRecording(false);
             return;

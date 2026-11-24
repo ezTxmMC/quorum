@@ -128,9 +128,11 @@ export function MultiBuilder() {
   const [saving, setSaving] = useState<string | null>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
 
-  // Startteam: zwei verschiedene Modelle, sobald die Modelllisten geladen sind.
+  // Startteam: zwei verschiedene Modelle, sobald die Modelllisten geladen sind – nur einmal, damit ein geleertes Team leer bleibt.
+  const seeded = useRef(false);
   useEffect(() => {
-    if (agents.length || !statuses.claude || !statuses.codex) return;
+    if (seeded.current || agents.length || !statuses.claude || !statuses.codex) return;
+    seeded.current = true;
     const list: AgentSpec[] = [];
     for (const p of ['claude', 'codex'] as ProviderId[]) { if (statuses[p]?.installed) list.push(makeAgent(p, defaultModel(p, statuses[p]), list)); }
     if (list.length) setAgents(autoRoles(list, strategy, locked));

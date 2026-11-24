@@ -182,7 +182,7 @@ function IdeFileTree({ root, directory, selected, depth = 0, onOpen }: { root: s
 export function IdeSidebar({ pinned, onClose }: SidebarProps) {
   const root = useHub((state) => state.ideRootPath);
   const selectedFile = useHub((state) => state.ideOpenFile?.path ?? '');
-  const { setIdeRootPath, openIdeFile, triggerIdeQuickAction, triggerIdePlanAction, addProject } = useHub.getState();
+  const { openIdeFile, triggerIdeQuickAction, triggerIdePlanAction } = useHub.getState();
 
   const [section, setSection] = useState<'files' | 'plans'>('files');
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -196,15 +196,8 @@ export function IdeSidebar({ pinned, onClose }: SidebarProps) {
     return () => { alive = false; };
   }, [section]);
 
-  const pickWorkspace = async () => {
-    const folder = await hub.pickFolder();
-    if (!folder) {
-      return;
-    }
-    const resolved = await hub.ideRoot(folder);
-    setIdeRootPath(resolved);
-    addProject(resolved);
-  };
+  // Der Wechsel läuft über den Workspace selbst: nur er kennt ungespeicherte Änderungen und offene Dateien.
+  const pickWorkspace = () => useHub.getState().requestIdeWorkspace();
 
   const workspaceName = root ? root.split(/[\\/]/).filter(Boolean).pop() ?? root : '';
 

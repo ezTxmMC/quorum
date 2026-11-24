@@ -181,7 +181,11 @@ export function ThreeDPage() {
       provider,
       options: { ...defaults, model: resolvedModel },
     };
-    const started = await hub.threedRun(targetId, goal, engine, 6);
+    const started = await hub.threedRun(targetId, goal, engine, 6).catch((reason: unknown) => {
+      setRunning(false);
+      setStatusText('');
+      throw reason;
+    });
     if (!started) {
       setRunning(false);
       setStatusText('');
