@@ -76,7 +76,7 @@ export const MonacoPane = forwardRef<MonacoPaneHandle, Props>(function MonacoPan
     };
   }, []);
 
-  useEffect(() => { monaco.editor.setTheme(theme === 'light' ? 'vs' : 'vs-dark'); }, [theme]);
+  useEffect(() => { monaco.editor.setTheme(theme === 'light' ? 'quorum-light' : 'quorum-dark'); }, [theme]);
 
   useEffect(() => {
     const paths = new Set(props.documents.map((document) => document.path));

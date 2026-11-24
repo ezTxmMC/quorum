@@ -29,6 +29,48 @@ import 'monaco-editor/languages/definitions/rust/register';
 
 self.MonacoEnvironment = { getWorker: (_id, label) => label === 'json' ? new JsonWorker() : new EditorWorker() };
 
+monaco.editor.defineTheme('quorum-dark', {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#171a21',
+    'editorGutter.background': '#171a21',
+    'editor.lineHighlightBackground': '#1e222b',
+    'editor.selectionBackground': '#7c8cff40',
+    'editor.inactiveSelectionBackground': '#7c8cff22',
+    'editorLineNumber.foreground': '#5a6378',
+    'editorLineNumber.activeForeground': '#a3adbf',
+    'editorIndentGuide.background1': '#292f3d',
+    'editorIndentGuide.activeBackground1': '#3b4357',
+    'editorWidget.background': '#1e222b',
+    'editorWidget.border': '#2e3444',
+    'editorSuggestWidget.background': '#1e222b',
+    'editorSuggestWidget.border': '#2e3444',
+    'editorSuggestWidget.selectedBackground': '#292f3d',
+    'editorHoverWidget.background': '#1e222b',
+    'editorHoverWidget.border': '#2e3444',
+    'input.background': '#202530',
+    'scrollbarSlider.background': '#ffffff24',
+    'scrollbarSlider.hoverBackground': '#ffffff3a',
+    'scrollbarSlider.activeBackground': '#ffffff4d',
+  },
+});
+
+monaco.editor.defineTheme('quorum-light', {
+  base: 'vs',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#f7f7f5',
+    'editorGutter.background': '#f7f7f5',
+    'editor.lineHighlightBackground': '#efeee9',
+    'editorWidget.background': '#ffffff',
+    'editorSuggestWidget.background': '#ffffff',
+    'editorHoverWidget.background': '#ffffff',
+  },
+});
+
 export function monacoLanguage(languageId: string): string {
   if (languageId === 'typescriptreact') { return 'typescript'; }
   if (languageId === 'javascriptreact') { return 'javascript'; }
