@@ -474,7 +474,7 @@ export const useHub = create<State>((set, get) => {
       }
       // Nach vorn stellen und nur den Lauf beenden: beim Ende eines Laufs wird automatisch der erste wartende Eintrag gesendet.
       set((st) => ({ queued: { ...st.queued, [sessionId]: [item, ...rest()] } }));
-      for (const runId of runIds) void hub.cancel(runId);
+      for (const runId of runIds) { interruptedRuns.add(runId); void hub.cancel(runId); }
     },
     async submit(sessionId, text, opts = {}) {
       const s = get().data.sessions.find((x) => x.id === sessionId);
@@ -707,6 +707,8 @@ export const useHub = create<State>((set, get) => {
 
 type QItem = { kind: 'run'; runId: string; event: HubEvent; sequence?: number } | { kind: 'multi'; multiId: string; event: MultiEvent };
 let queue: QItem[] = [];
+/** Läufe, die „Jetzt senden“ beendet hat: ihr Ende gilt als regulär, damit die vorgezogene Nachricht direkt startet. */
+const interruptedRuns = new Set<string>();
 let scheduled = false;
 
 function flush() {
@@ -741,6 +743,8 @@ function flush() {
             if (entry.sequence !== undefined && msg.workerRunId === runId && (msg.workerSequence ?? 0) >= entry.sequence) { continue; }
             const ev = entry.event;
             msg = applyEvent(msg, ev);
+            // Für „Jetzt senden“ bewusst beendet: der Abbruch ist kein Fehler.
+            if (ev.type === 'done' && interruptedRuns.has(runId)) { msg = { ...msg, error: undefined }; }
             if (entry.sequence !== undefined) { msg = { ...msg, workerRunId: runId, workerSequence: entry.sequence, workerDone: ev.type === 'done' ? true : msg.workerDone }; }
             if (ev.type === 'model_project') modelProjectId = ev.projectId;
             if (ev.type === 'session') providerSessions = { ...providerSessions, [route.provider]: ev.sessionId };
@@ -755,7 +759,7 @@ function flush() {
       const done = events.map((entry) => entry.event).find((e): e is Extract<HubEvent, { type: 'done' }> => e.type === 'done');
       if (done) {
         const { [runId]: _gone, ...rest } = runs; runs = rest;
-        if (done.ok) finished.push(route.sessionId);
+        if (interruptedRuns.delete(runId) || done.ok) finished.push(route.sessionId);
         else {
           const sess = data.sessions.find((x) => x.id === route.sessionId);
           const err = sess?.messages.find((m) => m.id === route.messageId)?.error ?? done.error ?? '';
