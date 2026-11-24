@@ -196,7 +196,7 @@ export function MultiBuilder() {
               {() => (
                 <div className="w-80 space-y-2 p-2.5">
                   <div><Label>{t('Arbeitsweise')}</Label><Select value={isolation} onChange={setIsolation} options={[{ value: 'shared', label: t('Gemeinsamer Ordner (nacheinander)') }, { value: 'worktree', label: t('Git-Worktree je Agent') }]} /></div>
-                  <Toggle checked={parallel && isolation === 'worktree'} onChange={setParallel} label={t('Aufgaben parallel')} hint={isolation === 'worktree' ? 'Danach wird automatisch gemergt' : 'Benötigt Worktree'} />
+                  <Toggle checked={parallel && isolation === 'worktree'} onChange={setParallel} label={t('Aufgaben parallel')} hint={isolation === 'worktree' ? t('Danach wird automatisch gemergt') : t('Benötigt Worktree')} />
                   <Toggle checked={autonomous} onChange={setAutonomous} label={t('Darf Dateien ändern & Befehle ausführen')} hint={t('Sonst werden schreibende Tools abgelehnt')} />
                   {usesRounds && <div className="flex items-center justify-between"><Label>{t('Max. Runden')}</Label><input type="number" min={1} max={8} className="field !w-20" value={rounds} onChange={(e) => setRounds(Math.max(1, Number(e.target.value) || 1))} /></div>}
                 </div>

@@ -1,4 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 
@@ -16,11 +17,11 @@ export function ActivityRail() {
   const inChat = location.pathname === '/' || location.pathname.startsWith('/chat');
 
   return (
-    <nav aria-label="Arbeitsbereiche" className="workbench-rail z-30 flex w-11 shrink-0 flex-col items-center gap-1.5 border-r border-edge py-2.5">
+    <nav aria-label={t('Arbeitsbereiche')} className="workbench-rail z-30 flex w-11 shrink-0 flex-col items-center gap-1.5 border-r border-edge py-2.5">
       <button
         className={`workbench-rail-item ${inChat ? 'is-active' : ''}`}
-        title="Neuer Chat"
-        aria-label="Neuer Chat"
+        title={t('Neuer Chat')}
+        aria-label={t('Neuer Chat')}
         onClick={() => navigate(`/chat/${useHub.getState().newSession()}`)}
       >
         <Icon name="lucide:messages-square" size={18} />
@@ -29,8 +30,8 @@ export function ActivityRail() {
         <NavLink
           key={entry.to}
           to={entry.to}
-          title={entry.title}
-          aria-label={entry.title}
+          title={t(entry.title)}
+          aria-label={t(entry.title)}
           className={({ isActive }) => `workbench-rail-item ${isActive ? 'is-active' : ''}`}
         >
           <Icon name={entry.icon} size={18} />
@@ -39,8 +40,8 @@ export function ActivityRail() {
       <div className="flex-1" />
       <button
         className="workbench-rail-item"
-        title="Einstellungen"
-        aria-label="Einstellungen"
+        title={t('Einstellungen')}
+        aria-label={t('Einstellungen')}
         onClick={() => useHub.getState().openSettings()}
       >
         <Icon name="lucide:settings-2" size={18} />

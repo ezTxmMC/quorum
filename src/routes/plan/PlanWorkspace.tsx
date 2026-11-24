@@ -3,6 +3,7 @@ import { useBlocker, useLocation, useNavigate } from 'react-router-dom';
 import type { ApprovalScope, PlanDefinition, PlanSnapshot } from '@shared/plan/types';
 import { initialDefinition } from '@shared/plan/validation';
 import { hub } from '@/lib/api';
+import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { WorkspaceEditor } from '@/components/ide/WorkspaceEditor';
@@ -220,7 +221,7 @@ export function PlanWorkspace() {
     if (!dirty && !editorDirty) {
       return false;
     }
-    return !window.confirm('Ungespeicherte Änderungen verwerfen und die Ansicht verlassen?');
+    return !window.confirm(t('Ungespeicherte Änderungen verwerfen und die Ansicht verlassen?'));
   });
 
   useEffect(() => {
@@ -245,7 +246,7 @@ export function PlanWorkspace() {
     return () => useHub.setState({ ideDirty: false });
   }, [dirty, editorDirty]);
 
-  const canLeave = () => (!dirty && !editorDirty) || window.confirm('Ungespeicherte Änderungen verwerfen?');
+  const canLeave = () => (!dirty && !editorDirty) || window.confirm(t('Ungespeicherte Änderungen verwerfen?'));
 
   const pickWorkspace = () => action(async () => {
     const folder = await hub.pickFolder();
@@ -277,7 +278,7 @@ export function PlanWorkspace() {
 
   const approval = () => action(async () => {
     if (!snapshot || dirty || inspectedRevision !== snapshot.plan.currentRevisionId) {
-      throw new Error('Zuerst die aktuelle Revision speichern');
+      throw new Error(t('Zuerst die aktuelle Revision speichern'));
     }
     const allowedTools = ['read', ...(allowWrite ? ['write'] : []), ...(allowShell ? ['shell'] : []), ...(allowNetwork ? ['network'] : [])];
     const scope: ApprovalScope = {
@@ -308,7 +309,7 @@ export function PlanWorkspace() {
                 )}
               >
                 <Icon name={item.icon} size={12} />
-                <span>{item.label}</span>
+                <span>{t(item.label)}</span>
               </button>
             ))}
           </div>
@@ -318,21 +319,21 @@ export function PlanWorkspace() {
           {tab !== 'editor' && (
             <div className="flex flex-wrap items-center gap-1.5">
               <input
-                aria-label="Plantitel"
+                aria-label={t('Plantitel')}
                 className="field !w-48 !py-1 text-[12px]"
-                placeholder="Titel des Plans"
+                placeholder={t('Titel des Plans')}
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
               />
               <button className="btn btn-primary !py-1 text-[11.5px]" disabled={busy || !root || !title.trim()} onClick={() => void save()}>
-                Speichern{dirty ? ' •' : ''}
+                {t('Speichern')}{dirty ? ' •' : ''}
               </button>
               <button
                 className="btn !py-1 text-[11.5px]"
                 disabled={busy || !snapshot || dirty || inspectedRevision !== snapshot.plan.currentRevisionId || snapshot.plan.status === 'archived'}
                 onClick={() => setScopeOpen((previous) => !previous)}
               >
-                Freigabe
+                {t('Freigabe')}
               </button>
               <button
                 className="btn !py-1 text-[11.5px]"
@@ -345,7 +346,7 @@ export function PlanWorkspace() {
                 }}
               >
                 <Icon name="lucide:sparkles" size={12} />
-                <span>Mit KI</span>
+                <span>{t('Mit KI')}</span>
               </button>
             </div>
           )}
@@ -362,20 +363,20 @@ export function PlanWorkspace() {
         {scopeOpen && (
           <div className="space-y-2.5 border-b border-edge bg-surface/60 px-4 py-3 text-[12.5px]">
             <div className="flex items-center justify-between">
-              <span className="font-medium">Freigabe für Revision {revision?.revision}</span>
+              <span className="font-medium">{t('Freigabe für Revision')} {revision?.revision}</span>
               <button className="icon-btn !size-6" onClick={() => setScopeOpen(false)}><Icon name="lucide:x" size={13} /></button>
             </div>
             <label className="block text-[11.5px] text-muted">
-              Erlaubte Pfade relativ zum Workspace (ein Pfad pro Zeile)
+              {t('Erlaubte Pfade relativ zum Workspace (ein Pfad pro Zeile)')}
               <textarea className="field mt-1 block min-h-16 w-full font-mono text-[12px]" value={paths} onChange={(event) => setPaths(event.target.value)} />
             </label>
             <div className="flex flex-wrap items-center gap-4 text-[12px]">
-              <label className="flex items-center gap-1.5"><input type="checkbox" checked={allowWrite} onChange={(event) => setAllowWrite(event.target.checked)} /> Dateien schreiben</label>
+              <label className="flex items-center gap-1.5"><input type="checkbox" checked={allowWrite} onChange={(event) => setAllowWrite(event.target.checked)} /> {t('Dateien schreiben')}</label>
               <label className="flex items-center gap-1.5"><input type="checkbox" checked={allowShell} onChange={(event) => setAllowShell(event.target.checked)} /> Shell</label>
-              <label className="flex items-center gap-1.5"><input type="checkbox" checked={allowNetwork} onChange={(event) => setAllowNetwork(event.target.checked)} /> Netzwerk</label>
+              <label className="flex items-center gap-1.5"><input type="checkbox" checked={allowNetwork} onChange={(event) => setAllowNetwork(event.target.checked)} /> {t('Netzwerk')}</label>
               <div className="flex-1" />
               <button className="btn btn-primary !py-1 text-[12px]" disabled={busy} onClick={() => void approval()}>
-                Scope freigeben
+                {t('Scope freigeben')}
               </button>
             </div>
           </div>
@@ -388,7 +389,7 @@ export function PlanWorkspace() {
             <div className="mx-auto max-w-4xl">
               {snapshot && (
                 <section className="mb-5 space-y-2.5 rounded-lumen border border-edge bg-surface/60 p-4">
-                  <h2 className="text-[13px] font-semibold">Rückfragen</h2>
+                  <h2 className="text-[13px] font-semibold">{t('Rückfragen')}</h2>
                   {snapshot.questions.filter((question) => question.revisionId === snapshot.plan.currentRevisionId).map((question) => (
                     <div key={question.id} className="space-y-1 text-[12.5px]">
                       <p>{question.question}</p>
@@ -396,21 +397,21 @@ export function PlanWorkspace() {
                         <p className="text-muted">{question.answer}</p>
                       ) : (
                         <div className="flex gap-2">
-                          <input className="field flex-1" aria-label="Antwort" value={answers[question.id] ?? ''} onChange={(event) => setAnswers((previous) => ({ ...previous, [question.id]: event.target.value }))} />
-                          <button className="btn" disabled={busy || dirty || !answers[question.id]?.trim()} onClick={() => void action(async () => { accept(await hub.planAnswer(snapshot.plan.id, question.id, answers[question.id])); })}>Antwort speichern</button>
+                          <input className="field flex-1" aria-label={t('Antwort')} value={answers[question.id] ?? ''} onChange={(event) => setAnswers((previous) => ({ ...previous, [question.id]: event.target.value }))} />
+                          <button className="btn" disabled={busy || dirty || !answers[question.id]?.trim()} onClick={() => void action(async () => { accept(await hub.planAnswer(snapshot.plan.id, question.id, answers[question.id])); })}>{t('Antwort speichern')}</button>
                         </div>
                       )}
                     </div>
                   ))}
                   <div className="flex gap-2">
-                    <input aria-label="Neue Rückfrage" className="field flex-1" placeholder="Offene Frage zum Plan" value={questionText} onChange={(event) => setQuestionText(event.target.value)} />
-                    <button className="btn" disabled={busy || dirty || !questionText.trim()} onClick={() => void action(async () => { accept(await hub.planAsk(snapshot.plan.id, snapshot.plan.currentRevisionId, questionText)); setQuestionText(''); await refresh(); })}>Frage hinzufügen</button>
+                    <input aria-label={t('Neue Rückfrage')} className="field flex-1" placeholder={t('Offene Frage zum Plan')} value={questionText} onChange={(event) => setQuestionText(event.target.value)} />
+                    <button className="btn" disabled={busy || dirty || !questionText.trim()} onClick={() => void action(async () => { accept(await hub.planAsk(snapshot.plan.id, snapshot.plan.currentRevisionId, questionText)); setQuestionText(''); await refresh(); })}>{t('Frage hinzufügen')}</button>
                   </div>
                 </section>
               )}
               {!revision && (
                 <p className="py-10 text-center text-[13px] text-subtle">
-                  Wähle einen Plan oder erstelle unter „Plan“ eine neue Revision.
+                  {t('Wähle einen Plan oder erstelle unter „Plan“ eine neue Revision.')}
                 </p>
               )}
               {revision && (
@@ -424,7 +425,7 @@ export function PlanWorkspace() {
                           <article key={task.id} className="rounded-lumen border border-edge bg-surface/60 p-3.5">
                             <h4 className="font-medium text-fg">{task.title} <span className="ml-1.5 text-[11px] text-subtle">{task.priority} · {task.complexity}</span></h4>
                             <p className="my-1.5 text-[12.5px] text-muted">{task.description}</p>
-                            {task.dependencies.length > 0 && <p className="text-[11.5px] text-subtle">Abhängigkeiten: {task.dependencies.join(', ')}</p>}
+                            {task.dependencies.length > 0 && <p className="text-[11.5px] text-subtle">{t('Abhängigkeiten')}: {task.dependencies.join(', ')}</p>}
                             <ul className="my-2 list-inside list-disc text-[12.5px] text-muted">
                               {task.acceptanceCriteria.map((criterion) => (
                                 <li key={criterion.id}>{criterion.description} <span className="text-subtle">({criterion.verification})</span></li>
@@ -453,7 +454,7 @@ export function PlanWorkspace() {
           <div className="min-h-0 flex-1 overflow-auto p-5 text-[13px]">
             <div className="mx-auto max-w-4xl">
               {!snapshot ? (
-                <p className="py-10 text-center text-subtle">Noch kein Plan geladen.</p>
+                <p className="py-10 text-center text-subtle">{t('Noch kein Plan geladen.')}</p>
               ) : (
                 <>
                   <div className="mb-4 flex gap-2">
@@ -465,21 +466,21 @@ export function PlanWorkspace() {
                       anchor.download = 'quorum-plan.json';
                       anchor.click();
                       setTimeout(() => URL.revokeObjectURL(url), 1000);
-                    })}>Exportieren</button>
+                    })}>{t('Exportieren')}</button>
                     <button className="btn" disabled={busy} onClick={() => {
                       if (!canLeave()) {
                         return;
                       }
                       void action(async () => { accept(await hub.planArchive(snapshot.plan.id)); await refresh(); });
-                    }}>Archivieren</button>
+                    }}>{t('Archivieren')}</button>
                   </div>
-                  <h2 className="mb-2 font-medium">Revisionen</h2>
+                  <h2 className="mb-2 font-medium">{t('Revisionen')}</h2>
                   <div className="mb-3 flex flex-wrap gap-2">
                     {snapshot.revisions.map((candidate) => (
                       <button key={candidate.id} className="btn text-[12px]" onClick={() => {
                         setInspectedRevision(candidate.id);
                         setPreviousDefinition(JSON.stringify({ ...candidate, contentHash: undefined }, null, 2));
-                      }}>Revision {candidate.revision} · {candidate.contentHash.slice(0, 10)}</button>
+                      }}>{t('Revision')} {candidate.revision} · {candidate.contentHash.slice(0, 10)}</button>
                     ))}
                   </div>
                   {revision && previousDefinition && (
@@ -487,15 +488,15 @@ export function PlanWorkspace() {
                       const { objective, requirements, constraints, assumptions, outOfScope, phases, tasks, modelAssignments } = revision;
                       setDefinition(JSON.stringify({ objective, requirements, constraints, assumptions, outOfScope, phases, tasks, modelAssignments }, null, 2));
                       setTab('definition');
-                    }}>Als neuen Entwurf übernehmen</button>
+                    }}>{t('Als neuen Entwurf übernehmen')}</button>
                   )}
                   {previousDefinition && <pre className="my-3 max-h-80 overflow-auto rounded-lumen border border-edge bg-surface p-3 text-[12px]">{previousDefinition}</pre>}
-                  <h2 className="my-3 font-medium">Freigaben</h2>
+                  <h2 className="my-3 font-medium">{t('Freigaben')}</h2>
                   {snapshot.approvals.map((item) => (
                     <div key={item.id} className="mb-2 rounded-lumen border border-edge bg-surface/60 p-3">
-                      <p className="text-[12px] text-muted">{item.approvedAt} · {item.revokedAt ? 'widerrufen' : item.revisionId === snapshot.plan.currentRevisionId ? 'aktuelle Revision' : 'alte Revision'}</p>
+                      <p className="text-[12px] text-muted">{item.approvedAt} · {item.revokedAt ? t('widerrufen') : item.revisionId === snapshot.plan.currentRevisionId ? t('aktuelle Revision') : t('alte Revision')}</p>
                       <pre className="mt-1 overflow-auto text-[11.5px]">{JSON.stringify(item.scope, null, 2)}</pre>
-                      {!item.revokedAt && <button className="btn mt-2 text-[11.5px]" disabled={busy || dirty} onClick={() => void action(async () => { accept(await hub.planRevoke(snapshot.plan.id, item.id)); await refresh(); })}>Widerrufen</button>}
+                      {!item.revokedAt && <button className="btn mt-2 text-[11.5px]" disabled={busy || dirty} onClick={() => void action(async () => { accept(await hub.planRevoke(snapshot.plan.id, item.id)); await refresh(); })}>{t('Widerrufen')}</button>}
                     </div>
                   ))}
                   <h2 className="my-3 font-medium">Audit</h2>
@@ -515,11 +516,11 @@ export function PlanWorkspace() {
             </div>
             <h1 className="mb-1.5 text-[20px] font-semibold tracking-tight text-fg">IDE Workspace</h1>
             <p className="mb-5 max-w-md text-[13px] text-muted">
-              Öffne einen Projektordner, um Dateien mit Monaco-Editor, LSP-Diagnosen und Schnellsuche zu bearbeiten.
+              {t('Öffne einen Projektordner, um Dateien mit Monaco-Editor, LSP-Diagnosen und Schnellsuche zu bearbeiten.')}
             </p>
             <button className="btn btn-primary !rounded-full !px-4" onClick={() => void pickWorkspace()}>
               <Icon name="lucide:folder-open" size={14} />
-              <span>Workspace öffnen</span>
+              <span>{t('Workspace öffnen')}</span>
             </button>
           </div>
         )}

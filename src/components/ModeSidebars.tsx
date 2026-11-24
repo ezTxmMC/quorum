@@ -232,10 +232,10 @@ export function IdeSidebar({ pinned, onClose }: SidebarProps) {
         </div>
         {section === 'files' && root && (
           <>
-            <button className="icon-btn !size-7" title="Datei öffnen (Strg+P)" onClick={() => triggerIdeQuickAction('files')}>
+            <button className="icon-btn !size-7" title={t('Datei öffnen (Strg+P)')} onClick={() => triggerIdeQuickAction('files')}>
               <Icon name="lucide:file-search" size={13} />
             </button>
-            <button className="icon-btn !size-7" title="Im Projekt suchen (Strg+Shift+F)" onClick={() => triggerIdeQuickAction('content')}>
+            <button className="icon-btn !size-7" title={t('Im Projekt suchen (Strg+Shift+F)')} onClick={() => triggerIdeQuickAction('content')}>
               <Icon name="lucide:search" size={13} />
             </button>
           </>
