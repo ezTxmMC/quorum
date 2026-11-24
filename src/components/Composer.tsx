@@ -1,7 +1,7 @@
 import { recallInput } from '@shared/input-history';
 import { SentImage, isImagePath } from './SentAttachments';
 import { getLang, t } from '@/lib/i18n';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DIRECT_MESSAGES, PROVIDERS, isChatModel, canonicalModel, selectModelOptions, modelChoices, imageEngines } from '@shared/catalog';
 import type { Attachment, ChatMode, ChatSession, MessageFile } from '@shared/types';
 import { hub, uid } from '@/lib/api';
@@ -241,9 +241,37 @@ function ComposerInner({ session, running, onSend, onStop, onCommand, centered }
 
   const meta = PROVIDERS[session.provider];
 
+  // Erste Nachricht: das Feld springt nicht von der Mitte nach unten, sondern gleitet dorthin (FLIP).
+  // Die alte Position muss vor dem Umbau des Layouts gemessen werden, also schon beim Rendern.
+  const frame = useRef<HTMLDivElement>(null);
+  const wasCentered = useRef(centered);
+  const glideFrom = useRef<DOMRect | null>(null);
+  if (wasCentered.current !== centered) {
+    wasCentered.current = centered;
+    glideFrom.current = frame.current?.getBoundingClientRect() ?? null;
+  }
+  useLayoutEffect(() => {
+    const from = glideFrom.current;
+    const element = frame.current;
+    glideFrom.current = null;
+    if (!from || !element || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+    const to = element.getBoundingClientRect();
+    const dy = from.top - to.top;
+    if (Math.abs(dy) < 1) {
+      return;
+    }
+    element.animate(
+      [{ transform: `translateY(${dy}px)` }, { transform: 'none' }],
+      { duration: 460, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+    );
+  }, [centered]);
+
   return (
-    <div className={cx('mx-auto w-full px-4 pb-4', centered ? 'max-w-3xl' : 'max-w-5xl xl:max-w-6xl')} onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={onDrop}>
+    <div ref={frame} className={cx('mx-auto w-full px-4 pb-4', centered ? 'max-w-3xl' : 'max-w-5xl xl:max-w-6xl')} onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={onDrop}>
       <div className="composer-shell relative rounded-[20px]">
+        {running && <span aria-hidden="true" className="run-beam" />}
         {items.length > 0 && (
           <div data-state="open" className="pop absolute bottom-full left-0 right-0 z-30 mb-2 max-h-64 overflow-auto rounded-lumen border border-edge-strong bg-overlay p-1 shadow-2xl">
             {items.map((it, i) => (
@@ -311,7 +339,7 @@ function ComposerInner({ session, running, onSend, onStop, onCommand, centered }
           {running && (
             <button className="chip-in grid h-8 w-11 place-items-center rounded-full border border-bad/30 bg-bad/15 text-bad transition-all hover:bg-bad/25 active:scale-95" onClick={onStop} title={t('Stopp')}><Icon name="lucide:square" size={13} /></button>
           )}
-          <button className="grid h-8 w-11 place-items-center rounded-full bg-accent text-accent-fg transition-all enabled:hover:brightness-110 enabled:active:scale-95 disabled:opacity-35" disabled={!imageReady || (!text.trim() && !images.length && !atts.length)} onClick={() => submit()}
+          <button className="send-btn grid h-8 w-11 place-items-center rounded-full bg-accent text-accent-fg enabled:hover:brightness-110 enabled:active:scale-90 disabled:opacity-35" disabled={!imageReady || (!text.trim() && !images.length && !atts.length)} onClick={() => submit()}
             title={running ? (canDirect ? t('Direkt senden (Enter) – mitten im Lauf') : t('Einreihen (Enter) – wird nach dem aktuellen Lauf gesendet')) : t('Senden (Enter)')}>
             <Icon name={running && !canDirect ? 'lucide:list-plus' : 'lucide:arrow-up'} size={16} />
           </button>

@@ -17,6 +17,17 @@ const WORKSPACE_MODES: { id: WorkspaceMode; label: string; icon: string }[] = [
   { id: 'ide', label: 'IDE', icon: 'lucide:code-2' },
 ];
 
+let navDirectionTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Merkt die Richtung des Moduswechsels kurz am Dokument, damit der Seitenübergang passend gleitet. */
+function markNavDirection(direction: 'forward' | 'back') {
+  document.documentElement.dataset.nav = direction;
+  clearTimeout(navDirectionTimer);
+  navDirectionTimer = setTimeout(() => {
+    delete document.documentElement.dataset.nav;
+  }, 600);
+}
+
 function ModeSlider() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -39,6 +50,7 @@ function ModeSlider() {
     if (mode === activeMode) {
       return;
     }
+    markNavDirection(WORKSPACE_MODES.findIndex((item) => item.id === mode) > activeIndex ? 'forward' : 'back');
     if (mode === '3d') {
       navigate('/3d', { viewTransition: true });
       return;
@@ -62,7 +74,7 @@ function ModeSlider() {
     >
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute bottom-0.5 left-0.5 top-0.5 w-[calc((100%-4px)/3)] rounded-full border border-edge-strong/70 bg-overlay shadow-xs transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]"
+        className="pointer-events-none absolute bottom-0.5 left-0.5 top-0.5 w-[calc((100%-4px)/3)] rounded-full border border-edge-strong/70 bg-overlay shadow-xs transition-transform duration-[380ms] ease-[cubic-bezier(0.34,1.36,0.64,1)]"
         style={{ transform: `translateX(${activeIndex * 100}%)` }}
       />
       {WORKSPACE_MODES.map((item) => {
@@ -78,7 +90,7 @@ function ModeSlider() {
               selected ? 'text-fg' : 'text-subtle hover:text-muted',
             )}
           >
-            <Icon name={item.icon} size={13} />
+            <Icon name={item.icon} size={13} className={cx('transition-transform duration-300 ease-[cubic-bezier(0.34,1.36,0.64,1)]', selected && 'scale-110 text-accent')} />
             <span>{item.label}</span>
           </button>
         );

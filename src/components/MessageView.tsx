@@ -20,8 +20,9 @@ function Thinking({ text, live }: { text: string; live: boolean }) {
     <div className="rounded-lumen border border-edge/80 bg-surface/50 px-3 py-2 text-[12.5px] text-subtle">
       <button className="flex w-full items-center gap-1.5 text-left transition-colors hover:text-muted" aria-expanded={open} onClick={() => setExpanded(!open)}>
         <Icon name="lucide:brain" size={14} className={live ? 'pulse-dot text-accent' : ''} />
-        <span className="flex-1 font-medium">{live ? t('Denkt nach…') : t('Gedankengang')}</span>
-        <Icon name={open ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={12} />
+        <span className={cx('font-medium', live && 'text-shimmer')}>{live ? t('Denkt nach…') : t('Gedankengang')}</span>
+        <span className="flex-1" />
+        <Icon name="lucide:chevron-right" size={12} className={cx('transition-transform duration-200', open && 'rotate-90')} />
       </button>
       <Collapse open={open}><div ref={body} className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap border-t border-edge/70 pt-2 italic leading-relaxed">{text}</div></Collapse>
     </div>
@@ -85,7 +86,7 @@ function CompactedSummary({ m }: { m: Message }) {
           {count ? ` · ${count} ${t('Nachrichten zusammengefasst')}` : ''}
         </span>
         {saved > 0 && <span className="shrink-0 rounded-full bg-ok/15 px-2 py-0.5 text-[10.5px] text-ok">−{fmtTok(saved)} {t('Token')}</span>}
-        <Icon name={open ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={12} />
+        <Icon name="lucide:chevron-right" size={12} className={cx('transition-transform duration-200', open && 'rotate-90')} />
       </button>
       <Collapse open={open}><div className="pt-2"><Markdown text={text} /></div></Collapse>
     </div>
@@ -119,11 +120,11 @@ function fmtTok(n?: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
-export const MessageView = memo(function MessageView({ m, live, label, onStop, onOpenModel }: { m: Message; live?: boolean; label?: string; onStop?: () => void; onOpenModel?: (projectId: string) => void }) {
+export const MessageView = memo(function MessageView({ m, live, fresh, label, onStop, onOpenModel }: { m: Message; live?: boolean; /** Gerade eben selbst gesendet: bekommt die Sende-Animation. */ fresh?: boolean; label?: string; onStop?: () => void; onOpenModel?: (projectId: string) => void }) {
   if (m.role === 'user') {
     const text = m.blocks.map((b) => (b.kind === 'text' ? b.text : '')).join('');
     return (
-      <div className="fade-in group/msg flex items-start justify-end gap-1">
+      <div className={cx(fresh ? 'msg-send' : 'fade-in', 'group/msg flex items-start justify-end gap-1')}>
         <CopyButton title={t('Kopieren / Copy')} className="mt-1 opacity-0 transition-opacity group-hover/msg:opacity-100" text={text} />
         <div className="min-w-0 max-w-[85%] select-text overflow-hidden rounded-2xl rounded-br-md border border-edge-strong/70 bg-surface px-4 py-2.5 shadow-[inset_0_1px_0_var(--c-sheen)]">
           {!!(m.images?.length || m.attachments?.length || m.files?.length) && <SentAttachments message={m} />}
@@ -138,7 +139,7 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop, o
   const empty = !m.blocks.some((b) => b.kind !== 'tool');
   if (!live && empty && !m.error) return null;
   return (
-    <div className="fade-in group/asst">
+    <div className={cx('fade-in group/asst', live && 'stream-live')}>
       {/* Volle Breite wie das Eingabefeld: Anbieter-Icon steht in der Kopfzeile statt in einer eigenen Spalte. */}
       <HandoffMark m={m} />
       <div className="min-w-0 space-y-2.5 [overflow-wrap:anywhere]">
@@ -152,7 +153,7 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop, o
           return null;
         })}
         {live && <ToolActivity live blocks={m.blocks} onStop={onStop} />}
-        {m.error && <div className="flex gap-2 whitespace-pre-wrap rounded-lumen border border-bad/30 bg-bad/10 px-3 py-2 text-[12.5px] text-bad"><Icon name="lucide:triangle-alert" size={14} className="mt-0.5 shrink-0" /><span>{t(m.error)}</span></div>}
+        {m.error && <div className="shake flex gap-2 whitespace-pre-wrap rounded-lumen border border-bad/30 bg-bad/10 px-3 py-2 text-[12.5px] text-bad"><Icon name="lucide:triangle-alert" size={14} className="mt-0.5 shrink-0" /><span>{t(m.error)}</span></div>}
         {!live && m.blocks.some((b) => b.kind === 'text') && (
           <div className="-mb-1 flex opacity-0 transition-opacity group-hover/asst:opacity-100">
             <CopyButton title={t('Antwort kopieren')} text={() => m.blocks.filter((b) => b.kind === 'text').map((b) => (b as { text: string }).text).join('\n\n')} />

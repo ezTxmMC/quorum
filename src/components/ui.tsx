@@ -50,7 +50,7 @@ export function Toggle({ checked, onChange, label, hint, danger }: { checked: bo
   return (
     <button type="button" onClick={() => onChange(!checked)} className="flex w-full items-center gap-3 rounded-lumen-sm px-1.5 py-1.5 text-left transition-colors hover:bg-hover">
       <span className={cx('relative h-[18px] w-8 shrink-0 rounded-full transition-colors duration-150', checked ? (danger ? 'bg-bad' : 'bg-accent') : 'bg-active')}>
-        <span className={cx('absolute top-[2px] size-[14px] rounded-full bg-white shadow-xs transition-all duration-150', checked ? 'left-[16px]' : 'left-[2px]')} />
+        <span data-on={checked} className={cx('toggle-knob absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-xs', checked ? 'left-[16px]' : 'left-[2px]')} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[12.5px]">{label}</span>

@@ -53,6 +53,7 @@
   --radius-lg: 14px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.5, 0, 0.75, 0);
+  --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
   color-scheme: dark;
 }
@@ -128,13 +129,13 @@
   display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0;
   padding: 5px 11px; border-radius: var(--radius-sm);
   border: 1px solid var(--c-border); background: var(--c-bg-elevated); color: var(--c-text);
-  transition: background 0.12s, border-color 0.12s, transform 0.12s var(--ease-out);
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.2s var(--ease-out), transform 0.12s var(--ease-out);
 }
 .btn:hover:not(:disabled) { background: var(--c-bg-hover); border-color: var(--c-border-strong); }
 .btn:active:not(:disabled) { transform: scale(0.98); }
 .btn:disabled { opacity: 0.5; }
 .btn-primary { background: var(--c-accent); color: var(--c-accent-text); border-color: transparent; font-weight: 500; }
-.btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--c-accent) 88%, white); border-color: transparent; }
+.btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--c-accent) 88%, white); border-color: transparent; box-shadow: 0 6px 18px -8px var(--c-accent); }
 .btn-ghost { background: transparent; border-color: transparent; }
 .icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--c-text-muted); transition: background 0.14s var(--ease-out), color 0.14s var(--ease-out), transform 0.12s var(--ease-out); }
 .icon-btn:hover:not(:disabled) { background: var(--c-bg-hover); color: var(--c-text); }
@@ -217,13 +218,63 @@ button.island-float:hover { border-color: color-mix(in srgb, var(--c-accent) 50%
 @keyframes vt-out { to { opacity: 0; transform: translateY(-4px); } }
 @keyframes vt-in { from { opacity: 0; transform: translateY(8px); } }
 
-@media (prefers-reduced-motion: reduce) { *, ::view-transition-old(page), ::view-transition-new(page) { animation-duration: 0.01s !important; } }
+/* Moduswechsel (Chat | 3D | IDE): die Seite gleitet in die Richtung, in die auch der Schieber wandert. */
+html[data-nav='forward']::view-transition-old(page) { animation: vt-out-left 0.16s var(--ease-in) both; }
+html[data-nav='forward']::view-transition-new(page) { animation: vt-in-right 0.3s var(--ease-out) both; }
+html[data-nav='back']::view-transition-old(page) { animation: vt-out-right 0.16s var(--ease-in) both; }
+html[data-nav='back']::view-transition-new(page) { animation: vt-in-left 0.3s var(--ease-out) both; }
+@keyframes vt-out-left { to { opacity: 0; transform: translateX(-28px); } }
+@keyframes vt-in-right { from { opacity: 0; transform: translateX(36px); } }
+@keyframes vt-out-right { to { opacity: 0; transform: translateX(28px); } }
+@keyframes vt-in-left { from { opacity: 0; transform: translateX(-36px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::view-transition-old(page), ::view-transition-new(page) { animation-duration: 0.01s !important; animation-iteration-count: 1 !important; transition-duration: 0.01s !important; }
+}
 
 .chip-in { animation: chip-in 0.3s var(--ease-spring, cubic-bezier(0.34,1.36,0.64,1)) both; }
 @keyframes chip-in { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
 
 .fade-in { animation: fade-in 0.22s var(--ease-out) both; }
 @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* Gesendete Nachricht: steigt aus Richtung des Eingabefelds auf und federt leicht nach. */
+.msg-send { transform-origin: 100% 100%; animation: msg-send 0.42s var(--ease-spring) both; }
+@keyframes msg-send { from { opacity: 0; transform: translateY(26px) scale(0.9); } 55% { opacity: 1; } to { opacity: 1; transform: none; } }
+.rise-in { animation: rise-in 0.5s var(--ease-out) both; }
+@keyframes rise-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+/* Statuswechsel einer Zeile (z. B. „Liest Datei“ → „Bearbeitet Datei“): der neue Text rückt von unten nach. */
+.tick-in { animation: tick-in 0.2s var(--ease-out) both; }
+@keyframes tick-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+.shake { animation: shake 0.4s var(--ease-out) both; }
+@keyframes shake { 0% { opacity: 0; transform: translateX(0); } 20% { opacity: 1; transform: translateX(-5px); } 45% { transform: translateX(4px); } 70% { transform: translateX(-2px); } 100% { transform: none; } }
+/* Laufende Antwort: neue Absätze und Listenpunkte blenden weich ein, statt hart aufzutauchen.
+   Start bei 0.4 statt 0, damit ein beim Streamen neu aufgebauter Block nicht aufblitzt. */
+.stream-live .md > *, .stream-live .md > ul > li, .stream-live .md > ol > li { animation: stream-in 0.36s ease-out both; }
+@keyframes stream-in { from { opacity: 0.4; } to { opacity: 1; } }
+/* Lichtlauf durch einen Text, solange gearbeitet wird. */
+.text-shimmer {
+  background: linear-gradient(100deg, currentColor 35%, var(--c-text) 50%, currentColor 65%) 0 0 / 250% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  animation: text-shimmer 2.2s linear infinite;
+}
+@keyframes text-shimmer { from { background-position: 125% 0; } to { background-position: -125% 0; } }
+/* Lichtkante am Eingabefeld während eines Laufs. Eigene Ebene mit overflow, damit Popover am Feld nicht abgeschnitten werden. */
+.run-beam { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; animation: bg-in 0.4s ease-out both; }
+.run-beam::before {
+  content: ''; position: absolute; top: 0; left: 0; width: 38%; height: 1.5px;
+  background: linear-gradient(90deg, transparent, var(--c-accent), transparent);
+  animation: run-beam 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes run-beam { from { transform: translateX(-100%); } to { transform: translateX(264%); } }
+/* Senden-Knopf „wacht auf“, sobald es etwas zu senden gibt. */
+.send-btn { transition: scale 0.28s var(--ease-spring), opacity 0.18s ease, filter 0.15s ease; }
+.send-btn:disabled { scale: 0.9; }
+.send-btn:enabled:hover svg { transform: translateY(-1.5px); }
+.send-btn svg { transition: transform 0.2s var(--ease-spring); }
+/* Schalter: der Knopf federt und streckt sich beim Drücken in Bewegungsrichtung. */
+.toggle-knob { transition: left 0.3s var(--ease-spring), width 0.18s var(--ease-out); }
+button:active > * > .toggle-knob { width: 18px; }
+button:active > * > .toggle-knob[data-on='true'] { left: 12px; }
 .pulse-dot { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 .spin { animation: spin 0.9s linear infinite; }

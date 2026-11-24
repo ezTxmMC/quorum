@@ -48,6 +48,16 @@ export function ChatPage() {
   // Eine selbst gesendete Nachricht holt die Ansicht immer ans Ende, auch wenn vorher nach oben gescrollt wurde.
   const lastUserId = session?.messages.filter((message) => message.role === 'user').at(-1)?.id;
   useEffect(() => { stick.current = true; }, [lastUserId]);
+  // Nur eine eben gesendete Nachricht bekommt die Sende-Animation, nicht der Verlauf beim Öffnen eines Chats.
+  // Einmal markierte Nachrichten bleiben markiert: ein Klassenwechsel würde ihre Animation erneut abspielen.
+  const opened = useRef({ id, lastUserId, fresh: new Set<string>() });
+  if (opened.current.id !== id) {
+    opened.current = { id, lastUserId, fresh: new Set() };
+  }
+  if (lastUserId && lastUserId !== opened.current.lastUserId) {
+    opened.current.fresh.add(lastUserId);
+  }
+  const freshIds = opened.current.fresh;
 
   useEffect(() => {
     const el = scroller.current;
@@ -152,24 +162,24 @@ export function ChatPage() {
         <AgentIsland chatId={id} />
         <div className={cx('flex min-h-0 flex-1 flex-col', empty && 'justify-center overflow-y-auto pb-[8vh]')}>
         {empty ? (
-          <h1 className="mx-auto w-full max-w-3xl px-6 pb-5 text-center text-[24px] font-semibold tracking-tight text-fg">
+          <h1 key={mode} className="rise-in mx-auto w-full max-w-3xl px-6 pb-5 text-center text-[24px] font-semibold tracking-tight text-fg">
             {t(CHAT_MODES.find((entry) => entry.id === mode)!.description)}
           </h1>
         ) : (
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
             <div className="mx-auto max-w-5xl xl:max-w-6xl space-y-6 px-4 py-6">
-              {session.messages.map((m) => <MessageView key={m.id} onOpenModel={onOpenModel} m={m} live={activeMessages.has(m.id)} onStop={onStopRun} />)}
+              {session.messages.map((m) => <MessageView key={m.id} onOpenModel={onOpenModel} m={m} fresh={freshIds.has(m.id)} live={activeMessages.has(m.id)} onStop={onStopRun} />)}
             </div>
           </div>
         )}
 
         {status?.installed === false && (
-          <div className="mx-auto mb-2 flex w-full max-w-5xl xl:max-w-6xl items-center gap-2 rounded-lumen border border-warn/30 bg-warn/10 px-3 py-2 text-warn">
+          <div className="fade-in mx-auto mb-2 flex w-full max-w-5xl xl:max-w-6xl items-center gap-2 rounded-lumen border border-warn/30 bg-warn/10 px-3 py-2 text-warn">
             <Icon name="lucide:triangle-alert" size={14} /> <span>{session.provider === 'ollama' ? t('Ollama ist nicht erreichbar. Starte es mit „ollama serve“ und lade ein Modell (ollama pull …).') : <><b>{meta.bin}</b> {t('wurde nicht gefunden. Pfad unter Einstellungen angeben.')}</>}</span>
           </div>
         )}
         {banner && (
-          <div className={cx('mx-auto mb-2 flex w-full max-w-5xl items-center gap-2 rounded-lumen border px-3 py-2 text-[12.5px] xl:max-w-6xl', banner.kind === 'error' ? 'border-bad/30 bg-bad/10 text-bad' : 'border-accent/30 bg-accent/10 text-fg')}>
+          <div className={cx('fade-in mx-auto mb-2 flex w-full max-w-5xl items-center gap-2 rounded-lumen border px-3 py-2 text-[12.5px] xl:max-w-6xl', banner.kind === 'error' ? 'border-bad/30 bg-bad/10 text-bad' : 'border-accent/30 bg-accent/10 text-fg')}>
             <Icon name={banner.kind === 'error' ? 'lucide:triangle-alert' : 'lucide:info'} size={14} className="shrink-0" /><span className="min-w-0 flex-1">{t(banner.text)}</span>
             {banner.action === 'undo-compact' && <button className="btn !py-0.5 text-[11.5px]" onClick={() => useHub.getState().undoCompact(id)}><Icon name="lucide:undo-2" size={12} /> {t('Rückgängig')}</button>}
             <button className="icon-btn !size-5" onClick={() => useHub.getState().setBanner(id, null)}><Icon name="lucide:x" size={12} /></button>
