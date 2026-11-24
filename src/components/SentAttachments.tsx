@@ -4,7 +4,21 @@ import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
 import { Modal } from './ui';
 
-export function SentImage({ path, source, name }: { path?: string; source?: string; name: string }) {
+const IMAGE_FILE = /\.(png|jpe?g|gif|webp|bmp|ico)$/i;
+
+export function isImagePath(path: string): boolean {
+  return IMAGE_FILE.test(path);
+}
+
+interface SentImageProps {
+  path?: string;
+  source?: string;
+  name: string;
+  /** Kleine quadratische Vorschau ohne Dateinamen (z. B. in der Warteschlange); ein Klick öffnet weiterhin die große Ansicht. */
+  thumb?: boolean;
+}
+
+export function SentImage({ path, source, name, thumb }: SentImageProps) {
   const [url, setUrl] = useState(source);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
@@ -15,12 +29,18 @@ export function SentImage({ path, source, name }: { path?: string; source?: stri
     return () => { alive = false; };
   }, [path, source]);
   return <>
-    <button className="max-w-full overflow-hidden rounded-lg border border-edge bg-active p-1 text-left" onClick={() => setOpen(true)} title={name}>
-      {url && <img src={url} alt={name} className="max-h-40 max-w-60 rounded object-contain" />}
-      <span className="block max-w-60 truncate px-1 text-xs">{error || name}</span>
-    </button>
-    {open && <Modal title={name} wide onClose={() => setOpen(false)}>
-      {url && <img src={url} alt={name} className="max-h-[70vh] w-full object-contain" />}
+    {thumb ? (
+      <button className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md border border-edge bg-bg transition-transform hover:scale-105 hover:border-accent/60" onClick={() => setOpen(true)} title={error || name}>
+        {url ? <img src={url} alt={name} className="size-full object-cover" /> : <Icon name={error ? 'lucide:image-off' : 'lucide:image'} size={13} className="text-subtle" />}
+      </button>
+    ) : (
+      <button className="max-w-full overflow-hidden rounded-lg border border-edge bg-active p-1 text-left" onClick={() => setOpen(true)} title={name}>
+        {url && <img src={url} alt={name} className="max-h-40 max-w-60 rounded object-contain" />}
+        <span className="block max-w-60 truncate px-1 text-xs">{error || name}</span>
+      </button>
+    )}
+    {open && <Modal title={name} xl={thumb} wide={!thumb} onClose={() => setOpen(false)}>
+      {url && <img src={url} alt={name} className={thumb ? 'max-h-[calc(84vh-9rem)] w-full object-contain' : 'max-h-[70vh] w-full object-contain'} />}
       {error && <p role="alert">{error}</p>}
       <div className="mt-3 flex gap-2">
         {url && <a className="btn" href={url} download={name}>Bild speichern</a>}
@@ -60,7 +80,7 @@ function SentFile({ file }: { file: MessageFile }) {
 
 export function SentAttachments({ message }: { message: Message }) {
   return <div className="mb-2 flex flex-wrap gap-2">
-    {message.images?.map((path) => /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(path)
+    {message.images?.map((path) => isImagePath(path)
       ? <SentImage key={path} path={path} name={path.split(/[\\/]/).pop() ?? path} />
       : <SentFile key={path} file={{ name: path.split(/[\\/]/).pop() ?? path, path: /[\\/]/.test(path) ? path : undefined }} />)}
     {message.attachments?.map((attachment) => <SentImage key={attachment.id} source={`data:${attachment.mime};base64,${attachment.data}`} name={attachment.name} />)}

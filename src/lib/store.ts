@@ -70,6 +70,7 @@ interface State {
   /** Sendet auch während eines Laufs: direkt zustellen (wenn der Anbieter es kann) oder einreihen. */
   submit: (sessionId: string, text: string, opts?: { images?: string[]; attachments?: Attachment[]; files?: import('@shared/types').MessageFile[]; mode?: 'direct' | 'queue' }) => Promise<boolean>;
   unqueue: (sessionId: string, id: string) => void;
+  sendQueuedNow: (sessionId: string, id: string) => Promise<void>;
   /** Chat-Optionen (Seitenpanel) – wird in der Titelleiste umgeschaltet. */
   chatOptionsOpen: boolean;
   toggleChatOptions: (v?: boolean) => void;
@@ -453,6 +454,28 @@ export const useHub = create<State>((set, get) => {
     chatOptionsOpen: false,
     toggleChatOptions: (v) => set((st) => ({ chatOptionsOpen: v ?? !st.chatOptionsOpen })),
     unqueue(sessionId, id) { set((st) => ({ queued: { ...st.queued, [sessionId]: (st.queued[sessionId] ?? []).filter((q) => q.id !== id) } })); },
+    /** Zieht eine wartende Nachricht vor: direkt in den laufenden Lauf zustellen, wenn der Anbieter das kann – sonst den Lauf abbrechen, sodass sie als Nächstes gesendet wird. */
+    async sendQueuedNow(sessionId, id) {
+      const s = get().data.sessions.find((x) => x.id === sessionId);
+      const item = get().queued[sessionId]?.find((q) => q.id === id);
+      if (!s || !item) return;
+      const rest = () => (get().queued[sessionId] ?? []).filter((q) => q.id !== id);
+      if (!get().isRunning(sessionId)) {
+        set((st) => ({ queued: { ...st.queued, [sessionId]: rest() } }));
+        get().send(sessionId, item.text, { images: item.images, attachments: item.attachments, files: item.files });
+        return;
+      }
+      const runIds = Object.entries(get().runs).filter(([, r]) => r.sessionId === sessionId).map(([runId]) => runId);
+      const mode = chatMode(s.options);
+      const direct = (mode === 'text' || mode === 'coding') && !item.images?.length && !item.attachments?.length && !item.files?.length && DIRECT_MESSAGES[s.provider] && s.options.liveInput !== false;
+      if (direct && runIds[0] && await hub.inject(runIds[0], item.text).catch(() => false)) {
+        set((st) => ({ queued: { ...st.queued, [sessionId]: rest() } }));
+        return;
+      }
+      // Nach vorn stellen und nur den Lauf beenden: beim Ende eines Laufs wird automatisch der erste wartende Eintrag gesendet.
+      set((st) => ({ queued: { ...st.queued, [sessionId]: [item, ...rest()] } }));
+      for (const runId of runIds) void hub.cancel(runId);
+    },
     async submit(sessionId, text, opts = {}) {
       const s = get().data.sessions.find((x) => x.id === sessionId);
       if (!s) return false;

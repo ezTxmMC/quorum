@@ -395,6 +395,7 @@ export const en: Record<string, string> = {
   "Ältere": "Older",
   "aktuelles Modell": "current model",
   "schon in der Kette": "already in the chain",
+  'Jetzt senden': 'Send now', 'Jetzt senden – unterbricht die laufende Antwort, falls nötig': 'Send now – interrupts the running reply if needed',
   'Stand': 'As of', 'Live': 'Live', 'aktualisiert alle 10 s': 'updates every 10 s', 'übrig': 'remaining', 'Wird automatisch im Hintergrund abgefragt.': 'Queried automatically in the background.',
   'Direkt': 'Direct', 'In der Warteschlange': 'Queued', 'Einreihen': 'Queue',
   'Einreihen (Alt+Enter): wird nach dem aktuellen Lauf gesendet': 'Queue (Alt+Enter): sent after the current run',
