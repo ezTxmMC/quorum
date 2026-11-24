@@ -19,10 +19,14 @@ export function WorkspaceEditor({ root, file, onDirty }: { root: string; file?: 
   const [busy, setBusy] = useState(false);
   const [quickOpen, setQuickOpen] = useState<'files' | 'content' | null>(null);
 
+  const handledQuickAction = useRef(ideQuickAction?.seq ?? 0);
+
   useEffect(() => {
-    if (ideQuickAction) {
-      setQuickOpen(ideQuickAction.kind);
+    if (!ideQuickAction || ideQuickAction.seq === handledQuickAction.current) {
+      return;
     }
+    handledQuickAction.current = ideQuickAction.seq;
+    setQuickOpen(ideQuickAction.kind);
   }, [ideQuickAction]);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const navigation = useRef<{ path: string; line: number; column: number } | null>(null);
@@ -134,14 +138,7 @@ export function WorkspaceEditor({ root, file, onDirty }: { root: string; file?: 
   };
 
   return (
-    <div
-      className="flex min-h-0 flex-1"
-      onKeyDownCapture={(event) => {
-        if (!(event.ctrlKey || event.metaKey)) { return; }
-        if (event.key.toLowerCase() === 'p' && !event.shiftKey) { event.preventDefault(); event.stopPropagation(); setQuickOpen('files'); }
-        if (event.key.toLowerCase() === 'f' && event.shiftKey) { event.preventDefault(); event.stopPropagation(); setQuickOpen('content'); }
-      }}
-    >
+    <div className="flex min-h-0 flex-1">
       {quickOpen && <QuickOpen root={root} mode={quickOpen} onOpen={navigate} onClose={() => setQuickOpen(null)} />}
       <div
         className="flex min-w-0 flex-1 flex-col bg-bg"

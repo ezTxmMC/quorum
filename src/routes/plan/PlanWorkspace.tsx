@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useBlocker, useLocation, useNavigate } from 'react-router-dom';
 import type { ApprovalScope, PlanDefinition, PlanSnapshot } from '@shared/plan/types';
 import { initialDefinition } from '@shared/plan/validation';
@@ -46,6 +46,39 @@ export function PlanWorkspace() {
   const [title, setTitle] = useState('');
   const [definition, setDefinition] = useState(JSON.stringify(initialDefinition('Projektziel beschreiben'), null, 2));
   const [tab, setTab] = useState<WorkspaceTab>('editor');
+  const ideQuickAction = useHub((state) => state.ideQuickAction);
+  const shownQuickAction = useRef(ideQuickAction?.seq ?? 0);
+
+  // Schnellsuche lebt im Editor-Tab; ohne Wechsel bliebe der Dialog unsichtbar.
+  useEffect(() => {
+    if (!ideQuickAction || ideQuickAction.seq === shownQuickAction.current) {
+      return;
+    }
+    shownQuickAction.current = ideQuickAction.seq;
+    setTab('editor');
+  }, [ideQuickAction]);
+
+  // Fensterweit, damit die Kürzel unabhängig vom Fokus (Seitenleiste, Chat, Terminal) greifen.
+  useEffect(() => {
+    if (!root) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.repeat) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      const kind = key === 'p' && !event.shiftKey ? 'files' : key === 'f' && event.shiftKey ? 'content' : null;
+      if (!kind) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      useHub.getState().triggerIdeQuickAction(kind);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [root]);
   const [error, setError] = useState('');
   const [questionText, setQuestionText] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});

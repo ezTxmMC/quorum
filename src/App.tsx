@@ -113,9 +113,10 @@ export default function App() {
     const k = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const st = useHub.getState();
-      if (e.key === 'n' && !e.shiftKey) { e.preventDefault(); void hub.newWindow(); }
-      else if (e.key === 'b') { e.preventDefault(); st.setSettings({ sidebarPinned: !st.data.settings.sidebarPinned }); }
-      else if (e.key === '`') {
+      const key = e.key.toLowerCase();
+      if (key === 'n' && !e.shiftKey) { e.preventDefault(); void hub.newWindow(); }
+      else if (key === 'b' && !e.shiftKey) { e.preventDefault(); st.setSettings({ sidebarPinned: !st.data.settings.sidebarPinned }); }
+      else if (e.key === '`' || e.code === 'Backquote') {
         const match = /^#\/chat\/([^/?#]+)/.exec(location.hash);
         if (match?.[1]) {
           e.preventDefault();
