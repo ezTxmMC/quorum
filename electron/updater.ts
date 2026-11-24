@@ -388,6 +388,28 @@ async function desktopIntegrationSettled(appImage: string, since: number): Promi
   }
 }
 
+const STALE_VARIABLES = ['APPDIR', 'APPIMAGE', 'ARGV0', 'OWD', 'TARGET_APPIMAGE', 'REDIRECT_APPIMAGE', 'CHROME_DESKTOP', 'GIO_LAUNCHED_DESKTOP_FILE', 'GIO_LAUNCHED_DESKTOP_FILE_PID'];
+
+/**
+ * Umgebung für Prozesse, die diese Instanz überleben. Das AppImage setzt Pfade in seinen eigenen Mount (Bibliotheken,
+ * PATH); mit dem Ende der App verschwindet der Mount, und ein damit gestartetes AppImage scheitert schon beim Start.
+ */
+function detachedEnvironment(): NodeJS.ProcessEnv {
+  const mount = process.env.APPDIR;
+  const stale = (entry: string) => entry.startsWith('/tmp/.mount_') || (!!mount && entry.startsWith(mount));
+  const environment: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined || STALE_VARIABLES.includes(name)) {
+      continue;
+    }
+    const kept = value.split(':').filter((entry) => !stale(entry));
+    if (kept.length > 0 || value === '') {
+      environment[name] = kept.join(':');
+    }
+  }
+  return environment;
+}
+
 /** Mitgeliefertes Update-Fenster (native/updater); fehlt in Entwicklungsständen ohne gebautes Rust-Programm. */
 function bundledUpdater(): string {
   return app.isPackaged
@@ -411,7 +433,7 @@ async function handOverToUpdater(filePath: string, target: string, binLink: stri
   }
   const args = ['--source', filePath, '--target', target, '--pid', String(process.pid), '--link', binLink, '--lang', language, '--', ...switches];
   return new Promise((resolve) => {
-    const child = spawn(copy, args, { detached: true, stdio: 'ignore' });
+    const child = spawn(copy, args, { detached: true, stdio: 'ignore', env: detachedEnvironment() });
     child.once('error', () => resolve(false));
     child.once('spawn', () => {
       child.unref();
@@ -460,7 +482,7 @@ setsid "$app" "$@" >/dev/null 2>&1 &
 `;
     await fsp.mkdir(join(relaunchScript, '..'), { recursive: true });
     await fsp.writeFile(relaunchScript, scriptContent, { mode: 0o755 });
-    const child = spawn('/bin/bash', [relaunchScript, target, String(process.pid), ...switches], { detached: true, stdio: 'ignore' });
+    const child = spawn('/bin/bash', [relaunchScript, target, String(process.pid), ...switches], { detached: true, stdio: 'ignore', env: detachedEnvironment() });
     child.unref();
     state = { ...state, status: 'downloaded', error: undefined };
     emitStatus();

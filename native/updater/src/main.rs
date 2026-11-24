@@ -4,9 +4,10 @@
 //! So the app copies this binary out, starts it and quits; the window stays up until the new version is in place.
 
 mod install;
+mod launch;
 mod window;
 
-use std::process::{Command, ExitCode, Stdio};
+use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -44,22 +45,7 @@ fn main() -> ExitCode {
 }
 
 fn restart(job: &Job) {
-    use std::os::unix::process::CommandExt;
-    let mut command = Command::new(&job.target);
-    command
-        .args(&job.relaunch)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0);
-    // These still point into the mount of the version that just exited.
-    for variable in ["APPIMAGE", "APPDIR", "ARGV0", "OWD"] {
-        command.env_remove(variable);
-    }
-    if let Err(error) = command.spawn() {
-        eprintln!(
-            "quorum-updater: could not start {}: {error}",
-            job.target.display()
-        );
+    if !launch::start(&job.target, &job.relaunch) {
+        eprintln!("quorum-updater: could not start {}", job.target.display());
     }
 }
