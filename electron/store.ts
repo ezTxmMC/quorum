@@ -67,6 +67,9 @@ export function load(): Persisted {
 // Speichern läuft asynchron und fasst schnelle Folgeaufrufe zusammen – der Hauptprozess wird dadurch nicht blockiert.
 let pending: Persisted | null = null;
 let writing = false;
+/** Zählt synchrone Schreibvorgänge, damit ein noch laufendes asynchrones Speichern seinen älteren Stand verwirft. */
+let syncGeneration = 0;
+let lastSync: Persisted | null = null;
 let lastSaveError: unknown;
 const saveWaiters: { resolve: () => void; reject: (error: unknown) => void }[] = [];
 
@@ -75,10 +78,20 @@ async function flushSave(): Promise<void> {
   while (pending) {
     const d = pending;
     pending = null;
+    const generation = syncGeneration;
     try {
       const tmp = file() + '.tmp';
       await fsp.writeFile(tmp, JSON.stringify(d));
+      // Hat inzwischen ein synchrones Speichern (Beenden) einen neueren Stand geschrieben, darf dieser ältere ihn nicht ersetzen.
+      if (generation !== syncGeneration) {
+        await fsp.rm(tmp, { force: true });
+        continue;
+      }
       await fsp.rename(tmp, file());
+      if (generation !== syncGeneration && lastSync) {
+        flushSaveSync(lastSync);
+        continue;
+      }
       lastSaveError = undefined;
       notifySaved(d);
     } catch (error) { lastSaveError = error; }
@@ -114,6 +127,8 @@ export function flushSaveSync(latest?: Persisted): boolean {
   const d = latest ?? pending;
   pending = null;
   if (!d) return true;
+  syncGeneration += 1;
+  lastSync = d;
   try {
     const tmp = file() + '.sync.tmp';
     writeFileSync(tmp, JSON.stringify(d));

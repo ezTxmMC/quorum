@@ -27,6 +27,8 @@ export const MonacoPane = forwardRef<MonacoPaneHandle, Props>(function MonacoPan
   const diffEditor = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
   const models = useRef(new Map<string, monaco.editor.ITextModel>());
   const views = useRef(new Map<string, monaco.editor.ICodeEditorViewState | null>());
+  /** Zuletzt übernommener Text je Datei: Monaco vereinheitlicht Zeilenenden, ein Vergleich mit dem Modell schlüge sonst dauerhaft fehl. */
+  const applied = useRef(new Map<string, string>());
   const activePath = useRef('');
   const callbacks = useRef(props);
   callbacks.current = props;
@@ -87,16 +89,21 @@ export const MonacoPane = forwardRef<MonacoPaneHandle, Props>(function MonacoPan
       if (editor.current?.getModel() === model) { editor.current.setModel(null); }
       model.dispose();
       models.current.delete(path);
+      applied.current.delete(path);
       views.current.delete(path);
     }
     for (const document of props.documents) {
       const existing = models.current.get(document.path);
       if (existing) {
-        if (existing.getValue(undefined, true) !== document.text) { existing.setValue(document.text); }
+        if (applied.current.get(document.path) !== document.text) {
+          applied.current.set(document.path, document.text);
+          if (existing.getValue(undefined, true) !== document.text) { existing.setValue(document.text); }
+        }
         continue;
       }
       const model = monaco.editor.createModel(document.text, monacoLanguage(document.languageId), monaco.Uri.file(document.path));
       models.current.set(document.path, model);
+      applied.current.set(document.path, document.text);
       model.onDidChangeContent(() => {
         callbacks.current.onChange(document.path, model.getValue(undefined, true), model.getVersionId());
       });

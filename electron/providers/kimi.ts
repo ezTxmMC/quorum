@@ -1,9 +1,7 @@
 import type { HubEvent, RunRequest } from '../../shared/types';
 import { kimiAlias } from '../../shared/kimi-models.ts';
-import { splitArgs } from './args.ts';
+import { fitPromptArgument, splitArgs } from './args.ts';
 import type { LineParser } from './runner';
-
-const MAX_PROMPT_LENGTH = 110_000;
 
 export function buildKimi(req: RunRequest): { args: string[] } {
   const options = req.options;
@@ -29,10 +27,7 @@ export function buildKimi(req: RunRequest): { args: string[] } {
 
   const images = (req.images ?? []).map((filePath) => `@${filePath}`).join(' ');
   const instructions = options.systemPrompt ? `${options.systemPrompt}\n\n---\n\n` : '';
-  const body = (images ? `${images}\n\n` : '') + req.prompt;
-  const room = Math.max(0, MAX_PROMPT_LENGTH - instructions.length);
-  const prompt = `${instructions}${room ? body.slice(-room) : ''}`;
-  args.push('-p', prompt);
+  args.push('-p', fitPromptArgument(instructions, images ? `${images}\n\n` : '', req.prompt));
 
   return { args };
 }

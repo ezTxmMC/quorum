@@ -111,7 +111,9 @@ function pickAsset(assets: RawAsset[]): UpdateAsset | undefined {
   let match: RawAsset | undefined;
 
   if (platform === 'linux') {
-    match = assets.find((a) => a.name.endsWith('.AppImage')) || assets.find((a) => a.name.endsWith('.deb'));
+    // Eine per Paket installierte App aktualisiert sich über das .deb; das AppImage ersetzte dort nur eine Kopie im Home-Ordner.
+    const order = !process.env.APPIMAGE && app.isPackaged ? ['.deb', '.AppImage'] : ['.AppImage', '.deb'];
+    match = assets.find((a) => a.name.endsWith(order[0])) || assets.find((a) => a.name.endsWith(order[1]));
   } else if (platform === 'win32') {
     // Der Betriebssystem-Teil im Dateinamen trennt die Windows- von den macOS-Archiven.
     const own = assets.filter((a) => /-win-/i.test(a.name));
@@ -368,9 +370,11 @@ export async function installUpdate(): Promise<boolean> {
   }
 
   if (process.platform === 'linux' && !filePath.endsWith('.AppImage')) {
-    // Ein .deb lässt sich nicht als AppImage starten: dem Nutzer zur Installation zeigen.
-    shell.showItemInFolder(filePath);
-    return false;
+    // Ein .deb braucht Administratorrechte: mit der Paketverwaltung des Systems öffnen, notfalls im Ordner zeigen.
+    if (await shell.openPath(filePath)) {
+      shell.showItemInFolder(filePath);
+    }
+    return true;
   }
   if (process.platform === 'linux') {
     // Linux AppImage Update

@@ -46,3 +46,32 @@ export function splitRules(s: string | undefined): string[] {
   flush();
   return out;
 }
+
+/**
+ * Prompt als einzelnes Kommandozeilen-Argument auf die Grenze des Betriebssystems kürzen.
+ * Windows erlaubt rund 32 000 Zeichen für die ganze Befehlszeile, Linux 131 072 Bytes je Argument – gemessen wird deshalb in Bytes.
+ * Anweisungen und Bildverweise (lead) bleiben erhalten; gekürzt wird der Anfang des Verlaufs, das Ende mit der aktuellen Frage bleibt.
+ */
+export function fitPromptArgument(instructions: string, lead: string, body: string, platform: string = process.platform): string {
+  const limit = platform === 'win32' ? 28_000 : 120_000;
+  const bytes = (text: string) => Buffer.byteLength(text, 'utf8');
+  const head = clipEnd(instructions, Math.floor(limit / 2), bytes) + lead;
+  const room = Math.max(0, limit - bytes(head));
+  let tail = room ? body.slice(-room) : '';
+  while (bytes(tail) > room) {
+    tail = tail.slice(Math.max(1, Math.ceil((bytes(tail) - room) / 3)));
+  }
+  // Ein halbes Zeichenpaar am Schnitt ergäbe ein ungültiges Zeichen.
+  if (/^[\uDC00-\uDFFF]/.test(tail)) {
+    tail = tail.slice(1);
+  }
+  return head + tail;
+}
+
+function clipEnd(text: string, limit: number, bytes: (text: string) => number): string {
+  let kept = text;
+  while (bytes(kept) > limit) {
+    kept = kept.slice(0, kept.length - Math.max(1, Math.ceil((bytes(kept) - limit) / 3)));
+  }
+  return kept;
+}

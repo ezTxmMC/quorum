@@ -240,6 +240,11 @@ export function PlanWorkspace() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
+  useEffect(() => {
+    useHub.setState({ ideDirty: dirty || editorDirty });
+    return () => useHub.setState({ ideDirty: false });
+  }, [dirty, editorDirty]);
+
   const canLeave = () => (!dirty && !editorDirty) || window.confirm('Ungespeicherte Änderungen verwerfen?');
 
   const pickWorkspace = () => action(async () => {

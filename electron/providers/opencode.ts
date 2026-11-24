@@ -1,6 +1,6 @@
 import type { HubEvent, RunRequest } from '../../shared/types';
 import type { LineParser } from './runner';
-import { splitArgs } from './args.ts';
+import { fitPromptArgument, splitArgs } from './args.ts';
 
 // OpenCode (sst/opencode): `opencode run --format json` gibt je Schritt einen JSON-Event pro Zeile aus.
 export function buildOpenCode(req: RunRequest): { args: string[] } {
@@ -13,8 +13,7 @@ export function buildOpenCode(req: RunRequest): { args: string[] } {
   for (const img of req.images ?? []) args.push('--file', img);
   args.push(...splitArgs(o.extraArgs));
   const instructions = o.systemPrompt ? `${o.systemPrompt}\n\n` : '';
-  const room = Math.max(0, 110000 - instructions.length);
-  args.push('--', instructions + (room ? req.prompt.slice(-room) : ''));
+  args.push('--', fitPromptArgument(instructions, '', req.prompt));
   return { args };
 }
 

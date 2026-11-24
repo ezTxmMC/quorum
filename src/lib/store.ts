@@ -85,6 +85,8 @@ interface State {
   /** IDE-Sidebar ↔ WorkspaceEditor / PlanWorkspace Synchronisierung. */
   ideRootPath: string;
   setIdeRootPath: (root: string) => void;
+  /** Der IDE-Bereich hat ungespeicherte Änderungen (Editor oder Plan). */
+  ideDirty: boolean;
   ideWorkspaceRequest: number;
   requestIdeWorkspace: () => void;
   ideOpenFile: { path: string; seq: number } | null;
@@ -224,6 +226,7 @@ export const useHub = create<State>((set, get) => {
     bumpThreeDRevision: () => set((state) => ({ threeDRevision: state.threeDRevision + 1 })),
     ideRootPath: '',
     setIdeRootPath: (ideRootPath) => set({ ideRootPath }),
+    ideDirty: false,
     ideWorkspaceRequest: 0,
     requestIdeWorkspace: () => set((state) => ({ ideWorkspaceRequest: state.ideWorkspaceRequest + 1 })),
     ideOpenFile: null,

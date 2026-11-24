@@ -91,6 +91,19 @@ function revealCard(card: string | undefined) {
   }));
 }
 
+/** Der Sprachwechsel baut die Oberfläche neu auf; was dabei verloren ginge, wird vorher abgefragt. */
+function switchLanguage(language: 'de' | 'en') {
+  const state = useHub.getState();
+  if (state.data.settings.language === language) {
+    return;
+  }
+  const terminals = Object.values(state.chatTerminals).some(Boolean) || state.data.settings.dock.panels.terminal.visible;
+  if ((state.ideDirty || terminals) && !window.confirm(t('Der Sprachwechsel lädt die Oberfläche neu: offene Terminals werden beendet und ungespeicherte Änderungen im Editor gehen verloren. Fortfahren?'))) {
+    return;
+  }
+  state.setSettings({ language });
+}
+
 function accelerator(event: React.KeyboardEvent): string | null {
   if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) {
     return null;
@@ -257,7 +270,7 @@ function GeneralTab() {
               {([{ id: 'de', label: 'Deutsch' }, { id: 'en', label: 'English' }] as const).map((lang) => (
                 <button
                   key={lang.id}
-                  onClick={() => setSettings({ language: lang.id })}
+                  onClick={() => switchLanguage(lang.id)}
                   className={cx(
                     'rounded-[5px] py-1.5 font-medium transition-colors',
                     settings.language === lang.id ? 'bg-overlay text-fg shadow-xs' : 'text-subtle hover:text-muted',

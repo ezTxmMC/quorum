@@ -1,6 +1,6 @@
 import type { HubEvent, RunRequest } from '../../shared/types';
 import type { LineParser } from './runner';
-import { splitArgs } from './args.ts';
+import { fitPromptArgument, splitArgs } from './args.ts';
 
 export function buildAntigravity(req: RunRequest): { args: string[] } {
   const o = req.options;
@@ -23,10 +23,7 @@ export function buildAntigravity(req: RunRequest): { args: string[] } {
   const imgs = (req.images ?? []).map((p) => `@${p}`).join(' ');
   // agy erwartet den Prompt als `-p=<text>` (Flag und Wert müssen zusammenhängen).
   const instructions = o.systemPrompt ? `${o.systemPrompt}\n\n---\n\n` : '';
-  const body = (imgs ? `${imgs}\n\n` : '') + req.prompt;
-  // Keep instructions intact when the message must be clipped to the CLI argument limit.
-  const room = Math.max(0, 110000 - instructions.length);
-  args.push(`-p=${instructions}${room ? body.slice(-room) : ''}`);
+  args.push(`-p=${fitPromptArgument(instructions, imgs ? `${imgs}\n\n` : '', req.prompt)}`);
   return { args };
 }
 
