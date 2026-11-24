@@ -13,6 +13,20 @@ npm run tauri:dev
 
 The Tauri preview uses the existing Quorum React workbench. Rust owns the window, SQLite profile and chat supervisors. Install Node 24+ on the machine running the preview for the transitional provider and workspace service. Use `npm run tauri:build` to create a platform bundle. Electron remains the full-featured release desktop, started with `npm run dev`.
 
+## Platforms
+
+| Platform | Packages | Build command |
+| --- | --- | --- |
+| Linux x86_64 | AppImage, deb | `npm run dist:linux` |
+| Windows 11 x86_64 | NSIS installer, zip | `npm run dist:win` |
+| macOS 26+ arm64 | dmg, zip | `npm run dist:mac` |
+
+Each package must be built on its own platform, because the native chat host is compiled for the host system. The release workflow builds all three.
+
+- **Windows.** Provider CLIs are found as `.exe` (native installers) or as npm `.cmd` shims. The built-in terminal runs without a PTY, so the background `/usage` query for Claude and Antigravity is unavailable.
+- **macOS.** The app is ad-hoc signed, not notarized. On first launch allow it under **System Settings → Privacy & Security**, or run `xattr -dr com.apple.quarantine /Applications/Quorum.app`. The terminal needs `python3` (Xcode Command Line Tools).
+- **Sandboxed provider variants** rely on bubblewrap and are available on Linux only.
+
 ## Kimi
 
 - **Kimi AI (K3 / K3.1 API)**. In **Settings → API**, select **Kimi AI**, enter a Moonshot API key and save. Choose **API → Kimi AI** with `kimi-k3.1-pro`, `kimi-k3.1-pro-highspeed`, `kimi-k3` or `kimi-k3-256k` in a chat. Use the connection test to discover additional models available to your account. Tauri keeps keys for the current session. [Moonshot models](https://platform.kimi.ai/)

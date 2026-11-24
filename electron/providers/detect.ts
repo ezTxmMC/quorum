@@ -11,7 +11,7 @@ import { listModels } from '../models/registry';
 import { resolveRuntime } from '../runtimes/scheduler';
 import type { CliCommandResult, ModelInfo, ProviderId, ProviderStatus } from '../../shared/types';
 
-const EXTRA_DIRS = [join(homedir(), '.opencode', 'bin'), join(homedir(), '.local', 'bin'), join(homedir(), '.npm-global', 'bin'), '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin'];
+const EXTRA_DIRS = [join(homedir(), '.opencode', 'bin'), join(homedir(), '.local', 'bin'), join(homedir(), '.npm-global', 'bin'), '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', ...(process.env.APPDATA ? [join(process.env.APPDATA, 'npm')] : [])];
 
 export function resolveBinary(id: ProviderId, overrides: Partial<Record<ProviderId, string>> = {}): string | undefined {
   if (id === 'ollama' || id === 'local' || id === 'api' || id === 'acp') return undefined; // laufen über HTTP-APIs, keine CLI
@@ -21,12 +21,13 @@ export function resolveBinary(id: ProviderId, overrides: Partial<Record<Provider
     return existsSync(custom) ? custom : undefined;
   }
   if (custom && existsSync(custom)) return custom;
-  const name = PROVIDERS[id].bin + (process.platform === 'win32' ? '.cmd' : '');
+  // Windows: native Installer legen eine .exe ab, npm eine .cmd-Hülle – die .exe hat Vorrang.
+  const names = process.platform === 'win32' ? ['.exe', '.cmd', '.bat'].map((ext) => PROVIDERS[id].bin + ext) : [PROVIDERS[id].bin];
   const dirs = [...(process.env.PATH ?? '').split(delimiter), ...EXTRA_DIRS];
   for (const d of dirs) {
     if (!d) continue;
-    const p = join(d, name);
-    if (existsSync(p)) return p;
+    const p = names.map((name) => join(d, name)).find((candidate) => existsSync(candidate));
+    if (p) return p;
   }
   return undefined;
 }
@@ -40,7 +41,7 @@ export function execCli(bin: string, args: string[], cwd?: string, timeout = 600
       resolve({ ok: false, code: 1, stdout: '', stderr: (error as Error).message });
       return;
     }
-    execFile(launch.cmd, launch.args, { cwd: launch.cwd, timeout, maxBuffer: 8 * 1024 * 1024, env: launch.env }, (err, stdout, stderr) => {
+    execFile(launch.cmd, launch.args, { cwd: launch.cwd, timeout, windowsHide: true, windowsVerbatimArguments: launch.verbatim, maxBuffer: 8 * 1024 * 1024, env: launch.env }, (err, stdout, stderr) => {
       const code = err ? (typeof (err as NodeJS.ErrnoException & { code?: unknown }).code === 'number' ? ((err as unknown as { code: number }).code) : 1) : 0;
       resolve({ ok: !err, code, stdout: String(stdout), stderr: String(stderr) });
     });

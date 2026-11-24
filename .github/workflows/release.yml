@@ -32,8 +32,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-release:
+  meta:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      channel: ${{ steps.meta.outputs.channel }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      title: ${{ steps.meta.outputs.title }}
 
     steps:
       - name: Checkout Repository
@@ -45,10 +50,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: 'npm'
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
 
       - name: Determine Tag, Channel & Release Info
         id: meta
@@ -100,9 +101,48 @@ jobs:
           echo "==> Prerelease: $IS_PRERELEASE"
           echo "==> Title: $TITLE"
 
+  # The native chat host must be compiled on its target platform, so every OS builds its own packages.
+  build:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-latest
+            package: --linux AppImage deb --x64
+            optional: false
+          - name: windows-x64
+            os: windows-latest
+            package: --win nsis zip --x64
+            optional: true
+          - name: macos-arm64
+            os: macos-26
+            package: --mac dmg zip --arm64
+            optional: true
+    runs-on: ${{ matrix.os }}
+    # Windows and macOS packages are new: a failure there must not block the Linux release.
+    continue-on-error: ${{ matrix.optional }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Update package.json version
         run: |
-          npm version "${{ steps.meta.outputs.tag }}" --no-git-tag-version
+          npm version "${{ needs.meta.outputs.tag }}" --no-git-tag-version
 
       - name: Install Dependencies
         run: |
@@ -117,6 +157,7 @@ jobs:
           npm run build
 
       - name: Verify Plan and IDE Core
+        if: runner.os == 'Linux'
         run: |
           npm run test:plan-core
           npm run test:plan-cli
@@ -133,14 +174,42 @@ jobs:
           cargo fmt --manifest-path native/chat-host/Cargo.toml --check
           cargo clippy --manifest-path native/chat-host/Cargo.toml --all-targets -- -D warnings
 
-      - name: Build Linux Packages (AppImage & deb)
+      - name: Build Packages
         run: |
-          npx electron-builder --linux AppImage deb --x64 --publish never
+          npx electron-builder ${{ matrix.package }} --publish never
+
+      - name: Upload Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.name }}
+          if-no-files-found: error
+          retention-days: 3
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+
+  publish:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: release
 
       - name: Generate Checksums
         run: |
           cd release
-          sha256sum *.AppImage *.deb > SHA256SUMS.txt
+          sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
           cd ..
 
@@ -149,33 +218,29 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_ARG=""
-          if [ "${{ steps.meta.outputs.is_prerelease }}" = "true" ]; then
+          if [ "${{ needs.meta.outputs.is_prerelease }}" = "true" ]; then
             PR_ARG="--prerelease"
           fi
 
-          TAG="${{ steps.meta.outputs.tag }}"
-          TITLE="${{ steps.meta.outputs.title }}"
+          TAG="${{ needs.meta.outputs.tag }}"
+          TITLE="${{ needs.meta.outputs.title }}"
 
           # Release erstellen oder Assets hochladen falls Release existiert
           gh release create "$TAG" \
-            release/*.AppImage \
-            release/*.deb \
-            release/SHA256SUMS.txt \
+            release/* \
             --title "$TITLE" \
             --target "$GITHUB_SHA" \
             --generate-notes \
             $PR_ARG || \
           gh release upload "$TAG" \
-            release/*.AppImage \
-            release/*.deb \
-            release/SHA256SUMS.txt \
+            release/* \
             --clobber
 
       - name: Retain only the published dev release
-        if: steps.meta.outputs.channel == 'dev'
+        if: needs.meta.outputs.channel == 'dev'
         uses: actions/github-script@v7
         env:
-          KEEP_DEV_TAG: ${{ steps.meta.outputs.tag }}
+          KEEP_DEV_TAG: ${{ needs.meta.outputs.tag }}
         with:
           script: |
             const { pruneDevReleases } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/prune-dev-releases.mjs`);

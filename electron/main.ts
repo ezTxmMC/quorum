@@ -27,6 +27,7 @@ import { listImportable, loadImportable } from './importer';
 import { startMulti, stopMulti, stopMultiTurn } from './orchestrator';
 import { Worker } from 'node:worker_threads';
 import { execCli, providerStatus, resolveBinary } from './providers/detect';
+import { adoptUserPath } from './user-path';
 import { terminalCommand } from './providers/sandbox';
 import { installSandbox, removeSandbox, sandboxStatus } from './providers/sandbox-install';
 import { effectiveBinaries, type SandboxProvider } from '../shared/sandbox';
@@ -42,6 +43,8 @@ import { execFile, spawn } from 'node:child_process';
 import { createTerminal, killAllTerminals, killTerminal, killTerminalsOf, listShells, resizeTerminal, writeTerminal } from './terminal';
 import { checkUpdate, downloadUpdate, getUpdateState, installUpdate, setUpdaterEmitter } from './updater';
 import type { UpdateChannel } from '../shared/types';
+
+adoptUserPath();
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 let data: Persisted;

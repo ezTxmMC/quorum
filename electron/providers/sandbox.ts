@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { isWindowsShim, shimLaunch } from './win-shim';
 
 export const SANDBOX_DIR = 'sandboxes';
 
@@ -27,6 +28,8 @@ export interface Launch {
   args: string[];
   env: NodeJS.ProcessEnv;
   cwd?: string;
+  /** Windows: Argumente unverändert an cmd.exe durchreichen (`windowsVerbatimArguments`). */
+  verbatim?: boolean;
 }
 
 export function sandboxHome(bin: string): string | undefined {
@@ -146,6 +149,9 @@ export function bwrapCommand(home: string, argv: string[], options: LaunchOption
 /** Startbefehl einer CLI: liegt sie in einer Sandbox, läuft sie zwingend über bubblewrap – sonst unverändert. */
 export function sandboxLaunch(bin: string, args: string[], options: LaunchOptions = {}): Launch {
   const home = sandboxHome(bin);
+  if (!home && isWindowsShim(bin)) {
+    return { ...shimLaunch(bin, args), env: options.env ?? process.env, cwd: options.cwd };
+  }
   if (!home) {
     return { cmd: bin, args, env: options.env ?? process.env, cwd: options.cwd };
   }

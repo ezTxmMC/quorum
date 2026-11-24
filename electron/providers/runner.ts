@@ -151,6 +151,8 @@ export async function runCli(
       child = spawn(launch.cmd, launch.args, {
         cwd: launch.cwd,
         env: launch.env,
+        windowsHide: true,
+        windowsVerbatimArguments: launch.verbatim,
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: process.platform !== 'win32' && process.env.QUORUM_CHAT_WORKER !== '1',
       });
@@ -242,7 +244,8 @@ export function cancelRun(runId: string): void {
   const p = procs.get(runId);
   if (!p || p.pid === undefined) return;
   try {
-    if (process.platform === 'win32') p.kill();
+    // Windows kennt keine Prozessgruppen: taskkill beendet die CLI samt aller Kindprozesse.
+    if (process.platform === 'win32') spawn('taskkill', ['/pid', String(p.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }).on('error', () => p.kill());
     else process.kill(-p.pid, 'SIGTERM');
   } catch { p.kill('SIGTERM'); }
   const pid = p.pid;

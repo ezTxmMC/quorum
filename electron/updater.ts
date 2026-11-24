@@ -111,9 +111,12 @@ function pickAsset(assets: RawAsset[]): UpdateAsset | undefined {
   if (platform === 'linux') {
     match = assets.find((a) => a.name.endsWith('.AppImage')) || assets.find((a) => a.name.endsWith('.deb'));
   } else if (platform === 'win32') {
-    match = assets.find((a) => a.name.endsWith('.exe')) || assets.find((a) => a.name.endsWith('.zip'));
+    // Der Betriebssystem-Teil im Dateinamen trennt die Windows- von den macOS-Archiven.
+    const own = assets.filter((a) => /-win-/i.test(a.name));
+    match = own.find((a) => a.name.endsWith('.exe')) || own.find((a) => a.name.endsWith('.zip'));
   } else if (platform === 'darwin') {
-    match = assets.find((a) => a.name.endsWith('.dmg')) || assets.find((a) => a.name.endsWith('.zip'));
+    const own = assets.filter((a) => /-mac-/i.test(a.name));
+    match = own.find((a) => a.name.endsWith('.dmg')) || own.find((a) => a.name.endsWith('.zip'));
   }
 
   if (match) {
@@ -379,11 +382,20 @@ rm -f "${filePath}"
       shell.showItemInFolder(filePath);
       return false;
     }
-  } else {
-    // Windows / Mac: Im Finder / Explorer öffnen
-    shell.showItemInFolder(filePath);
+  }
+  if (process.platform === 'win32' && filePath.toLowerCase().endsWith('.exe')) {
+    // Windows: Installer starten und die App beenden, damit er die Dateien ersetzen kann.
+    spawn(filePath, [], { detached: true, stdio: 'ignore' }).unref();
+    app.quit();
     return true;
   }
+  if (process.platform === 'darwin' && filePath.toLowerCase().endsWith('.dmg')) {
+    // macOS: Image einhängen – die App wird wie gewohnt nach „Programme“ gezogen.
+    const failure = await shell.openPath(filePath);
+    return !failure;
+  }
+  shell.showItemInFolder(filePath);
+  return true;
 }
 
 export function getUpdateState(): UpdateState {

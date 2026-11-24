@@ -19,8 +19,8 @@
     "update:linux": "bash scripts/update-linux.sh",
     "icons": "node scripts/make-icons.ts",
     "dist:linux": "node scripts/check-chat-platform.mjs linux x64 && npm run icons && npm run build && electron-builder --linux AppImage deb --x64 --publish never",
-    "dist:win": "node scripts/check-chat-platform.mjs win32 x64 && npm run icons && npm run build && electron-builder --win zip --x64 --publish never",
-    "dist:mac": "node scripts/check-chat-platform.mjs darwin arm64 && npm run icons && npm run build && electron-builder --mac zip --arm64 --publish never",
+    "dist:win": "node scripts/check-chat-platform.mjs win32 x64 && npm run icons && npm run build && electron-builder --win nsis zip --x64 --publish never",
+    "dist:mac": "node scripts/check-chat-platform.mjs darwin arm64 && npm run icons && npm run build && electron-builder --mac dmg zip --arm64 --publish never",
     "dist:all": "npm run dist:linux && npm run dist:win && npm run dist:mac",
     "release": "node scripts/release.ts",
     "release:dev": "node scripts/release.ts dev",
@@ -122,16 +122,21 @@
     },
     "win": {
       "target": [
+        "nsis",
         "zip"
       ],
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
     "mac": {
       "target": [
+        "dmg",
         "zip"
       ],
+      "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
-      "identity": null
+      "minimumSystemVersion": "26.0",
+      "identity": "-"
     },
     "extraResources": [
       {
@@ -173,7 +178,12 @@
           "quorum-chat-host*"
         ]
       }
-    ]
+    ],
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "author": {
     "name": "Quorum",

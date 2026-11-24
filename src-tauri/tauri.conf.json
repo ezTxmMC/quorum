@@ -63,6 +63,9 @@
       "../node_modules/typescript/": "language-servers/node_modules/typescript/",
       "../node_modules/typescript-language-server/": "language-servers/node_modules/typescript-language-server/",
       "../node_modules/pyright/": "language-servers/node_modules/pyright/"
+    },
+    "macOS": {
+      "minimumSystemVersion": "26.0"
     }
   }
 }
