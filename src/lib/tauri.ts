@@ -64,7 +64,13 @@ export async function installTauri(api: TauriApi) {
   };
   await api.event.listen<{ channel: string; payload: unknown }>('quorum-event', ({ payload }) => publish(payload.channel, payload.payload));
   const state = async () => ({ maximized: await current.isMaximized(), fullscreen: await current.isFullscreen() });
-  const dispatch = <T>(channel: string, args: unknown[] = []) => api.core.invoke<T>('dispatch', { channel, args });
+  const dispatch = <T>(channel: string, args: unknown[] = []) => {
+    const trimmed = [...args];
+    while (trimmed.length > 0 && trimmed[trimmed.length - 1] === undefined) {
+      trimmed.pop();
+    }
+    return api.core.invoke<T>('dispatch', { channel, args: trimmed });
+  };
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let writes = Promise.resolve<unknown>(undefined);

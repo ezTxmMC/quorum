@@ -41,7 +41,7 @@ export function PlanWorkspace() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plansDrawerOpen, setPlansDrawerOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<PlanSnapshot | null>(null);
-  const [root, setRoot] = useState(initialRoot);
+  const [root, setRoot] = useState('');
   const [title, setTitle] = useState('');
   const [definition, setDefinition] = useState(JSON.stringify(initialDefinition('Projektziel beschreiben'), null, 2));
   const [tab, setTab] = useState<WorkspaceTab>('editor');
@@ -57,6 +57,17 @@ export function PlanWorkspace() {
   const [allowNetwork, setAllowNetwork] = useState(false);
   const [inspectedRevision, setInspectedRevision] = useState('');
   const [previousDefinition, setPreviousDefinition] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!initialRoot) {
+      return;
+    }
+    let active = true;
+    void hub.ideRoot(initialRoot)
+      .then((canonical) => { if (active) { setRoot((current) => current || canonical); } })
+      .catch(() => { /* Ignore stale or moved initial workspace paths. */ });
+    return () => { active = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const state = location.state as { ideOpen?: { root: string; path: string } } | null;

@@ -146,7 +146,10 @@ const routes = {
     if (!bin) throw new Error('CLI fehlt');
     return execCli(bin, args, cwd);
   },
-  'ide:root': workspaceRoot, 'ide:list': documents.list.bind(documents), 'ide:read': documents.read.bind(documents), 'ide:save': documents.save.bind(documents),
+  'ide:root': workspaceRoot,
+  'ide:list': (cwd: string, directory?: string | null) => documents.list(cwd, directory ?? undefined),
+  'ide:read': documents.read.bind(documents),
+  'ide:save': documents.save.bind(documents),
   'ide:find': (cwd: string, query: string, content: boolean) => content ? search.search(cwd, query) : search.files(cwd, query),
   'ide:watch': (id: string, cwd: string, paths: string[]) => {
     watchers.get(id)?.();
