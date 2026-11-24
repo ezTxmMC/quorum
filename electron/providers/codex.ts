@@ -130,6 +130,14 @@ export class CodexParser implements LineParser {
           out.push({ type: 'tool_end', id, output: ((it.items ?? []) as { text: string; completed: boolean }[]).map((t) => `${t.completed ? '[x]' : '[ ]'} ${t.text}`).join('\n'), isError: false });
         }
         break;
+      case 'collab_tool_call':
+        // Codex-Unteragenten (spawn_agent, wait, close_agent …): als Werkzeug melden, damit die Agenten-Erkennung sie sieht.
+        if (!this.startedItems.has(id)) {
+          this.startedItems.add(id);
+          out.push({ type: 'tool_start', id, name: `collab:${it.tool ?? 'agent'}`, input: { prompt: it.prompt, agents: it.receiver_thread_ids } });
+        }
+        if (done) out.push({ type: 'tool_end', id, output: `receiver_thread_ids: ${(it.receiver_thread_ids ?? []).join(', ')}\n${JSON.stringify(it.agents_states ?? {})}`, isError: it.status === 'failed' });
+        break;
       case 'error':
         out.push({ type: 'notice', level: 'warn', text: String(it.message ?? 'Fehler') });
         break;

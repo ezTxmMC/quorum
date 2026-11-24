@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { PROVIDERS, isTextOnly, modelEfforts, canonicalModel, selectModelOptions, modelChoices } from '@shared/catalog';
 import type { ProviderId } from '@shared/types';
+import { AgentIsland } from '@/components/agents/AgentIsland';
 import { Composer } from '@/components/Composer';
 import { MessageView } from '@/components/MessageView';
 import { TerminalPanel } from '@/components/panels/TerminalPanel';
@@ -143,7 +144,8 @@ export function ChatPage() {
 
   return (
     <div className="relative flex h-full min-h-0">
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <AgentIsland chatId={id} />
         <div className={cx('flex min-h-0 flex-1 flex-col', empty && 'justify-center overflow-y-auto pb-[8vh]')}>
         {empty ? (
           <h1 className="mx-auto w-full max-w-3xl px-6 pb-5 text-center text-[24px] font-semibold tracking-tight text-fg">

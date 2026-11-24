@@ -3,6 +3,7 @@
 /* Design-Tokens im Stil der Lumen IDE; Akzent wird zur Laufzeit gesetzt. */
 @theme inline {
   --color-bg: var(--c-bg);
+  --color-base: var(--c-bg-base);
   --color-surface: var(--c-bg-elevated);
   --color-overlay: var(--c-bg-overlay);
   --color-input: var(--c-bg-input);
@@ -25,6 +26,7 @@
 
 :root {
   --c-bg: #171a21;
+  --c-bg-base: #0f1116;
   --c-bg-elevated: #1e222b;
   --c-bg-overlay: #252a36;
   --c-bg-input: #202530;
@@ -54,6 +56,7 @@
 
 :root[data-theme='light'] {
   --c-bg: #f7f7f5;
+  --c-bg-base: #e8e7e1;
   --c-bg-elevated: #ffffff;
   --c-bg-overlay: #ffffff;
   --c-bg-input: #ffffff;
@@ -131,6 +134,25 @@
 .icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--c-text-muted); transition: background 0.14s var(--ease-out), color 0.14s var(--ease-out), transform 0.12s var(--ease-out); }
 .icon-btn:hover:not(:disabled) { background: var(--c-bg-hover); color: var(--c-text); }
 .icon-btn:active:not(:disabled) { transform: scale(0.95); }
+
+/* Inseln: Seitenleiste, Hauptbereich und Panels liegen als eigene Flächen mit Abstand auf einem dunkleren Grund. */
+.island {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 var(--c-sheen), 0 8px 24px -16px rgba(0, 0, 0, 0.5);
+}
+/* Seitenleisten bringen eine eigene Trennlinie mit, die auf einer Insel doppelt wäre. */
+.island > aside { border: 0; }
+/* Schwebende Inseln über dem Inhalt (Hinweise, Drawer): leicht durchscheinend und deutlicher abgehoben. */
+.island-float {
+  background: color-mix(in srgb, var(--c-bg-overlay) 90%, transparent);
+  border-color: var(--c-border-strong);
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 0 var(--c-sheen), 0 16px 36px -16px rgba(0, 0, 0, 0.65);
+  transition: border-color 0.16s var(--ease-out), transform 0.16s var(--ease-out);
+}
+button.island-float:hover { border-color: color-mix(in srgb, var(--c-accent) 50%, var(--c-border-strong)); transform: translateY(-1px); }
 
 .composer-shell {
   background: color-mix(in srgb, var(--c-bg-elevated) 92%, var(--c-bg-overlay));
@@ -249,4 +271,4 @@ html[data-tauri], html[data-tauri] body, html[data-tauri] #root { background: tr
 .workbench-rail-item:active { transform: scale(0.94); }
 .workbench-rail-item.is-active { color: var(--c-text); background: color-mix(in srgb, var(--c-accent) 14%, var(--c-bg-hover)); }
 .workbench-rail-item.is-active::before { content: ''; position: absolute; left: -5px; top: 8px; bottom: 8px; width: 2.5px; border-radius: 999px; background: var(--c-accent); }
-.workbench-status { background: color-mix(in srgb, var(--c-bg) 55%, var(--c-bg-elevated)); }
+.workbench-status { background: transparent; }

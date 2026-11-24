@@ -87,7 +87,7 @@ function Zone({ pos, opened }: { pos: DockPos; opened: Set<PanelId> }) {
   };
 
   const handle = (
-    <div onPointerDown={startDrag} className={cx('group absolute z-10', horizontal ? 'top-0 h-full w-1.5 cursor-col-resize' : 'left-0 h-1.5 w-full cursor-row-resize', pos === 'left' && 'right-[-3px]', pos === 'right' && 'left-[-3px]', pos === 'top' && 'bottom-[-3px]', pos === 'bottom' && 'top-[-3px]')}>
+    <div onPointerDown={startDrag} className={cx('group absolute z-10', horizontal ? 'top-0 h-full w-1.5 cursor-col-resize' : 'left-0 h-1.5 w-full cursor-row-resize', pos === 'left' && 'right-[-7px]', pos === 'right' && 'left-[-7px]', pos === 'top' && 'bottom-[-7px]', pos === 'bottom' && 'top-[-7px]')}>
       <div className={cx('mx-auto bg-accent opacity-0 transition-opacity group-hover:opacity-60', horizontal ? 'h-full w-px' : 'mt-[3px] h-px w-full', drag !== null && '!opacity-100')} />
     </div>
   );
@@ -98,9 +98,11 @@ function Zone({ pos, opened }: { pos: DockPos; opened: Set<PanelId> }) {
       {/* Platzhalter hält die Größe der Zone, solange das Panel als Insel schwebt – der Hauptbereich springt nicht. */}
       {isMax && <div className="shrink-0" style={horizontal ? { width: size } : { height: size }} />}
       {isMax && <div className="bg-in fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]" style={{ top: TOPBAR_H }} onClick={() => setMaximizedPanel(null)} />}
-      <section data-state={state} className={cx('dock-zone flex flex-col bg-surface', isMax ? 'fixed z-[45] overflow-hidden rounded-lumen-lg border border-edge-strong shadow-2xl' : 'relative shrink-0', !mounted && 'hidden', !isMax && pos === 'left' && 'dock-left border-r border-edge', !isMax && pos === 'right' && 'dock-right border-l border-edge', !isMax && pos === 'top' && 'dock-top border-b border-edge', !isMax && pos === 'bottom' && 'dock-bottom border-t border-edge')}
+      <section data-state={state} className={cx('dock-zone flex flex-col', isMax ? 'fixed z-[45] shadow-2xl' : 'relative shrink-0', !mounted && 'hidden', !isMax && `dock-${pos}`)}
         style={islandStyle}>
         {!isMax && handle}
+        {/* Die Insel schneidet ihren Inhalt ab; der Griff zum Ziehen liegt deshalb außerhalb im Zwischenraum. */}
+        <div className={cx('island flex min-h-0 flex-1 flex-col bg-surface', isMax && '!border-edge-strong')}>
         {cur && (
           <div className="flex h-9 shrink-0 items-center gap-0.5 border-b border-edge px-1.5">
             {visible.map((p) => (
@@ -131,6 +133,7 @@ function Zone({ pos, opened }: { pos: DockPos; opened: Set<PanelId> }) {
             </div>
           ))}
         </div>
+        </div>
       </section>
     </>
   );
@@ -145,9 +148,9 @@ export function Dock({ children }: { children: ReactNode }) {
     if (vis.length) setOpened((o) => new Set([...o, ...vis]));
   }, [panels, opened]);
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
       <Zone pos="top" opened={opened} />
-      <div className="flex min-h-0 min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 gap-2">
         <Zone pos="left" opened={opened} />
         <div className="relative min-h-0 min-w-0 flex-1">{children}</div>
         <Zone pos="right" opened={opened} />

@@ -37,6 +37,10 @@ function Home() {
 
 const isQuick = location.hash.startsWith('#/quick');
 
+const SIDEBAR_WIDTH = 272;
+/** Abstand zwischen den Inseln der Arbeitsfläche (entspricht Tailwind `gap-2`). */
+const ISLAND_GAP = 8;
+
 export default function App() {
   const init = useHub((s) => s.init);
   const ready = useHub((s) => s.ready);
@@ -236,7 +240,7 @@ function Shell() {
   };
 
   return (
-    <div className={cx('flex h-full flex-col overflow-hidden bg-bg', roundedFrame && 'rounded-[14px] border border-edge-strong/80 shadow-2xl')}>
+    <div className={cx('flex h-full flex-col overflow-hidden bg-base', roundedFrame && 'rounded-[14px] border border-edge-strong/80 shadow-2xl')}>
       <TopBar
         hover={{
           open: hoverOpen,
@@ -246,25 +250,25 @@ function Shell() {
         sidebarVisible={pinned}
         onToggleSidebar={toggleSidebar}
       />
-      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden px-2 pb-1.5">
         {/* Angeheftete Seitenleiste */}
         <div
           className="relative shrink-0 overflow-hidden"
           inert={!pinned}
           style={{
-            width: pinned ? 272 : 0,
+            width: pinned ? SIDEBAR_WIDTH + ISLAND_GAP : 0,
             transition: 'width 220ms cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
           <div
-            className="h-full w-[272px]"
+            className="h-full w-[280px] pr-2"
             style={{
               transform: pinned ? 'none' : 'translateX(-100%)',
               opacity: pinned ? 1 : 0,
               transition: 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease',
             }}
           >
-            {renderSidebar({ pinned })}
+            <div className="island h-full">{renderSidebar({ pinned })}</div>
           </div>
         </div>
 
@@ -303,12 +307,12 @@ function Shell() {
         {!pinned && (
           <div
             className={cx(
-              'absolute bottom-0 left-0 top-0 z-40 flex w-[272px] transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
+              'island absolute bottom-2 left-2 top-0 z-40 flex w-[272px] transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
               hoverOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'pointer-events-none -translate-x-full opacity-0',
             )}
             style={{
               boxShadow: hoverOpen
-                ? '12px 0 36px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--c-border)'
+                ? '0 18px 44px -10px rgba(0, 0, 0, 0.6)'
                 : 'none',
             }}
             inert={!hoverOpen}
@@ -329,7 +333,7 @@ function Shell() {
         )}
 
         <SettingsModal />
-        <Dock><main className="page-root absolute inset-0 flex min-w-0 flex-col overflow-hidden"><Outlet /></main></Dock>
+        <Dock><main className="page-root island absolute inset-0 flex min-w-0 flex-col bg-bg"><Outlet /></main></Dock>
       </div>
       <ProcessStatus />
     </div>

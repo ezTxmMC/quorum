@@ -37,7 +37,7 @@ export function ProcessStatus() {
   }
   return <>
     {showFooter && (
-      <footer className="workbench-status flex h-7 shrink-0 items-center gap-4 border-t border-edge px-3 text-[11px] text-muted">
+      <footer className="workbench-status flex h-7 shrink-0 items-center gap-4 px-4 text-[11px] text-muted">
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate" title={cwd}><Icon name="lucide:folder-open" size={12} className="shrink-0 text-subtle" />{cwd || 'Kein Workspace'}</span>
         <button className="flex items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors hover:bg-hover hover:text-fg" onClick={() => setOpen(true)}><span className={`size-1.5 rounded-full ${running.length ? 'animate-pulse bg-ok' : 'bg-subtle'}`} />{running.length} {running.length === 1 ? 'Chat-Prozess' : 'Chat-Prozesse'}<Icon name="lucide:activity" size={12} /></button>
         {location.pathname.startsWith('/plan') && <span className="hidden items-center gap-1.5 text-subtle sm:flex"><kbd className="kbd-pill">Strg+P</kbd> Öffnen · <kbd className="kbd-pill">Strg+Shift+F</kbd> Suche</span>}

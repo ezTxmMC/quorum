@@ -167,7 +167,7 @@ export function TopBar({ hover, minimal, sidebarVisible, onToggleSidebar }: { ho
       data-tauri-drag-region
       onMouseDown={startWindowDrag}
       onDoubleClick={toggleMaximizeOnDoubleClick}
-      className="drag relative z-50 flex h-11 shrink-0 select-none items-center border-b border-edge bg-bg"
+      className="drag relative z-50 flex h-11 shrink-0 select-none items-center bg-base"
     >
       {mac && <div className="w-[78px] shrink-0" />}
       {!minimal && (
