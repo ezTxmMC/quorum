@@ -45,6 +45,10 @@ export function ChatPage() {
   const lb = session?.messages.at(-1)?.blocks.at(-1);
   const lastText = !lb ? 0 : lb.kind === 'tool' ? (lb.output?.length ?? 0) + (lb.running ? 1 : 0) : lb.kind === 'image' || lb.kind === 'model' ? 1 : lb.text.length;
 
+  // Eine selbst gesendete Nachricht holt die Ansicht immer ans Ende, auch wenn vorher nach oben gescrollt wurde.
+  const lastUserId = session?.messages.filter((message) => message.role === 'user').at(-1)?.id;
+  useEffect(() => { stick.current = true; }, [lastUserId]);
+
   useEffect(() => {
     const el = scroller.current;
     if (el && stick.current) {
@@ -53,7 +57,7 @@ export function ChatPage() {
       });
       return () => cancelAnimationFrame(raf);
     }
-  }, [session?.messages.length, lastLen, lastText]);
+  }, [session?.messages.length, lastLen, lastText, lastUserId]);
   useEffect(() => { stick.current = true; }, [id]);
 
   // Neuer, leerer Chat mit nicht verfügbarem Anbieter: automatisch auf den ersten verfügbaren wechseln.
