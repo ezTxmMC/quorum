@@ -31,7 +31,7 @@ interface Props {
 const BUILTIN = [
   { name: 'new', desc: 'Neuer Chat im selben Projekt' },
   { name: 'plan', desc: 'Plan-Modus ein/aus (nur lesen)' },
-  { name: 'provider', desc: '/provider claude | codex | agy' },
+  { name: 'provider', desc: '/provider claude | codex | agy | kimi' },
   { name: 'model', desc: '/model <name> – Modell wechseln' },
   { name: 'effort', desc: '/effort low|medium|high|xhigh|max' },
   { name: 'review', desc: 'Änderungen im Projekt prüfen (Codex: nativer Review)' },
@@ -240,7 +240,7 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-5xl xl:max-w-6xl px-4 pb-4" onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={onDrop}>
-      <div className="relative rounded-[18px] border border-edge-strong bg-surface shadow-lg transition-colors focus-within:border-accent/60">
+      <div className="composer-shell relative rounded-[20px]">
         {items.length > 0 && (
           <div data-state="open" className="pop absolute bottom-full left-0 right-0 z-30 mb-2 max-h-64 overflow-auto rounded-lumen border border-edge-strong bg-overlay p-1 shadow-2xl">
             {items.map((it, i) => (
@@ -279,7 +279,7 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
         <textarea title="↑ / ↓: frühere Eingaben im leeren Feld durchgehen" ref={ta} rows={1} value={text} onChange={(e) => { historyIndex.current = -1; setText(e.target.value); setSel(0); }} onKeyDown={onKey} onPaste={onPaste}
           placeholder={mode === 'model' ? t('Beschreibe das 3D-Modell, Texturen, Materialien oder Animationen …') : mode === 'image' ? (getLang() === 'en' ? 'Describe the image … (or a change to the last one)' : 'Beschreibe das Bild … (oder eine Änderung am letzten)') : getLang() === 'en' ? `Message ${meta.name} …   (/ for commands, @ for files)` : `Nachricht an ${meta.name} …   (/ für Befehle, @ für Dateien)`}
           className="block max-h-[220px] w-full resize-none overflow-x-hidden overflow-y-hidden bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-relaxed outline-none placeholder:text-subtle" />
-        <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
+        <div className="flex flex-wrap items-center gap-1 border-t border-edge/60 px-2.5 pb-2 pt-1.5">
           <label className="icon-btn cursor-pointer" title={t('Bilder oder Dateien anhängen')}><Icon name="lucide:paperclip" /><input aria-label={t('Bilder oder Dateien anhängen')} className="hidden" type="file" multiple onChange={(event) => { const selected = [...(event.target.files ?? [])]; event.target.value = ''; void ingest(selected); }} /></label>
           <ChatModeButton value={mode} onChange={changeMode} disabled={running} />
           <ModelButton kind={mode === 'image' ? 'image' : 'text'} provider={session.provider} model={session.options.model} imageGen={session.options.imageGen} includeImages onPick={pick} />

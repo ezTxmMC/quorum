@@ -24,26 +24,27 @@
 }
 
 :root {
-  --c-bg: #0e1013;
-  --c-bg-elevated: #14171c;
-  --c-bg-overlay: #1a1e25;
-  --c-bg-input: #1b1f26;
-  --c-bg-hover: #1e232b;
-  --c-bg-active: #262c36;
-  --c-border: #232830;
-  --c-border-strong: #333a45;
-  --c-text: #e4e7ec;
-  --c-text-muted: #9aa3b0;
-  --c-text-subtle: #646d7a;
+  --c-bg: #0c0e12;
+  --c-bg-elevated: #12151b;
+  --c-bg-overlay: #181c24;
+  --c-bg-input: #161a22;
+  --c-bg-hover: #1d222c;
+  --c-bg-active: #252b37;
+  --c-border: rgba(255, 255, 255, 0.075);
+  --c-border-strong: rgba(255, 255, 255, 0.14);
+  --c-text: #e8ebf0;
+  --c-text-muted: #98a2b3;
+  --c-text-subtle: #667085;
   --c-accent: #7c8cff;
-  --c-accent-text: #0b0d10;
+  --c-accent-text: #0a0c10;
   --c-success: #4ade80;
   --c-warning: #fbbf24;
   --c-danger: #f87171;
-  --c-selection: #2d3550;
-  --c-scrollbar: #333a45;
+  --c-selection: rgba(124, 140, 255, 0.28);
+  --c-scrollbar: rgba(255, 255, 255, 0.14);
+  --c-sheen: rgba(255, 255, 255, 0.045);
   --radius: 10px;
-  --radius-sm: 6px;
+  --radius-sm: 7px;
   --radius-lg: 14px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.5, 0, 0.75, 0);
@@ -52,23 +53,24 @@
 }
 
 :root[data-theme='light'] {
-  --c-bg: #fafaf9;
-  --c-bg-elevated: #f3f2f0;
+  --c-bg: #f7f7f5;
+  --c-bg-elevated: #ffffff;
   --c-bg-overlay: #ffffff;
   --c-bg-input: #ffffff;
-  --c-bg-hover: #ebe9e6;
-  --c-bg-active: #e1dfdb;
-  --c-border: #e3e1dd;
-  --c-border-strong: #cdcac4;
-  --c-text: #1d1f23;
-  --c-text-muted: #5d6470;
-  --c-text-subtle: #8c929c;
+  --c-bg-hover: #efeee9;
+  --c-bg-active: #e5e3dc;
+  --c-border: rgba(15, 23, 42, 0.09);
+  --c-border-strong: rgba(15, 23, 42, 0.17);
+  --c-text: #16181d;
+  --c-text-muted: #525866;
+  --c-text-subtle: #868c98;
   --c-accent-text: #ffffff;
   --c-success: #16a34a;
   --c-warning: #b45309;
   --c-danger: #dc2626;
-  --c-selection: #d5dcff;
-  --c-scrollbar: #cdcac4;
+  --c-selection: rgba(124, 140, 255, 0.22);
+  --c-scrollbar: rgba(15, 23, 42, 0.18);
+  --c-sheen: rgba(255, 255, 255, 0.7);
   color-scheme: light;
 }
 
@@ -87,11 +89,15 @@
   button, input, textarea, select { font: inherit; color: inherit; }
   button { cursor: pointer; background: none; border: none; padding: 0; }
   button:disabled { cursor: default; }
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 70%, transparent);
+    outline-offset: 1px;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-corner { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--c-scrollbar); border: 3px solid transparent; background-clip: content-box; border-radius: 8px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--c-text-subtle); border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb { background: var(--c-scrollbar); border: 2px solid transparent; background-clip: content-box; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--c-text-subtle); border: 2px solid transparent; background-clip: content-box; }
 }
 
 .drag { -webkit-app-region: drag; }
@@ -122,8 +128,32 @@
 .btn-primary { background: var(--c-accent); color: var(--c-accent-text); border-color: transparent; font-weight: 500; }
 .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--c-accent) 88%, white); border-color: transparent; }
 .btn-ghost { background: transparent; border-color: transparent; }
-.icon-btn { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--c-text-muted); transition: background 0.12s, color 0.12s; }
+.icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--c-text-muted); transition: background 0.14s var(--ease-out), color 0.14s var(--ease-out), transform 0.12s var(--ease-out); }
 .icon-btn:hover:not(:disabled) { background: var(--c-bg-hover); color: var(--c-text); }
+.icon-btn:active:not(:disabled) { transform: scale(0.95); }
+
+.composer-shell {
+  background: color-mix(in srgb, var(--c-bg-elevated) 92%, var(--c-bg-overlay));
+  border: 1px solid var(--c-border-strong);
+  box-shadow: inset 0 1px 0 var(--c-sheen), 0 10px 30px -12px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out), background-color 0.18s var(--ease-out);
+}
+.composer-shell:focus-within {
+  border-color: color-mix(in srgb, var(--c-accent) 58%, var(--c-border-strong));
+  box-shadow: inset 0 1px 0 var(--c-sheen), 0 0 0 3px color-mix(in srgb, var(--c-accent) 14%, transparent), 0 14px 36px -14px rgba(0, 0, 0, 0.55);
+}
+
+.kbd-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-elevated);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--c-text-muted);
+}
 }
 
 /* Ein-/Ausblenden für Popover, Modals, Panels */
@@ -212,9 +242,10 @@ html[data-quick], html[data-quick] body, html[data-quick] #root { background: tr
 .bg-in { animation: bg-in 0.18s ease-out both; }
 
 /* Compact IDE workbench: stable rails and shared panel surfaces. */
-.workbench-rail { background: color-mix(in srgb, var(--c-bg) 88%, var(--c-bg-elevated)); }
-.workbench-rail-item { position: relative; display: grid; place-items: center; width: 42px; height: 40px; color: var(--c-text-subtle); transition: color 120ms, background 120ms; }
+.workbench-rail { background: color-mix(in srgb, var(--c-bg) 72%, var(--c-bg-elevated)); }
+.workbench-rail-item { position: relative; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: var(--c-text-subtle); transition: color 140ms var(--ease-out), background 140ms var(--ease-out), transform 120ms var(--ease-out); }
 .workbench-rail-item:hover { color: var(--c-text); background: var(--c-bg-hover); }
-.workbench-rail-item.is-active { color: var(--c-text); }
-.workbench-rail-item.is-active::before { content: ''; position: absolute; left: 0; top: 9px; bottom: 9px; width: 2px; border-radius: 2px; background: var(--c-accent); }
-.workbench-status { background: var(--c-bg-elevated); }
+.workbench-rail-item:active { transform: scale(0.94); }
+.workbench-rail-item.is-active { color: var(--c-text); background: color-mix(in srgb, var(--c-accent) 14%, var(--c-bg-hover)); }
+.workbench-rail-item.is-active::before { content: ''; position: absolute; left: -5px; top: 8px; bottom: 8px; width: 2.5px; border-radius: 999px; background: var(--c-accent); }
+.workbench-status { background: color-mix(in srgb, var(--c-bg) 55%, var(--c-bg-elevated)); }

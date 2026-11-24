@@ -15,7 +15,7 @@ import { Icon } from '@/lib/icons';
 import { useHub, useHubEq } from '@/lib/store';
 import type { ChatSession } from '@shared/types';
 
-const ALIASES: Record<string, ProviderId> = { claude: 'claude', codex: 'codex', gpt: 'codex', agy: 'antigravity', gemini: 'antigravity', antigravity: 'antigravity' };
+const ALIASES: Record<string, ProviderId> = { claude: 'claude', codex: 'codex', gpt: 'codex', agy: 'antigravity', gemini: 'antigravity', antigravity: 'antigravity', kimi: 'kimi', opencode: 'opencode' };
 
 export function ChatPage() {
   const { id = '' } = useParams();
@@ -144,18 +144,38 @@ export function ChatPage() {
       <div className="flex min-w-0 flex-1 flex-col">
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
           {session.messages.length === 0 ? (
-            <div className="mx-auto flex h-full max-w-4xl xl:max-w-5xl flex-col items-center justify-center px-6 text-center">
+            <div className="mx-auto flex h-full max-w-4xl xl:max-w-5xl flex-col items-center justify-center px-6 py-8 text-center">
+              <div className="mb-6">
+                <h1 className="mb-1.5 text-[24px] font-semibold tracking-tight text-fg">{t(CHAT_MODES.find((entry) => entry.id === mode)!.label)}</h1>
+                <p className="text-[13.5px] text-muted">{t(CHAT_MODES.find((entry) => entry.id === mode)!.description)}</p>
+              </div>
               {/* Nur verfügbare Anbieter anbieten (CLI vorhanden, angemeldet bzw. erreichbar) – der aktuell gewählte bleibt sichtbar. */}
-              <div className="mb-5 flex flex-wrap justify-center gap-2">{(Object.keys(PROVIDERS) as ProviderId[]).filter((p) => statuses[p]?.installed || p === session.provider).map((p) => (
-                <button key={p} onClick={() => patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p], chatMode: mode } })} className={cx('flex w-36 flex-col items-center gap-2 rounded-lumen-lg border p-4 transition-colors hover:bg-hover', p === session.provider ? 'border-accent bg-hover' : 'border-edge')}>
-                  <ProviderMark id={p} size={22} /><span className="text-[13px] font-medium">{PROVIDERS[p].name}</span>
-                  <span className="text-[11px] text-subtle">{statuses[p]?.installed === false ? (p === 'ollama' ? t('läuft nicht') : t('nicht installiert')) : PROVIDERS[p].vendor}</span>
-                </button>
-              ))}</div>
-              <h1 className="mb-1.5 text-[22px] font-semibold tracking-tight">{t(CHAT_MODES.find((entry) => entry.id === mode)!.label)}</h1>
-              <p className="mb-3 text-muted">{t(CHAT_MODES.find((entry) => entry.id === mode)!.description)}</p>
-              <p className="text-muted">{mode !== 'coding' ? t(mode === 'model' ? 'Beschreibe Form, Farben, Texturmuster, Materialien und gewünschte Animationen.' : mode === 'image' ? 'Bilder erzeugen und bearbeiten' : 'Fragen, schreiben und besprechen') : isTextOnly(session.provider) ? <span className="text-subtle">{session.provider === 'ollama' || session.provider === 'local' ? t('Lokaler Chat – kein Dateizugriff, keine Limits') : t('Chat-Modus – kein Dateizugriff, kein Codex-Kontingent')}</span> : session.cwd ? <>{t('Projekt:')} <button className="text-fg underline decoration-edge-strong underline-offset-4 hover:decoration-accent" onClick={pickProject}>{session.cwd}</button></> : <><button className="btn mx-auto" onClick={pickProject}><Icon name="lucide:folder-open" /> {t('Ordner wählen')}</button><span className="mt-2 block text-[12px] text-subtle">{t('Ohne Ordner läuft der Chat ohne Zugriff auf deine Dateien.')}</span></>}</p>
-              <p className="mt-6 text-[12px] text-subtle">{t('Tipp:')} <kbd className="rounded bg-active px-1">/</kbd> {t('Befehle & Skills ·')} <kbd className="rounded bg-active px-1">@</kbd> {t('Dateien · Bilder per Drag & Drop · Anbieter wechseln behält den Kontext')}</p>
+              <div className="mb-6 flex flex-wrap justify-center gap-2.5">{(Object.keys(PROVIDERS) as ProviderId[]).filter((p) => statuses[p]?.installed || p === session.provider).map((p) => {
+                const selected = p === session.provider;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p], chatMode: mode } })}
+                    className={cx(
+                      'group flex w-40 flex-col items-center gap-2 rounded-lumen-lg border px-4 py-3.5 transition-all duration-150 hover:-translate-y-0.5',
+                      selected
+                        ? 'border-accent/70 bg-surface shadow-[0_0_0_1px_color-mix(in_srgb,var(--c-accent)_35%,transparent),0_10px_24px_-12px_rgba(0,0,0,0.6)]'
+                        : 'border-edge bg-surface/60 hover:border-edge-strong hover:bg-surface'
+                    )}
+                  >
+                    <ProviderMark id={p} size={22} />
+                    <span className="text-[13px] font-medium text-fg">{PROVIDERS[p].name}</span>
+                    <span className="line-clamp-1 text-[11px] text-subtle">{statuses[p]?.installed === false ? (p === 'ollama' ? t('läuft nicht') : t('nicht installiert')) : PROVIDERS[p].vendor}</span>
+                  </button>
+                );
+              })}</div>
+              <p className="text-[13px] text-muted">{mode !== 'coding' ? t(mode === 'model' ? 'Beschreibe Form, Farben, Texturmuster, Materialien und gewünschte Animationen.' : mode === 'image' ? 'Bilder erzeugen und bearbeiten' : 'Fragen, schreiben und besprechen') : isTextOnly(session.provider) ? <span className="text-subtle">{session.provider === 'ollama' || session.provider === 'local' ? t('Lokaler Chat – kein Dateizugriff, keine Limits') : t('Chat-Modus – kein Dateizugriff, kein Codex-Kontingent')}</span> : session.cwd ? <>{t('Projekt:')} <button className="text-fg underline decoration-edge-strong underline-offset-4 transition-colors hover:decoration-accent" onClick={pickProject}>{session.cwd}</button></> : <><button className="btn mx-auto" onClick={pickProject}><Icon name="lucide:folder-open" /> {t('Ordner wählen')}</button><span className="mt-2 block text-[12px] text-subtle">{t('Ohne Ordner läuft der Chat ohne Zugriff auf deine Dateien.')}</span></>}</p>
+              <div className="mt-7 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11.5px] text-subtle">
+                <span className="inline-flex items-center gap-1.5"><kbd className="kbd-pill">/</kbd> {t('Befehle & Skills')}</span>
+                <span className="inline-flex items-center gap-1.5"><kbd className="kbd-pill">@</kbd> {t('Dateien')}</span>
+                <span className="inline-flex items-center gap-1.5"><kbd className="kbd-pill">Strg+B</kbd> {t('Seitenleiste')}</span>
+                <span>{t('Bilder per Drag & Drop')}</span>
+              </div>
             </div>
           ) : (
             <div className="mx-auto max-w-5xl xl:max-w-6xl space-y-6 px-4 py-6">

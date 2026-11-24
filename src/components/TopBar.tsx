@@ -12,12 +12,12 @@ import { ShortPath, cx } from './ui';
 function WindowControls() {
   const [st, setSt] = useState({ maximized: false, fullscreen: false });
   useEffect(() => { void hub.winState().then(setSt); return hub.onWinState(setSt); }, []);
-  const base = 'no-drag grid h-full w-11 place-items-center text-muted transition-colors hover:text-fg';
+  const base = 'no-drag grid h-full w-11 place-items-center text-muted transition-colors duration-150 hover:text-fg';
   return (
-    <div className="no-drag flex h-full">
-      <button className={cx(base, 'hover:bg-hover')} onClick={() => hub.winMinimize()} title={t('Minimieren')}><Icon name="lucide:minus" size={15} /></button>
-      <button className={cx(base, 'hover:bg-hover')} onClick={() => hub.winMaximize()} title={st.maximized ? t('Wiederherstellen') : t('Maximieren')}><Icon name={st.maximized ? 'lucide:copy' : 'lucide:square'} size={st.maximized ? 13 : 12} /></button>
-      <button className={cx(base, 'hover:!bg-[#e5484d] hover:!text-white')} onClick={() => hub.winClose()} title={t('Schließen')}><Icon name="lucide:x" size={16} /></button>
+    <div className="no-drag ml-1 flex h-full border-l border-edge/80">
+      <button className={cx(base, 'hover:bg-hover')} onClick={() => hub.winMinimize()} title={t('Minimieren')}><Icon name="lucide:minus" size={14} /></button>
+      <button className={cx(base, 'hover:bg-hover')} onClick={() => hub.winMaximize()} title={st.maximized ? t('Wiederherstellen') : t('Maximieren')}><Icon name={st.maximized ? 'lucide:copy' : 'lucide:square'} size={st.maximized ? 12 : 11} /></button>
+      <button className={cx(base, 'hover:!bg-[#e5484d] hover:!text-white')} onClick={() => hub.winClose()} title={t('Schließen')}><Icon name="lucide:x" size={15} /></button>
     </div>
   );
 }

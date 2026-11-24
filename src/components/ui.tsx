@@ -47,9 +47,9 @@ export function Label({ children, hint }: { children: ReactNode; hint?: string }
 
 export function Toggle({ checked, onChange, label, hint, danger }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string; danger?: boolean }) {
   return (
-    <button type="button" onClick={() => onChange(!checked)} className="flex w-full items-center gap-3 rounded-lumen-sm px-1 py-1.5 text-left hover:bg-hover">
-      <span className={cx('relative h-[18px] w-8 shrink-0 rounded-full transition-colors', checked ? (danger ? 'bg-bad' : 'bg-accent') : 'bg-active')}>
-        <span className={cx('absolute top-[2px] size-[14px] rounded-full bg-white transition-all', checked ? 'left-[16px]' : 'left-[2px]')} />
+    <button type="button" onClick={() => onChange(!checked)} className="flex w-full items-center gap-3 rounded-lumen-sm px-1.5 py-1.5 text-left transition-colors hover:bg-hover">
+      <span className={cx('relative h-[18px] w-8 shrink-0 rounded-full transition-colors duration-150', checked ? (danger ? 'bg-bad' : 'bg-accent') : 'bg-active')}>
+        <span className={cx('absolute top-[2px] size-[14px] rounded-full bg-white shadow-xs transition-all duration-150', checked ? 'left-[16px]' : 'left-[2px]')} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[12.5px]">{label}</span>
@@ -84,7 +84,7 @@ export function Popover({ trigger, children, align = 'left', down }: { trigger: 
     <div ref={ref} className="relative">
       {trigger(open, () => setOpen((o) => !o))}
       {mounted && (
-        <div data-state={state} className={cx('pop absolute z-40 min-w-56 rounded-lumen border border-edge-strong bg-overlay p-1 shadow-2xl', down ? 'top-full mt-2 origin-top' : 'bottom-full mb-2 origin-bottom', align === 'right' ? 'right-0' : 'left-0')}>
+        <div data-state={state} className={cx('pop absolute z-40 min-w-56 rounded-lumen border border-edge-strong bg-overlay/95 p-1 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md', down ? 'top-full mt-2 origin-top' : 'bottom-full mb-2 origin-bottom', align === 'right' ? 'right-0' : 'left-0')}>
           {children(() => setOpen(false))}
         </div>
       )}
@@ -94,7 +94,7 @@ export function Popover({ trigger, children, align = 'left', down }: { trigger: 
 
 export function MenuItem({ icon, children, hint, active, onClick }: { icon?: ReactNode; children: ReactNode; hint?: string; active?: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className={cx('flex w-full items-center gap-2.5 rounded-lumen-sm px-2.5 py-1.5 text-left hover:bg-hover', active && 'bg-active')}>
+    <button type="button" onClick={onClick} className={cx('flex w-full items-center gap-2.5 rounded-lumen-sm px-2.5 py-1.5 text-left transition-colors duration-100 hover:bg-hover', active && 'bg-active')}>
       {icon}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12.5px]">{children}</span>

@@ -17,12 +17,13 @@ function Thinking({ text, live }: { text: string; live: boolean }) {
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => { if (live && open && body.current) body.current.scrollTop = body.current.scrollHeight; }, [text, live, open]);
   return (
-    <div className="text-[12.5px] text-subtle">
-      <button className="flex items-center gap-1.5 hover:text-muted" aria-expanded={open} onClick={() => setExpanded(!open)}>
-        <Icon name="lucide:brain" size={14} className={live ? 'pulse-dot' : ''} /> {live ? t('Denkt nach…') : t('Gedankengang')}
+    <div className="rounded-lumen border border-edge/80 bg-surface/50 px-3 py-2 text-[12.5px] text-subtle">
+      <button className="flex w-full items-center gap-1.5 text-left transition-colors hover:text-muted" aria-expanded={open} onClick={() => setExpanded(!open)}>
+        <Icon name="lucide:brain" size={14} className={live ? 'pulse-dot text-accent' : ''} />
+        <span className="flex-1 font-medium">{live ? t('Denkt nach…') : t('Gedankengang')}</span>
         <Icon name={open ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={12} />
       </button>
-      <Collapse open={open}><div ref={body} className="mt-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap border-l-2 border-edge pl-3 italic">{text}</div></Collapse>
+      <Collapse open={open}><div ref={body} className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap border-t border-edge/70 pt-2 italic leading-relaxed">{text}</div></Collapse>
     </div>
   );
 }
@@ -98,7 +99,7 @@ export const MessageView = memo(function MessageView({ m, live, label, onStop, o
     return (
       <div className="fade-in group/msg flex items-start justify-end gap-1">
         <CopyButton title={t('Kopieren / Copy')} className="mt-1 opacity-0 transition-opacity group-hover/msg:opacity-100" text={text} />
-        <div className="min-w-0 max-w-[85%] select-text overflow-hidden rounded-lumen-lg rounded-br-md border border-edge bg-surface px-3.5 py-2.5">
+        <div className="min-w-0 max-w-[85%] select-text overflow-hidden rounded-2xl rounded-br-md border border-edge-strong/70 bg-surface px-4 py-2.5 shadow-[inset_0_1px_0_var(--c-sheen)]">
           {!!(m.images?.length || m.attachments?.length || m.files?.length) && <SentAttachments message={m} />}
           <div className="whitespace-pre-wrap text-[14px] leading-relaxed [overflow-wrap:anywhere]">{text}</div>
         </div>
