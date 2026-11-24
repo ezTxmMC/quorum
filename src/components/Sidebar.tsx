@@ -375,7 +375,7 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
         </div>
         {search.trim() && <div role="status" aria-live="polite" className="px-1 pt-1 text-[10.5px] text-subtle">{query !== search.trim() ? t('Suche …') : `${matches.size} ${t('Chats gefunden')}`}</div>}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
+      <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
         {!searching && multis.length > 0 && (
           <>
             <button className={SECTION_TOGGLE} aria-expanded={teamsOpen} onClick={() => toggleCollapsed(TEAMS_SECTION)}>

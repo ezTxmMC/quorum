@@ -109,6 +109,14 @@
   ::-webkit-scrollbar-thumb:hover { background: var(--c-text-subtle); border: 2px solid transparent; background-clip: content-box; }
 }
 
+/* Seitenleisten: die Scrollleiste ist nur sichtbar, solange der Zeiger über der Seitenleiste liegt.
+   Scrollbar-Pseudoelemente lassen sich nicht direkt überblenden, deshalb läuft der Übergang über eine registrierte Farbvariable. */
+@property --sidebar-thumb { syntax: '<color>'; inherits: true; initial-value: transparent; }
+.sidebar-scroll { --sidebar-thumb: transparent; transition: --sidebar-thumb 0.25s ease; }
+aside:hover .sidebar-scroll { --sidebar-thumb: var(--c-scrollbar); }
+.sidebar-scroll::-webkit-scrollbar-thumb { background-color: var(--sidebar-thumb); }
+aside:hover .sidebar-scroll::-webkit-scrollbar-thumb:hover { background-color: var(--c-text-subtle); }
+
 .drag { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
 

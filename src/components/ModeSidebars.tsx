@@ -73,7 +73,7 @@ export function ThreeDSidebar({ pinned, onClose }: SidebarProps) {
         {t('Projekte')} ({projects.length})
       </div>
 
-      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
+      <div className="sidebar-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
         {projects.length === 0 && (
           <p className="px-2 py-6 text-center text-[12px] text-subtle">{t('Noch keine 3D-Projekte.')}</p>
         )}
@@ -247,7 +247,7 @@ export function IdeSidebar({ pinned, onClose }: SidebarProps) {
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-3">
+      <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-1.5 pb-3">
         {section === 'files' ? (
           root ? (
             <IdeFileTree root={root} selected={selectedFile} onOpen={openIdeFile} />
