@@ -9,7 +9,7 @@ import { Composer } from '@/components/Composer';
 import { MessageView } from '@/components/MessageView';
 import { TerminalPanel } from '@/components/panels/TerminalPanel';
 import { OptionsPanel } from '@/components/OptionsPanel';
-import { ProviderMark, cx, usePresence } from '@/components/ui';
+import { cx, usePresence } from '@/components/ui';
 import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
 import { useHub, useHubEq } from '@/lib/store';
@@ -89,6 +89,7 @@ export function ChatPage() {
   const rawMode = chatMode(session.options);
   const mode = rawMode === 'model' ? 'text' : rawMode;
   const status = statuses[session.provider];
+  const empty = session.messages.length === 0;
 
   const setOpts = (patch: object) => patchSession(id, { options: { ...session.options, ...patch } });
 
@@ -143,57 +144,18 @@ export function ChatPage() {
   return (
     <div className="relative flex h-full min-h-0">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
-          {session.messages.length === 0 ? (
-            <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center px-6 py-8 text-center">
-              <h1 className="mb-2 text-[24px] font-semibold tracking-tight text-fg">
-                {t(CHAT_MODES.find((entry) => entry.id === mode)!.label)}
-              </h1>
-              <p className="mb-6 text-[13px] text-muted">
-                {t(CHAT_MODES.find((entry) => entry.id === mode)!.description)}
-              </p>
-              {/* Kompakte Anbieter-Pills statt überladener Kartenwand */}
-              <div className="mb-5 flex flex-wrap justify-center gap-1.5">
-                {PROVIDER_ORDER.filter((p) => statuses[p]?.installed || p === session.provider).map((p) => {
-                  const selected = p === session.provider;
-                  return (
-                    <button
-                      key={p}
-                      onClick={() => patchSession(id, { provider: p, options: { ...useHub.getState().data.settings.providerDefaults[p], chatMode: mode } })}
-                      className={cx(
-                        'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-all duration-150',
-                        selected
-                          ? 'border-accent/70 bg-surface text-fg shadow-[0_0_0_1px_color-mix(in_srgb,var(--c-accent)_30%,transparent)]'
-                          : 'border-edge bg-surface/50 text-muted hover:border-edge-strong hover:bg-surface hover:text-fg',
-                      )}
-                    >
-                      <ProviderMark id={p} size={14} />
-                      <span>{PROVIDERS[p].name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {mode === 'coding' && !isTextOnly(session.provider) && (
-                <div className="text-[12.5px] text-subtle">
-                  {session.cwd ? (
-                    <button className="inline-flex items-center gap-1.5 rounded-full border border-edge bg-surface/60 px-3 py-1 text-muted transition-colors hover:border-edge-strong hover:text-fg" onClick={pickProject}>
-                      <Icon name="lucide:folder" size={13} />
-                      <span className="max-w-xs truncate">{session.cwd}</span>
-                    </button>
-                  ) : (
-                    <button className="btn !rounded-full text-[12px]" onClick={pickProject}>
-                      <Icon name="lucide:folder-open" size={14} /> {t('Ordner wählen')}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
+        <div className={cx('flex min-h-0 flex-1 flex-col', empty && 'justify-center overflow-y-auto pb-[8vh]')}>
+        {empty ? (
+          <h1 className="mx-auto w-full max-w-3xl px-6 pb-5 text-center text-[24px] font-semibold tracking-tight text-fg">
+            {t(CHAT_MODES.find((entry) => entry.id === mode)!.description)}
+          </h1>
+        ) : (
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
             <div className="mx-auto max-w-5xl xl:max-w-6xl space-y-6 px-4 py-6">
               {session.messages.map((m) => <MessageView key={m.id} onOpenModel={onOpenModel} m={m} live={activeMessages.has(m.id)} onStop={onStopRun} />)}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {status?.installed === false && (
           <div className="mx-auto mb-2 flex w-full max-w-5xl xl:max-w-6xl items-center gap-2 rounded-lumen border border-warn/30 bg-warn/10 px-3 py-2 text-warn">
@@ -206,7 +168,16 @@ export function ChatPage() {
             <button className="icon-btn !size-5" onClick={() => useHub.getState().setBanner(id, null)}><Icon name="lucide:x" size={12} /></button>
           </div>
         )}
-        <Composer session={composerSession ?? session} running={running} onSend={onSendMsg} onStop={onStopRun} onCommand={onCommandStable} />
+        <Composer session={composerSession ?? session} running={running} onSend={onSendMsg} onStop={onStopRun} onCommand={onCommandStable} centered={empty} />
+        {empty && mode === 'coding' && !isTextOnly(session.provider) && (
+          <div className="flex justify-center px-4">
+            <button className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-edge bg-surface/60 px-3 py-1 text-[12.5px] text-muted transition-colors hover:border-edge-strong hover:text-fg" onClick={pickProject}>
+              <Icon name={session.cwd ? 'lucide:folder' : 'lucide:folder-open'} size={13} />
+              <span className="max-w-xs truncate">{session.cwd || t('Ordner wählen')}</span>
+            </button>
+          </div>
+        )}
+        </div>
         {terminalOpen && (
           <section className="relative flex shrink-0 flex-col border-t border-edge bg-surface" style={{ height: terminalHeight }}>
             <div

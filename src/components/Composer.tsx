@@ -26,6 +26,8 @@ interface Props {
   onSend: (text: string, images: string[], mode: 'direct' | 'queue', attachments: Attachment[], files: MessageFile[]) => void | Promise<boolean | void>;
   onStop: () => void;
   onCommand: (cmd: string, arg: string) => boolean;
+  /** Leerer Chat: schmalere Chatbox für die Mitte der Seite. */
+  centered?: boolean;
 }
 
 const BUILTIN = [
@@ -44,7 +46,7 @@ const BUILTIN = [
 /** Entwürfe je Chat: beim Wechsel zwischen Chats geht getippter Text nicht verloren und landet nicht im falschen Chat. */
 const drafts = new Map<string, string>();
 
-function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
+function ComposerInner({ session, running, onSend, onStop, onCommand, centered }: Props) {
   const [text, setText] = useState(() => drafts.get(session.id) ?? '');
   const textRef = useRef(text);
   textRef.current = text;
@@ -239,7 +241,7 @@ function ComposerInner({ session, running, onSend, onStop, onCommand }: Props) {
   const meta = PROVIDERS[session.provider];
 
   return (
-    <div className="mx-auto w-full max-w-5xl xl:max-w-6xl px-4 pb-4" onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={onDrop}>
+    <div className={cx('mx-auto w-full px-4 pb-4', centered ? 'max-w-3xl' : 'max-w-5xl xl:max-w-6xl')} onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={onDrop}>
       <div className="composer-shell relative rounded-[20px]">
         {items.length > 0 && (
           <div data-state="open" className="pop absolute bottom-full left-0 right-0 z-30 mb-2 max-h-64 overflow-auto rounded-lumen border border-edge-strong bg-overlay p-1 shadow-2xl">
