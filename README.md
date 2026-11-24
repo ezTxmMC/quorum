@@ -1,55 +1,54 @@
 # Quorum
 
-**All models. One table.** A desktop app for **Claude Code**, **GPT Codex**, **Antigravity (Gemini)**, **OpenCode**, **Ollama**, **llama.cpp**, and **OpenAI-compatible APIs**, with a multi-agent mode.
-Electron · TypeScript · React · react-router · Tailwind CSS 4 · Iconify.
-
-Quorum runs the CLIs (`claude`, `codex`, `agy`, `opencode`) headlessly using your existing logins. Ollama and llama.cpp support local models. You can also connect an OpenAI-compatible API using its base URL, optional API key, and model IDs in Settings.
-
-## Command line
-
-```bash
-quorum [folder]                # open Quorum with a new chat in the folder (a file opens its folder)
-quorum --tray                  # start hidden in the system tray (a minimized window if the tray is not visible)
-quorum --tui [folder]          # terminal UI, also works over SSH without a display
-quorum -p "prompt" [folder]    # one-shot answer on stdout; "-p -" reads the prompt from stdin; --json prints events
-```
-
-Options: `-P provider`, `-m model`, `--permission mode`, `-c` (TUI: continue the folder's last session), `-r` (open in the existing window), `-n` (new window), `--help`, `--version`.
-A second `quorum <folder>` while Quorum is running opens the folder in the running instance. `-p` runs read-only (plan mode) unless `--permission` is given.
-The terminal modes are built by `npm run build:cli` (`dist-cli/quorum.mjs`, runs with Node or with the Electron binary in `ELECTRON_RUN_AS_NODE` mode). In a checkout, `node bin/quorum.mjs …` (or `npm link`) works without packaging; API keys for the `api` provider are read from `QUORUM_API_KEY_<CONNECTION_ID>` in terminal mode, since the app's encrypted key store needs Electron. `QUORUM_DATA_DIR` overrides the data folder.
-Chats are shared with the app: the TUI reads the app's chats (`-c`, `/chats`, `/resume`) and hands finished turns over through `<data dir>/inbox/`; the app merges them into its chat list (also at its next start).
+Quorum brings multi-provider chats, coding agents, revisioned plans and a Monaco editor into one desktop workspace.
 
 ## Getting started
 
-```bash
-npm install
-node node_modules/electron/install.js  # If the Electron binary is missing
-npm run dev                            # Development
-npm run build && npm run start         # Build and run the production app
-npm run update:linux -- --build        # Build, replace, install, and launch the Linux AppImage
+Install Node.js 24 or newer, npm and stable Rust with Cargo. The Tauri desktop also needs the Tauri 2 build prerequisites for your operating system. On Linux these include WebKitGTK 4.1. [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+
+```sh
+npm ci
+cargo install tauri-cli --version '^2' --locked
+npm run tauri:dev
 ```
 
-For branding and icons, see [branding/README.md](branding/README.md). Regenerate icons with `npm run icons`.
+The Tauri preview uses the existing Quorum React workbench. Rust owns the window, SQLite profile and chat supervisors. Install Node 24+ on the machine running the preview for the transitional provider and workspace service. Use `npm run tauri:build` to create a platform bundle. Electron remains the full-featured release desktop, started with `npm run dev`. The older GPUI experiment is available with `npm run gpui:dev`.
 
-## Persistente Pläne und Editor
+## Kimi
 
-Unter **Plan & IDE** lassen sich Workspace-Pläne mit versionierten Aufgaben,
-Rückfragen und revisionsgebundenen Freigaben verwalten. Der Monaco-Editor öffnet
-Task-Dateien in Tabs und schützt beim Speichern vor externen Änderungen.
-TypeScript-/Python-LSP lässt sich pro vertrauenswürdigem Workspace aktivieren
-(Completion, Hover, Definitionen, Referenzen und Diagnosen). Strg/Cmd+P öffnet
-Dateien; Strg/Cmd+Shift+F durchsucht den Workspace.
-`quorum plan --help` zeigt die gemeinsame CLI; in der TUI stehen `/plans` und
-`/plan <id>` bereit. Node ≥24 wird für die SQLite-CLI benötigt.
+- **Kimi AI (K3 / K3.1 API)**. In **Settings → API**, select **Kimi AI**, enter a Moonshot API key and save. Choose **API → Kimi AI** with `kimi-k3.1-pro`, `kimi-k3.1-pro-highspeed`, `kimi-k3` or `kimi-k3-256k` in a chat. Use the connection test to discover additional models available to your account. Tauri keeps keys for the current session. [Moonshot models](https://platform.kimi.ai/)
+- **Kimi Code (CLI & ACP)**. Install and authenticate the Kimi Code CLI (`kimi`), then choose **Kimi Code** directly in the model picker (supports `kimi-k3.1-pro`, `kimi-k3.1-pro-highspeed`, `kimi-k3`, `--thinking` / `--no-thinking`, `--yolo` / `--auto` and session resume) or **ACP-Agenten → Kimi Code** (`kimi acp`). [Kimi Code command reference](https://moonshotai.github.io/kimi-code/en/reference/kimi-command.html)
 
-[Umsetzungsstand, Bedienung und offene Konzeptphasen](docs/plan-ide-implementation.md).
+## Plans and IDE
 
-## Unabhängige Chat-Prozesse
+**Plan & IDE** manages tasks, revision hashes, questions and scoped approvals. Open a task file to edit it. External changes refresh clean buffers and mark dirty buffers for comparison. Ctrl/Cmd+P opens files, and Ctrl/Cmd+Shift+F searches the workspace. TypeScript and Python language servers require workspace trust. [Plan and editor implementation](docs/plan-ide-implementation.md)
 
-Desktop-Chats laufen über einen Rust-Host mit separatem Provideradapter. Beim
-Schließen kannst du laufende Chats bis zum Ende weiterarbeiten lassen oder alle
-Chat-Prozesse stoppen. Beim Neustart werden laufende Anfragen und fertige
-Ergebnisse wieder angehängt. Die neue Statusleiste öffnet die Prozessübersicht.
+## Processes and profile data
 
-Für den Build wird zusätzlich ein stabiles Rust-/Cargo-Toolchain benötigt.
-[Architektur, Grenzen und Tests](docs/chat-hosts.md).
+Each desktop chat gets a Rust supervisor and a separate provider worker. Closing the desktop offers to keep active chats running or stop them. Reopening Quorum reattaches to the journal. Local-model chat workers share a per-profile admission lock to avoid loading duplicate runtimes simultaneously. [Chat host architecture](docs/chat-hosts.md)
+
+Set `QUORUM_DATA_DIR` to choose a profile. On its first launch the Tauri desktop imports the existing chat/settings snapshot into `quorum.sqlite`. Electron continues to use `hub.json`. Both desktops can access the same plan database and job journals. Run one desktop at a time for a given profile. Tauri currently supports one workbench window. Tray, updater and the model administration screens still require Electron.
+
+## Command line
+
+```sh
+npm run build:cli
+node bin/quorum.mjs --tui .
+node bin/quorum.mjs -P acp -m kimi -p "Explain this project" .
+node bin/quorum.mjs plan --help
+```
+
+The CLI reads API keys from `QUORUM_API_KEY_<CONNECTION_ID>`. The Electron desktop imports finished TUI turns through the profile inbox. Use `quorum --help` for folder selection, session continuation and window options.
+
+## Development checks
+
+```sh
+npm run typecheck
+npm test
+npm run test:integration
+npm run test:native-core
+```
+
+Integration checks require Python 3, Cargo and loopback networking. On Linux, `xvfb-run -a npm run test:ide-ui` exercises the built Electron workbench. CI installs Biome 2.3.13. With that version on PATH, run `npm run lint` or `npm run format`.
+
+[Design concept](docs/Quorum_Plan_Mode_und_AI_IDE_Konzept.md) · [Pureline specification](docs/PURELINE_SPECIFICATION_1.5.md) · [Brand assets](branding/README.md)

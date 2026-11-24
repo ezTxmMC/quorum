@@ -1,3 +1,5 @@
+import type { HfSearchHit, HfModelInfo } from '../../shared/contracts/models';
+export type { HfFile, HfSearchHit, HfModelInfo } from '../../shared/contracts/models';
 // Hugging-Face-Hub-Client: Suche, Modell-Metadaten und Downloads mit Fortschritt, Abbruch und Wiederaufnahme.
 // Downloads landen zuerst als `<datei>.part` und werden erst nach vollständigem Empfang umbenannt.
 import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
@@ -8,30 +10,6 @@ import { pipeline } from 'node:stream/promises';
 export { defaultSelection } from '../../shared/selection';
 
 const HUB = 'https://huggingface.co';
-
-export interface HfSearchHit {
-  repo: string;
-  downloads: number;
-  likes: number;
-  pipelineTag?: string;
-  tags: string[];
-  license?: string;
-  lastModified?: string;
-}
-
-export interface HfFile {
-  path: string;
-  size: number;
-}
-
-export interface HfModelInfo {
-  repo: string;
-  revision: string;
-  pipelineTag?: string;
-  tags: string[];
-  license?: string;
-  files: HfFile[];
-}
 
 function headers(): Record<string, string> {
   const h: Record<string, string> = { 'User-Agent': 'Quorum/0.1' };

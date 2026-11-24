@@ -1,3 +1,5 @@
+import type { Memory, ImageParams } from '../../shared/contracts/models';
+export type { Memory, ImageParams } from '../../shared/contracts/models';
 // Einheitliche Schnittstelle für Runtime-Adapter (llama.cpp, Transformers, Diffusers, Ollama, OpenAI-kompatibel …).
 // Adapter laufen im Main-Prozess und sprechen mit ihrem Backend (Prozess, Python-Worker oder HTTP).
 // Geladene Modelle deklarieren ihre Fähigkeiten über ChatHandle und ImageHandle.
@@ -14,11 +16,6 @@ export interface LoadOptions {
   trustRemoteCode?: boolean;
 }
 
-export interface Memory {
-  vram: number;
-  ram: number;
-}
-
 /** Ein geladenes Modell innerhalb einer Runtime. */
 export interface LoadedHandle {
   readonly runtime: RuntimeId;
@@ -32,16 +29,6 @@ export interface LoadedHandle {
 /** Kann Text erzeugen und streamen. */
 export interface ChatHandle extends LoadedHandle {
   chat(messages: ChatMessage[], onDelta: (delta: string) => void, signal: AbortSignal): Promise<string>;
-}
-
-export interface ImageParams {
-  prompt: string;
-  negative?: string;
-  steps?: number;
-  guidance?: number;
-  width?: number;
-  height?: number;
-  seed?: number;
 }
 
 /** Kann Bilder erzeugen. Liefert den Pfad der gespeicherten PNG-Datei. */

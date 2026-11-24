@@ -9,6 +9,7 @@ import type { Attachment, HubEvent, ProviderId, RunRequest } from '../../shared/
 import { buildClaude, ClaudeParser } from './claude';
 import { buildCodex, CodexParser } from './codex';
 import { buildAntigravity, AntigravityParser } from './antigravity';
+import { buildKimi, KimiParser } from './kimi';
 import { detectedModel, resolveBinary } from './detect';
 import { cancelAllOllama, cancelOllama, runOllama } from './ollama';
 import { buildOpenCode, OpenCodeParser } from './opencode';
@@ -56,6 +57,7 @@ function build(req: RunRequest): Built {
     case 'claude': return { ...buildClaude(req), parser: new ClaudeParser() };
     case 'codex': return { ...buildCodex(req), parser: new CodexParser() };
     case 'antigravity': return { ...buildAntigravity(req), parser: new AntigravityParser() };
+    case 'kimi': return { ...buildKimi(req), parser: new KimiParser() };
   }
 }
 

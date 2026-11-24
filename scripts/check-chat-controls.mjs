@@ -79,11 +79,14 @@ assert.equal(toolKind('read_file'), 'read');
 const stopped = applyEvent({ id: 'm', role: 'assistant', createdAt: 0, blocks: [command] }, { type: 'done', ok: false, error: 'Abgebrochen' });
 assert.equal(activeToolActivity(stopped.blocks), null);
 assert.equal(stopped.error, 'Abgebrochen');
-assert.deepEqual(CLAUDE_MODELS.filter((m) => !m.legacy).map((m) => m.label), ['Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']);
+assert.deepEqual(CLAUDE_MODELS.filter((m) => !m.legacy).map((m) => m.label), ['Claude Fable 5.2', 'Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']);
 for (const id of ['claude-fable-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001']) {
   assert(CLAUDE_MODELS.find((m) => m.id === id)?.legacy);
   assert(buildClaude(req('claude', { model: id })).args.includes(id));
 }
+assert.equal(canonicalModel('claude', 'fable'), 'claude-fable-5-2');
+assert.equal(canonicalModel('claude', 'claude-fable-5-1'), 'claude-fable-5-1');
+assert(buildClaude(req('claude', { model: 'fable' })).args.includes('claude-fable-5-2'));
 assert.equal(canonicalModel('claude', 'sonnet'), 'claude-sonnet-5-5');
 assert.equal(canonicalModel('ollama', 'llama:latest'), 'llama:latest');
 assert(buildClaude(req('claude', { model: 'sonnet' })).args.includes('claude-sonnet-5-5'));

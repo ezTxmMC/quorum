@@ -31,7 +31,7 @@ export function switchChatMode(session: Pick<ChatSession, 'provider' | 'options'
 export function textOptions(provider: ProviderId, options: ProviderOptions): ProviderOptions {
   return {
     ...options, chatMode: 'text', imageGen: undefined, fullAccess: false,
-    permission: provider === 'opencode' ? undefined : 'plan', sandbox: 'read-only', approvalPolicy: 'never',
+    permission: provider === 'opencode' ? undefined : provider === 'kimi' ? 'default' : 'plan', sandbox: 'read-only', approvalPolicy: 'never',
     addDirs: undefined, extraArgs: undefined, configOverrides: undefined, profile: undefined,
     agent: provider === 'opencode' ? 'plan' : undefined, agentsJson: undefined, allowedTools: undefined, mcpConfig: undefined,
     worktree: false, chrome: false, ultracode: false,

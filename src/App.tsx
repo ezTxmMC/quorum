@@ -42,7 +42,10 @@ export default function App() {
   setLang(language);
 
   useEffect(() => {
-    void init();
+    void init().catch((error) => {
+      const target = document.getElementById('root');
+      if (target) target.textContent = 'Quorum konnte das Profil nicht öffnen. ' + String(error);
+    });
     const a = wireEvents();
     const b = isQuick ? () => {} : wirePersistence();
     // Änderungen aus anderen Fenstern übernehmen

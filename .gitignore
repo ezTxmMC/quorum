@@ -7,3 +7,12 @@ dist-cli
 
 native/chat-host/target/
 native/bin/
+
+native/quorum-core/target/
+native/quorum-desktop/target/
+
+native/quorum-desktop/vendor/xattr/Cargo.lock
+
+dist-service/
+src-tauri/target/
+src-tauri/gen/

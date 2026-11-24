@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { accessSync, constants, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { ACP_PRESETS, type AcpAgent } from '../../shared/acp';
@@ -18,10 +18,18 @@ export const acpAgents = (): AcpAgent[] => {
 
 const EXTRA_DIRS = [join(homedir(), '.local', 'bin'), join(homedir(), '.npm-global', 'bin'), join(homedir(), '.bun', 'bin'), '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin'];
 export function findOnPath(command: string): string | undefined {
-  if (command.includes('/') || command.includes('\\')) return existsSync(command) ? command : undefined;
-  const name = command + (process.platform === 'win32' ? '.cmd' : '');
-  for (const d of [...(process.env.PATH ?? '').split(delimiter), ...EXTRA_DIRS]) {
-    if (d && existsSync(join(d, name))) return join(d, name);
+  const direct = command.includes('/') || command.includes('\\');
+  const names = process.platform === 'win32' && !/\.[^/\\]+$/.test(command)
+    ? [command + '.exe', command + '.cmd', command] : [command];
+  const directories = direct ? [''] : [...(process.env.PATH ?? '').split(delimiter).filter(Boolean), ...EXTRA_DIRS];
+  for (const dir of directories) {
+    for (const name of names) {
+      const file = direct ? name : join(dir, name);
+      try {
+        accessSync(file, constants.X_OK);
+        if (statSync(file).isFile()) return file;
+      } catch { /* Continue searching PATH. */ }
+    }
   }
   return undefined;
 }

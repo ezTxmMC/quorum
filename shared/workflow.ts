@@ -37,7 +37,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   workflow: 'Unter-Workflow',
 };
 
-export type LlmEngine = { type: 'local'; modelId: string } | { type: 'cli'; provider: 'claude' | 'codex' | 'antigravity' | 'opencode' };
+export type LlmEngine = { type: 'local'; modelId: string } | { type: 'cli'; provider: 'claude' | 'codex' | 'antigravity' | 'kimi' | 'opencode' };
 
 export interface NodeConfig {
   /** input: Wert der Eingabe (überschreibbar beim Start). */

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBlocker, useNavigate, useParams } from 'react-router-dom';
 import type { ModelRecord } from '@shared/models';
 import { KIND_LABEL, validateWorkflow, type NodeKind, type WorkflowDef, type WorkflowNode } from '@shared/workflow';
-import type { RunEvent, NodeState, RunRecord } from '../../electron/workflows/engine';
+import type { RunEvent, NodeState, RunRecord } from '@shared/contracts/workflows';
 import { imageUrl } from '@/components/MessageView';
 import { hub } from '@/lib/api';
 import { Icon } from '@/lib/icons';
@@ -134,7 +134,7 @@ function NodeEditor({ node, nodes, models, workflows, selfId, onChange, onRemove
             <select className="field" value={engineValue} onChange={(e) => setEngine(e.target.value)}>
               <option value="">{t('– wählen –')}</option>
               {textModels.map((m) => <option key={m.id} value={`local:${m.id}`}>{m.name} ({t('lokal')})</option>)}
-              {(['claude', 'codex', 'antigravity', 'opencode'] as const).map((p) => <option key={p} value={`cli:${p}`}>{p} ({t('CLI, nur lesend')})</option>)}
+              {(['claude', 'codex', 'antigravity', 'kimi', 'opencode'] as const).map((p) => <option key={p} value={`cli:${p}`}>{p} ({t('CLI, nur lesend')})</option>)}
             </select>
           </Field>
           <Field label="Systemanweisung"><textarea className="field min-h-10" value={cfg.system ?? ''} onChange={(e) => set({ system: e.target.value || undefined })} /></Field>

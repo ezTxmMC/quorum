@@ -1,12 +1,13 @@
+import { PROVIDER_ORDER } from '@shared/catalog';
 import { chatMode, CHAT_MODES } from '@shared/chat-modes';
 import { getLang, t } from '@/lib/i18n';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { PROVIDERS, isTextOnly, modelEfforts, canonicalModel, selectModelOptions, modelChoices } from '@shared/catalog';
 import type { ProviderId } from '@shared/types';
 import { Composer } from '@/components/Composer';
 import { MessageView } from '@/components/MessageView';
-import { ModelPane } from '@/components/ModelPane';
+const ModelPane = lazy(() => import('@/components/ModelPane').then(({ ModelPane }) => ({ default: ModelPane })));
 import { OptionsPanel } from '@/components/OptionsPanel';
 import { ProviderMark, cx, usePresence } from '@/components/ui';
 import { hub } from '@/lib/api';
@@ -59,7 +60,7 @@ export function ChatPage() {
   useEffect(() => {
     if (!session || !providerGone) return;
     const st = useHub.getState();
-    const next = (['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'] as ProviderId[]).find((p) => st.statuses[p]?.installed);
+    const next = PROVIDER_ORDER.find((p) => st.statuses[p]?.installed);
     if (next) patchSession(session.id, { provider: next, options: { ...st.data.settings.providerDefaults[next], chatMode: chatMode(session.options) } });
   }, [providerGone, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -178,7 +179,7 @@ export function ChatPage() {
         <Composer session={composerSession ?? session} running={running} onSend={onSendMsg} onStop={onStopRun} onCommand={onCommandStable} />
       </div>
 
-      {modelPaneOpen && (mode === 'model' || !!session.modelProjectId) && !panelPresence.mounted && <ModelPane projectId={session.modelProjectId} onProject={(projectId) => patchSession(id, { modelProjectId: projectId })} onClose={() => setModelPaneOpen(false)} />}
+      {modelPaneOpen && (mode === 'model' || !!session.modelProjectId) && !panelPresence.mounted && <Suspense fallback={null}><ModelPane projectId={session.modelProjectId} onProject={(projectId) => patchSession(id, { modelProjectId: projectId })} onClose={() => setModelPaneOpen(false)} /></Suspense>}
 
       {panelPresence.mounted && (
         <aside data-state={panelPresence.state} className="dock-zone dock-right flex w-[380px] shrink-0 flex-col border-l border-edge bg-surface">

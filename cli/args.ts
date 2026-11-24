@@ -108,7 +108,7 @@ Usage:
 
 Options:
   -C, --cwd <dir>              Project folder (alternative to the positional folder)
-  -P, --provider <id>          claude | codex | antigravity | opencode | ollama | local | api
+  -P, --provider <id>          claude | codex | antigravity | kimi | opencode | acp | ollama | local | api
   -m, --model <id>             Model id
       --permission <mode>      Provider permission mode (see the in-app mode names)
   -c, --continue               TUI: continue the latest chat of the folder

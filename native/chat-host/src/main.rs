@@ -1,4 +1,5 @@
 mod journal;
+mod local;
 mod platform;
 
 use journal::Journal;
@@ -37,6 +38,11 @@ fn run(directory: PathBuf) -> io::Result<()> {
     let mut launch: Launch = serde_json::from_str(&bootstrap)?;
     let mut journal = Journal::new(&directory)?;
     journal.checkpoint()?;
+    let local::Admission::Ready(_model_lock) =
+        local::admit(&directory, &launch.payload["request"], &mut journal)?
+    else {
+        return Ok(());
+    };
     let mut command = Command::new(&launch.executable);
     command
         .arg(&launch.worker)

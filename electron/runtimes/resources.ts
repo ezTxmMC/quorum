@@ -1,23 +1,10 @@
+import type { GpuStats, ResourceSnapshot } from '../../shared/contracts/models';
+export type { GpuStats, ResourceSnapshot } from '../../shared/contracts/models';
 // Ressourcen-Monitor: VRAM, GPU-Auslastung, RAM und CPU. AMD über sysfs (ohne Abhängigkeit), NVIDIA über nvidia-smi.
 import { execFile } from 'node:child_process';
 import { promises as fsp } from 'node:fs';
 import { cpus, freemem, loadavg, totalmem } from 'node:os';
 import { join } from 'node:path';
-
-export interface GpuStats {
-  vendor: 'amd' | 'nvidia';
-  name: string;
-  vramTotal: number;
-  vramUsed: number;
-  busyPercent?: number;
-}
-
-export interface ResourceSnapshot {
-  at: number;
-  gpu?: GpuStats;
-  ram: { total: number; used: number };
-  cpu: { cores: number; load1: number };
-}
 
 const DRM = '/sys/class/drm';
 

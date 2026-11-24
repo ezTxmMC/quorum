@@ -1,7 +1,7 @@
 // Kommandozeile: Argument-Parser und (wenn gebaut) Einmal-Antwort mit einem Fake-Provider – ohne echte Modellaufrufe.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { openSync, closeSync, readFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from '../cli/args.ts';
@@ -49,19 +49,35 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"Hallo vom 
 `);
   chmodSync(join(bin, 'claude'), 0o755);
   const env = { ...process.env, QUORUM_DATA_DIR: tmp, PATH: `${bin}:${process.env.PATH}` };
-  const r = spawnSync(process.execPath, [bundle, '-p', 'hi', '-P', 'claude'], { env, encoding: 'utf8', input: '', timeout: 30000 });
+  const invoke = (...args) => {
+    const stdout = join(tmp, 'stdout'), stderr = join(tmp, 'stderr');
+    const out = openSync(stdout, 'w'), err = openSync(stderr, 'w');
+    try {
+      const result = spawnSync(process.execPath, [bundle, ...args], { env, stdio: ['ignore', out, err], timeout: 30_000 });
+      if (result.error) throw result.error;
+      return { status: result.status, stdout: readFileSync(stdout, 'utf8'), stderr: readFileSync(stderr, 'utf8') };
+    } finally { closeSync(out); closeSync(err); }
+  };
+  const r = invoke('-p', 'hi', '-P', 'claude');
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /Hallo vom Fake/);
-  assert.equal(spawnSync(process.execPath, [bundle, '-p', ''], { env, input: '', encoding: 'utf8' }).status, 2, 'empty prompt exits 2');
+  assert.equal((invoke('-p', '')).status, 2, 'empty prompt exits 2');
   console.log('Print-mode check passed (fake provider).');
 
   // ACP: ein Fake-Agent spricht JSON-RPC über stdio (initialize, session/new, Updates, Berechtigungsfrage, prompt-Ergebnis).
-  const agentPath = join(tmp, 'fake-acp.mjs');
+  const agentPath = join(bin, 'kimi');
   writeFileSync(agentPath, `#!/usr/bin/env node
 import { createInterface } from 'node:readline';
-const out = (o) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...o }) + '\\n');
+import { createReadStream, writeSync } from 'node:fs';
+if (process.argv.includes('--print')) {
+  writeSync(1, JSON.stringify({ type: 'assistant', session_id: 'kimi-cli-1', message: { content: [{ type: 'text', text: 'Hallo von Kimi Code' }] } }) + '\\n');
+  writeSync(1, JSON.stringify({ type: 'result', usage: { input_tokens: 10, output_tokens: 5 } }) + '\\n');
+  process.exit(0);
+}
+if (process.argv[2] !== 'acp') process.exit(7);
+const out = (o) => writeSync(1, JSON.stringify({ jsonrpc: '2.0', ...o }) + '\\n');
 let promptId = null, permId = 900;
-createInterface({ input: process.stdin }).on('line', (l) => {
+createInterface({ input: createReadStream(null, { fd: 0 }) }).on('line', (l) => {
   const m = JSON.parse(l);
   if (m.method === 'initialize') out({ id: m.id, result: { protocolVersion: 1, agentCapabilities: {} } });
   else if (m.method === 'session/new') out({ id: m.id, result: { sessionId: 'acp-1' } });
@@ -77,14 +93,20 @@ createInterface({ input: process.stdin }).on('line', (l) => {
 });
 `);
   chmodSync(agentPath, 0o755);
-  writeFileSync(join(tmp, 'hub.json'), JSON.stringify({ settings: { acpAgents: [{ id: 'fake', name: 'Fake', command: agentPath, args: [] }] } }));
-  const acp = spawnSync(process.execPath, [bundle, '-p', 'hi', '-P', 'acp', '-m', 'fake', '--json'], { env, encoding: 'utf8', input: '', timeout: 30000 });
+  const acp = invoke('-p', 'hi', '-P', 'acp', '-m', 'kimi', '--json');
   assert.equal(acp.status, 0, acp.stderr);
   const ev = acp.stdout.trim().split('\n').map((x) => JSON.parse(x));
   assert.ok(ev.some((e) => e.type === 'text' && e.delta === 'Hallo ACP'), 'agent text arrives');
   assert.ok(ev.some((e) => e.type === 'tool_start' && e.id === 't1'), 'tool call arrives');
   assert.ok(ev.some((e) => e.type === 'tool_end' && e.output === 'ok:no'), 'permission request is rejected in read-only mode');
   assert.ok(ev.some((e) => e.type === 'session' && e.sessionId === 'acp-1'));
-  console.log('ACP check passed (fake agent).');
+  console.log('Kimi Code ACP preset passed (fixture).');
+
+  const kimiCli = invoke('-p', 'hi', '-P', 'kimi', '-m', 'kimi-k3.1-pro', '--json');
+  assert.equal(kimiCli.status, 0, kimiCli.stderr);
+  const kimiEv = kimiCli.stdout.trim().split('\n').map((x) => JSON.parse(x));
+  assert.ok(kimiEv.some((e) => e.type === 'text' && e.delta === 'Hallo von Kimi Code'), 'kimi CLI text arrives');
+  assert.ok(kimiEv.some((e) => e.type === 'session' && e.sessionId === 'kimi-cli-1'));
+  console.log('Kimi Code CLI provider passed (fixture).');
 }
 console.log('CLI checks passed: argument parsing, folder/file resolution, chromium switches, prompt words.');

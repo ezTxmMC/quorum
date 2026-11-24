@@ -1,3 +1,5 @@
+import type { LoopEvent } from '../../shared/contracts/threed';
+export type { LoopEvent } from '../../shared/contracts/threed';
 // Iterative Modellierung: Plan erzeugen → prüfen → anwenden → speichern → rendern → Rückmeldung an das Modell.
 // Chat und Rendering kommen als Parameter; so bleibt die Schleife ohne Electron testbar.
 import type { ChatMessage } from '../../shared/models';
@@ -18,12 +20,6 @@ export interface LoopDeps {
   emit: (e: LoopEvent) => void;
   signal?: AbortSignal;
 }
-
-export type LoopEvent =
-  | { type: 'iteration'; n: number }
-  | { type: 'plan'; n: number; actions: number; errors: string[] }
-  | { type: 'render'; n: number; ok: boolean; png?: string; error?: string }
-  | { type: 'done'; ok: boolean; iterations: number; reason: string };
 
 export interface LoopResult {
   model: BbModel;

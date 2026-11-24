@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { messageRenderRevision } from '../shared/render-revision.ts';
+import { priceFor } from '../shared/pricing.ts';
+const message = { id: 'm', blocks: [{ kind: 'tool', id: 't', running: true, output: 'x', get input() { throw new Error('large tool input must not be read for scrolling'); } }] };
+const before = messageRenderRevision(message);
+assert.notEqual(messageRenderRevision({ ...message, blocks: [{ kind: 'text', text: 'abc' }] }), before);
+assert.notEqual(messageRenderRevision({ ...message, error: 'error' }), before);
+assert.deepEqual(priceFor('fable', 'claude'), { in: 8, out: 40, cache: 0.2 });
+assert.deepEqual(priceFor('claude-fable-5-2', 'claude'), { in: 8, out: 40, cache: 0.2 });
+assert.deepEqual(priceFor('claude-fable-5-1', 'claude'), { in: 10, out: 50, cache: 0.25 });
+console.log('Render revision: no tool-input serialization, output/error invalidation and versioned Fable pricing passed.');

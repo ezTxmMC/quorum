@@ -1,3 +1,5 @@
+import type { ModelStats, LoadedInfo } from '../../shared/contracts/models';
+export type { ModelStats, LoadedInfo } from '../../shared/contracts/models';
 // Model-Manager: lädt und entlädt lokale Modelle, koordiniert Anfragen über eine Prioritätswarteschlange
 // und schützt vor Speichermangel (Schätzung vor dem Laden, LRU-Entladung, CPU-Fallback bei GPU-OOM).
 // Die Runtime wird aus den Kompatibilitätsregeln (shared/compat.ts) gewählt, sofern das Modell sie nicht festlegt.
@@ -14,25 +16,6 @@ export interface Lease<T extends LoadedHandle = LoadedHandle> {
   model: T;
   /** Gibt die Ausleihe zurück. Danach darf das Modell nach Inaktivität entladen werden. */
   release(): void;
-}
-
-export interface ModelStats {
-  loads: number;
-  requests: number;
-  deltas: number;
-  lastLoadMs?: number;
-  lastUsed?: number;
-}
-
-export interface LoadedInfo {
-  modelId: string;
-  runtime: RuntimeId;
-  backend: Backend;
-  gpuLayers?: number;
-  memory: Memory;
-  inUse: number;
-  lastUsed: number;
-  stats: ModelStats;
 }
 
 interface Entry {

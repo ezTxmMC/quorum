@@ -1,3 +1,5 @@
+import type { DownloadState } from '../../shared/contracts/models';
+export type { DownloadStatus, DownloadState } from '../../shared/contracts/models';
 // Modell-Manager: Downloads (Fortschritt, Pause, Abbruch, Wiederaufnahme), Import lokaler Modelle und Registrierung.
 import { readdirSync, rmdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -9,18 +11,6 @@ import { dataDir } from '../store';
 import { listModels } from './registry';
 
 export const modelsDir = () => join(dataDir(), 'models');
-
-export type DownloadStatus = 'running' | 'paused' | 'done' | 'error';
-
-export interface DownloadState {
-  id: string;
-  repo: string;
-  status: DownloadStatus;
-  files: { path: string; size: number; received: number }[];
-  received: number;
-  total: number;
-  error?: string;
-}
 
 interface Active {
   state: DownloadState;

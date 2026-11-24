@@ -8,6 +8,8 @@ const p = (i: number, o: number, c = i / 10): Price => ({ in: i, out: o, cache: 
 /** Erste passende Zeile gewinnt – spezifischere Muster stehen oben. */
 const TABLE: [RegExp, Price][] = [
   // Claude-Preise geprüft gegen platform.claude.com/docs/en/about-claude/pricing (Stand 2026-10).
+  [/^fable$/i, p(8, 40, 0.2)],
+  [/fable-?5[-.]2/i, p(8, 40, 0.2)],
   [/fable-?5[-.]1/i, p(10, 50, 0.25)],
   [/fable/i, p(10, 50, 1)],
   [/opus-?5[-.]5/i, p(4, 20, 0.2)],
@@ -31,10 +33,12 @@ const TABLE: [RegExp, Price][] = [
   [/gemini.*flash/i, p(0.3, 2.5, 0.03)],
   [/gemini-?3.*pro/i, p(2, 12, 0.2)],
   [/gemini.*pro|gemini/i, p(1.25, 10, 0.125)],
+  [/kimi-?k3\.1/i, p(2, 10, 0.2)],
+  [/kimi-?k3/i, p(3, 15, 0.3)],
 ];
 
 /** Wenn das Modell unbekannt ist, rechnet der Hub mit dem Standardmodell des Anbieters. */
-const PROVIDER_DEFAULT: Partial<Record<ProviderId, string>> = { claude: 'sonnet', codex: 'gpt-5', antigravity: 'gemini-pro' };
+const PROVIDER_DEFAULT: Partial<Record<ProviderId, string>> = { claude: 'sonnet', codex: 'gpt-5', antigravity: 'gemini-pro', kimi: 'kimi-k3.1-pro' };
 const FREE: ProviderId[] = ['ollama', 'local'];
 
 export interface TokenUsage { inputTokens?: number; outputTokens?: number; cachedTokens?: number; costUsd?: number }

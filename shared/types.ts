@@ -2,7 +2,7 @@ import type { Capability } from './models';
 // Gemeinsame Typen für Main-Prozess und Renderer.
 
 /** `local`: Modelle aus der Modell-Verwaltung (GGUF/Transformers), ohne Werkzeuge, nur Text. */
-export type ProviderId = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'ollama' | 'local' | 'api' | 'acp';
+export type ProviderId = 'claude' | 'codex' | 'antigravity' | 'kimi' | 'opencode' | 'ollama' | 'local' | 'api' | 'acp';
 export type ChatMode = 'text' | 'coding' | 'image' | 'model';
 
 export interface ProviderOptions {

@@ -4,7 +4,7 @@ import type { DockState, ModelInfo, TerminalStyle, ProviderId, ProviderOptions }
 export interface Choice { value: string; label: string; hint?: string }
 
 /** Anbieter, die Nachrichten mitten im Lauf annehmen (Steuern). Alle anderen: nur einreihen (Queue). */
-export const DIRECT_MESSAGES: Record<ProviderId, boolean> = { claude: true, codex: false, antigravity: false, opencode: false, ollama: false, local: false, api: false, acp: false };
+export const DIRECT_MESSAGES: Record<ProviderId, boolean> = { claude: true, codex: false, antigravity: false, kimi: false, opencode: false, ollama: false, local: false, api: false, acp: false };
 
 /** Reine Text-Chats über eine HTTP-API: kein Projektordner, keine Tools, der Verlauf kommt aus dem Hub. */
 export const TEXT_ONLY: ProviderId[] = ['ollama', 'local', 'api'];
@@ -164,11 +164,45 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
     ],
     features: ['Streaming (stream-json)', 'Tools: Dateien, Shell, Suche', 'Browser-Steuerung & Screenshots', 'Sub-Agenten', 'Bildgenerierung', 'Modi (accept-edits, plan, auto)', 'Effort-Stufen', 'Projekte', 'Konversation fortsetzen', 'MCP & Plugins', 'Terminal-Sandbox', 'JSON-Schema-Ausgabe', 'Remote-Control', 'Zusätzliche Verzeichnisse', 'Token-Nutzung'],
   },
+  kimi: {
+    id: 'kimi',
+    name: 'Kimi Code',
+    vendor: 'Moonshot AI · Kimi K3 / K3.1',
+    bin: 'kimi',
+    color: '#38bdf8',
+    icon: 'lucide:moon-star',
+    permissionLabel: 'Modus',
+    permissions: [
+      { value: 'default', label: 'Standard', hint: 'Rückfragen werden im Headless-Betrieb nicht automatisch freigegeben' },
+      { value: 'yolo', label: 'Aktionen erlauben (--yolo)', hint: 'Routine-Edits und Shell-Befehle automatisch bestätigen' },
+      { value: 'auto', label: 'Auto (--auto)', hint: 'Unbeaufsichtigte Ausführung ohne Rückfragen' },
+    ],
+    efforts: [
+      { value: 'low', label: 'Niedrig', hint: '--no-thinking' },
+      { value: 'high', label: 'Hoch', hint: '--thinking' },
+    ],
+    commands: [
+      { id: 'info', label: 'Info', icon: 'lucide:info', args: ['info'], hint: 'kimi info' },
+      { id: 'mcp', label: 'MCP-Server', icon: 'lucide:plug', args: ['mcp', 'list'], hint: 'kimi mcp list' },
+      { id: 'version', label: 'Version', icon: 'lucide:tag', args: ['--version'], hint: 'kimi --version' },
+    ],
+    features: ['Streaming (stream-json)', 'Kimi K3 / K3.1 Pro (1M Kontext)', 'Thinking-Modus (--thinking / --no-thinking)', 'Dateien & Shell-Tools', 'Session fortsetzen (--session / --continue)', 'MCP-Server', 'ACP-Kompatibel (kimi acp)'],
+  },
 };
+
+export const PROVIDER_ORDER: ProviderId[] = ['claude', 'codex', 'antigravity', 'kimi', 'opencode', 'acp', 'ollama', 'local', 'api'];
+
+export const KIMI_MODELS: ModelInfo[] = [
+  { id: 'kimi-k3.1-pro', label: 'Kimi K3.1 Pro' },
+  { id: 'kimi-k3.1-pro-highspeed', label: 'Kimi K3.1 Pro Highspeed' },
+  { id: 'kimi-k3', label: 'Kimi K3' },
+  { id: 'kimi-k3-256k', label: 'Kimi K3 256K', legacy: true },
+];
 
 // Versioned IDs keep an explicit selection stable when CLI aliases move to a newer release.
 // Sources: https://platform.claude.com/docs/en/models/overview and its legacy model pages.
 export const CLAUDE_MODELS: ModelInfo[] = [
+  { id: 'claude-fable-5-2', label: 'Claude Fable 5.2' },
   { id: 'claude-fable-5-1', label: 'Claude Fable 5.1' },
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5' },
   { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5' },
@@ -186,7 +220,7 @@ export const CLAUDE_MODELS: ModelInfo[] = [
 ];
 
 const CLAUDE_ALIASES: Record<string, string> = {
-  fable: 'claude-fable-5-1', opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5',
+  fable: 'claude-fable-5-2', opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5',
   'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
 };
 
@@ -203,6 +237,7 @@ export const DEFAULT_OPTIONS: Record<ProviderId, ProviderOptions> = {
   claude: { permission: 'acceptEdits', model: 'claude-sonnet-5-5' },
   codex: { sandbox: 'workspace-write' },
   antigravity: { permission: 'allow-commands' },
+  kimi: { permission: 'yolo', model: 'kimi-k3.1-pro' },
   opencode: {},
   ollama: {},
   local: {},
@@ -233,6 +268,10 @@ const MODE_MAP: Partial<Record<ProviderId, Partial<Record<ModeId, ProviderOption
   },
   antigravity: {
     review: { permission: 'plan' }, ask: { permission: 'default' },
+    auto: { permission: 'auto' }, full: { fullAccess: true },
+  },
+  kimi: {
+    ask: { permission: 'default' }, edit: { permission: 'yolo' },
     auto: { permission: 'auto' }, full: { fullAccess: true },
   },
 };
@@ -282,9 +321,11 @@ export function modelLabel(model: ModelInfo): string {
   if (model.label !== model.id && !model.label.includes('/')) return model.label;
   return raw.replace(/^opencode\//i, '').replace(/-free$/i, ' · Free')
     .replace(/\b(gpt|glm|vl)\b/gi, (v) => v.toUpperCase())
+    .replace(/\bkimi\b/gi, 'Kimi').replace(/\bk3(\.1)?\b/gi, (v) => v.toUpperCase())
+    .replace(/\b256k\b/gi, '256K')
     .replace(/deepseek/gi, 'DeepSeek').replace(/nemotron/gi, 'Nemotron')
     .replace(/longcat/gi, 'LongCat').replace(/mimo/gi, 'MiMo')
-    .replace(/[-_]/g, ' ').replace(/\b(beam|big|pickle|flash|preview|ultra|lightning|super|space|bunny)\b/gi, (v) => v[0].toUpperCase() + v.slice(1));
+    .replace(/[-_]/g, ' ').replace(/\b(beam|big|pickle|flash|preview|ultra|lightning|super|space|bunny|pro|highspeed)\b/gi, (v) => v[0].toUpperCase() + v.slice(1));
 }
 
 export function effortLabel(p: ProviderId, value: string): string {
@@ -358,7 +399,7 @@ export function modelChoices(
   customIds: string[] = [],
   includeImages = false,
 ): ModelInfo[] {
-  const known = provider === 'claude' ? CLAUDE_MODELS : [];
+  const known = provider === 'claude' ? CLAUDE_MODELS : provider === 'kimi' ? KIMI_MODELS : [];
   const regular = [...known, ...(statuses[provider]?.models ?? [])]
     .filter((m) => !m.image)
     .map((m) => {

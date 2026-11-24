@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Backend, ModelRecord, RuntimeDetection } from '@shared/models';
-import type { LoadedInfo } from '../../electron/runtimes/scheduler';
+import type { LoadedInfo } from '@shared/contracts/models';
 import { hub } from '@/lib/api';
 import { useHub } from '@/lib/store';
 import { t } from '@/lib/i18n';

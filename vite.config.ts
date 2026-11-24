@@ -4,12 +4,12 @@ import tailwindcss from '@tailwindcss/vite';
 import electron from 'vite-plugin-electron/simple';
 import { fileURLToPath, URL } from 'node:url';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [
     react(),
     tailwindcss(),
-    electron({
+    mode !== 'tauri' && electron({
       main: {
         // Zweiter Einstiegspunkt: Worker-Thread für die Nutzungsauswertung (dist-electron/usage-worker.js).
         entry: { main: 'electron/main.ts', 'usage-worker': 'electron/usage-worker.ts', 'chat-worker': 'electron/chat-host/worker.ts' },
@@ -36,4 +36,4 @@ export default defineConfig({
     },
   },
   build: { outDir: 'dist', chunkSizeWarningLimit: 2000 },
-});
+}));

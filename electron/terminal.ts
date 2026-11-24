@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 import { homedir } from 'node:os';
 import { basename, delimiter, join } from 'node:path';
-import type { WebContents } from 'electron';
+interface TerminalClient { isDestroyed(): boolean; send(channel: string, payload: unknown): void }
 
 // Ein PTY ohne native Module: kleiner Python-Helfer (pty.fork) – läuft auf Linux/macOS.
 // Fenster-Größe kommt über einen separaten Steuerkanal (fd 3). Unter Windows: Pipe-Modus (ohne echtes PTY).
@@ -95,7 +95,7 @@ export function ensurePtyHelper(dataDir: string): string {
   return helper;
 }
 
-interface Term { proc: ChildProcess; wc: WebContents }
+interface Term { proc: ChildProcess; wc: TerminalClient }
 const terms = new Map<string, Term>();
 
 export interface ShellInfo { id: string; name: string; path: string }
@@ -158,7 +158,7 @@ function winShellArgs(shell: string): string[] {
   return [];
 }
 
-export function createTerminal(wc: WebContents, id: string, cwd: string, cols: number, rows: number, dataDir: string, command?: { bin: string; args: string[] }, shellPath?: string): { mode: 'pty' | 'pipe' } {
+export function createTerminal(wc: TerminalClient, id: string, cwd: string, cols: number, rows: number, dataDir: string, command?: { bin: string; args: string[] }, shellPath?: string): { mode: 'pty' | 'pipe' } {
   killTerminal(id);
   const dir = cwd && existsSync(cwd) ? cwd : homedir();
   const shell = command?.bin ?? (shellPath && existsSync(shellPath) ? shellPath : listShells()[0]?.path ?? process.env.SHELL ?? '/bin/bash');
@@ -207,7 +207,7 @@ export function killTerminal(id: string) {
   const timer = setTimeout(() => { if (proc.exitCode === null && proc.signalCode === null) { try { proc.kill('SIGKILL'); } catch { /* weg */ } } }, 2500);
   timer.unref();
 }
-export function killTerminalsOf(wc: WebContents) {
+export function killTerminalsOf(wc: TerminalClient) {
   for (const [id, t] of terms) if (t.wc === wc) killTerminal(id);
 }
 export function killAllTerminals() {

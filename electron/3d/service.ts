@@ -1,3 +1,5 @@
+import type { ProjectInfo, WorkfileItem } from '../../shared/contracts/threed';
+export type { ProjectInfo, WorkfileItem } from '../../shared/contracts/threed';
 // 3D-Projekte: je Projekt ein Ordner im Datenordner mit model.bbmodel, Verlauf früherer Stände, Renderings und Exporten.
 // Schreibt nur innerhalb dieses Ordners. Vor jedem Speichern wird der alte Stand im Verlauf abgelegt.
 import { randomUUID } from 'node:crypto';
@@ -17,12 +19,6 @@ import { dataDir } from '../store';
 const HISTORY_LIMIT = 30;
 /** Perspektiven für die Prüfung: Vorder-, Rück-, Seiten- und Draufsicht sowie Isometrie. */
 export const VIEWS = ['iso', 'front', 'back', 'left', 'right', 'top'] as const;
-
-export interface ProjectInfo {
-  id: string;
-  name: string;
-  updatedAt: number;
-}
 
 const root = () => join(dataDir(), '3d');
 export const projectDir = (id: string) => {
@@ -139,16 +135,6 @@ export async function animationPreviews(id: string): Promise<AnimationPreview[]>
 export async function exportFile(id: string): Promise<string | undefined> {
   const file = join(projectDir(id), 'exports', 'model.glb');
   try { await fsp.access(file); return file; } catch { return undefined; }
-}
-
-export interface WorkfileItem {
-  id: string;
-  name: string;
-  path: string;
-  type: 'bbmodel' | 'blend' | 'texture' | 'animation' | 'export';
-  format?: string;
-  size: number;
-  updatedAt: number;
 }
 
 export async function getWorkfiles(id: string): Promise<WorkfileItem[]> {

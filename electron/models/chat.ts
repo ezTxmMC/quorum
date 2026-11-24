@@ -1,3 +1,5 @@
+import type { LocalImageResult } from '../../shared/contracts/models';
+export type { LocalImageResult } from '../../shared/contracts/models';
 // Chat mit einem lokalen Modell über den Scheduler. Wird vom Modell-Testchat und von Multi-Agent-Läufen genutzt.
 // Lokale Modelle haben keine Tools – sie erzeugen nur Text (Planung, Review, Analyse).
 import type { ChatMessage, ModelRecord } from '../../shared/models';
@@ -59,12 +61,6 @@ export async function runLocalChat(opts: {
   } finally {
     running.delete(opts.runId);
   }
-}
-
-export interface LocalImageResult {
-  ok: boolean;
-  path?: string;
-  error?: string;
 }
 
 /** Bild mit einem lokalen Diffusers-Modell erzeugen. Die PNG landet im Bilderordner der App (wird dort angezeigt). */

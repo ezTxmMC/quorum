@@ -1,6 +1,7 @@
+import { workflowDatabase } from './database';
 // Persistenz für Workflows (mit Versionen) und Ausführungsprotokolle. Dateien im Datenordner, atomar geschrieben.
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, promises as fsp } from 'node:fs';
+import { promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import type { WorkflowDef, WorkflowNode } from '../../shared/workflow';
 import { dataDir } from '../store';
@@ -9,77 +10,35 @@ import type { RunRecord } from './engine';
 const HISTORY_LIMIT = 20;
 const RUNS_LIMIT = 50;
 
-const file = (name: string) => join(dataDir(), name);
-
-function readJson<T>(path: string, fallback: T): T {
-  try {
-    return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-const pendingWrites = new Map<string, unknown>();
-const writingFiles = new Set<string>();
-
-async function flushFile(path: string): Promise<void> {
-  if (writingFiles.has(path)) return;
-  writingFiles.add(path);
-  try {
-    while (pendingWrites.has(path)) {
-      const val = pendingWrites.get(path);
-      pendingWrites.delete(path);
-      await fsp.mkdir(dataDir(), { recursive: true });
-      const tmp = path + '.tmp';
-      await fsp.writeFile(tmp, JSON.stringify(val, null, 2));
-      await fsp.rename(tmp, path);
-    }
-  } catch {
-    /* nächster Versuch beim nächsten Speichern */
-  } finally {
-    writingFiles.delete(path);
-  }
-}
-
-function writeJson(path: string, value: unknown): void {
-  pendingWrites.set(path, value);
-  void flushFile(path);
-}
-
-let workflows: WorkflowDef[] | null = null;
-const all = (): WorkflowDef[] => (workflows ??= readJson<WorkflowDef[]>(file('workflows.json'), []));
-const persist = () => writeJson(file('workflows.json'), all());
-
 export function listWorkflows(): WorkflowDef[] {
-  return all();
+  return workflowDatabase().prepare('SELECT document FROM workflows ORDER BY rowid').all().map((row) => JSON.parse(String(row.document)));
 }
 
 export function getWorkflow(id: string): WorkflowDef | undefined {
-  return all().find((w) => w.id === id);
+  const row = workflowDatabase().prepare('SELECT document FROM workflows WHERE id=?').get(id);
+  return row ? JSON.parse(String(row.document)) : undefined;
 }
 
 /** Workflow anlegen oder ändern. Eine geänderte Knotenliste erzeugt eine neue Version (alte bleibt im Verlauf). */
 export function saveWorkflow(input: { id?: string; name: string; nodes: WorkflowNode[] }): WorkflowDef {
-  // Entwürfe dürfen unvollständig gespeichert werden; ausgeführt wird nur ein gültiger Stand (siehe Ausführung).
-  const now = Date.now();
-  const list = all();
-  const existing = input.id ? list.find((w) => w.id === input.id) : undefined;
-  if (!existing) {
-    const created: WorkflowDef = { id: input.id ?? randomUUID(), name: input.name.trim() || 'Workflow', version: 1, nodes: input.nodes, history: [], createdAt: now, updatedAt: now };
-    list.push(created);
-    persist();
-    return created;
-  }
-  const changed = JSON.stringify(existing.nodes) !== JSON.stringify(input.nodes);
-  if (changed) {
-    existing.history = [{ version: existing.version, at: existing.updatedAt, nodes: existing.nodes }, ...existing.history].slice(0, HISTORY_LIMIT);
-    existing.version += 1;
-    existing.nodes = input.nodes;
-  }
-  existing.name = input.name.trim() || existing.name;
-  existing.updatedAt = now;
-  persist();
-  return existing;
+  const db = workflowDatabase();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const now = Date.now();
+    const existing = input.id ? getWorkflow(input.id) : undefined;
+    const workflow = existing ?? { id: input.id ?? randomUUID(), version: 1, createdAt: now, nodes: input.nodes, history: [], name: 'Workflow', updatedAt: now };
+    if (existing && JSON.stringify(existing.nodes) !== JSON.stringify(input.nodes)) {
+      workflow.history = [{ version: existing.version, at: existing.updatedAt, nodes: existing.nodes }, ...existing.history].slice(0, HISTORY_LIMIT);
+      workflow.version++;
+    }
+    workflow.name = input.name.trim() || workflow.name;
+    workflow.nodes = input.nodes;
+    workflow.updatedAt = now;
+    db.prepare('INSERT INTO workflows VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET document=excluded.document').run(workflow.id, JSON.stringify(workflow));
+    db.exec('COMMIT');
+    return workflow;
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
+
 }
 
 /** Eine frühere Fassung als neue Version wiederherstellen. */
@@ -91,12 +50,7 @@ export function restoreVersion(id: string, version: number): WorkflowDef | undef
 }
 
 export function deleteWorkflow(id: string): boolean {
-  const list = all();
-  const i = list.findIndex((w) => w.id === id);
-  if (i < 0) return false;
-  list.splice(i, 1);
-  persist();
-  return true;
+  return workflowDatabase().prepare('DELETE FROM workflows WHERE id=?').run(id).changes !== 0;
 }
 
 /** Export als JSON-Datei in den Datenordner; liefert den Pfad. */
@@ -107,7 +61,11 @@ export async function exportWorkflow(id: string): Promise<string | undefined> {
   await fsp.mkdir(dir, { recursive: true });
   const safe = w.name.replace(/[^\w.-]+/g, '_').slice(0, 60) || 'workflow';
   const path = join(dir, `${safe}-v${w.version}.json`);
-  writeJson(path, { format: 'quorum-workflow', version: 1, workflow: { name: w.name, version: w.version, nodes: w.nodes } });
+  const temp = path + '.' + randomUUID() + '.tmp';
+  try {
+    await fsp.writeFile(temp, JSON.stringify({ format: 'quorum-workflow', version: 1, workflow: { name: w.name, version: w.version, nodes: w.nodes } }), { flag: 'wx' });
+    await fsp.rename(temp, path);
+  } finally { await fsp.rm(temp, { force: true }); }
   return path;
 }
 
@@ -121,22 +79,25 @@ export async function importWorkflow(path: string): Promise<WorkflowDef> {
 
 // ---- Ausführungsprotokolle -------------------------------------------------------------------------------
 
-let runs: RunRecord[] | null = null;
-const allRuns = (): RunRecord[] => (runs ??= readJson<RunRecord[]>(file('workflow-runs.json'), []));
-
 export function listRuns(workflowId?: string): RunRecord[] {
-  return allRuns().filter((r) => !workflowId || r.workflowId === workflowId);
+  const db = workflowDatabase();
+  const rows = workflowId ? db.prepare('SELECT document FROM workflow_runs WHERE workflow_id=? ORDER BY started DESC').all(workflowId)
+    : db.prepare('SELECT document FROM workflow_runs ORDER BY started DESC').all();
+  return rows.map((row) => JSON.parse(String(row.document)));
 }
 
 export function getRun(id: string): RunRecord | undefined {
-  return allRuns().find((r) => r.id === id);
+  const row = workflowDatabase().prepare('SELECT document FROM workflow_runs WHERE id=?').get(id);
+  return row ? JSON.parse(String(row.document)) : undefined;
 }
 
 export function saveRun(record: RunRecord): void {
-  const list = allRuns();
-  const i = list.findIndex((r) => r.id === record.id);
-  if (i >= 0) list[i] = record;
-  else list.unshift(record);
-  runs = list.slice(0, RUNS_LIMIT);
-  writeJson(file('workflow-runs.json'), runs);
+  const db = workflowDatabase();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('INSERT INTO workflow_runs VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET document=excluded.document')
+      .run(record.id, record.workflowId, record.startedAt, JSON.stringify(record));
+    db.prepare("DELETE FROM workflow_runs WHERE id IN (SELECT id FROM workflow_runs WHERE json_extract(document,'$.status') <> 'running' ORDER BY started DESC LIMIT -1 OFFSET ?)").run(RUNS_LIMIT);
+    db.exec('COMMIT');
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
 }

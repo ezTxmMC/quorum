@@ -1,3 +1,5 @@
+import type { ChatEngine } from '../../shared/contracts/threed';
+export type { ChatEngine } from '../../shared/contracts/threed';
 // Use the selected chat provider for JSON plans, without granting project write access.
 import { randomUUID } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
@@ -6,10 +8,6 @@ import type { ProviderId, ProviderOptions } from '../../shared/types';
 import type { ChatMessage } from '../../shared/models';
 import { cancelRun, runCli } from '../providers/runner';
 import { dataDir } from '../store';
-
-export type ChatEngine = { type: 'local'; modelId: string }
-  | { type: 'cli'; provider: 'claude' | 'codex' | 'antigravity' | 'opencode' }
-  | { type: 'provider'; provider: ProviderId; options: ProviderOptions };
 
 export function chatFor(engine: ChatEngine, binaries: Partial<Record<ProviderId, string>>, signal?: AbortSignal): (messages: ChatMessage[]) => Promise<string> {
   return async (messages) => {

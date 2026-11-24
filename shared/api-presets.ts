@@ -1,5 +1,5 @@
 // Vorlagen für OpenAI-kompatible Dienste: Basis-URL und Hinweis; Modelle werden über „Verbindung testen“ per /models geladen.
-export interface ApiPreset { name: string; baseUrl: string; local?: boolean; note?: string }
+export interface ApiPreset { name: string; baseUrl: string; models?: string[]; local?: boolean; note?: string }
 
 export const API_PRESETS: ApiPreset[] = [
   { name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
@@ -11,7 +11,11 @@ export const API_PRESETS: ApiPreset[] = [
   { name: 'Together', baseUrl: 'https://api.together.xyz/v1' },
   { name: 'Fireworks', baseUrl: 'https://api.fireworks.ai/inference/v1' },
   { name: 'Google Gemini (OpenAI-kompatibel)', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
-  { name: 'Moonshot (Kimi)', baseUrl: 'https://api.moonshot.ai/v1' },
+  {
+    name: 'Kimi AI',
+    baseUrl: 'https://api.moonshot.ai/v1',
+    models: ['kimi-k3.1-pro', 'kimi-k3.1-pro-highspeed', 'kimi-k3', 'kimi-k3-256k'],
+  },
   { name: 'LM Studio', baseUrl: 'http://127.0.0.1:1234/v1', local: true },
   { name: 'llama.cpp server', baseUrl: 'http://127.0.0.1:8080/v1', local: true },
   { name: 'vLLM', baseUrl: 'http://127.0.0.1:8000/v1', local: true },

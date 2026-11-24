@@ -1,0 +1,18 @@
+[package]
+name = "quorum-tauri"
+version = "1.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+quorum-core = { path = "../native/quorum-core" }
+serde_json = "1"
+rfd = "0.17"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

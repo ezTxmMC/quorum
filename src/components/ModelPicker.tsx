@@ -1,3 +1,4 @@
+import { PROVIDER_ORDER } from '@shared/catalog';
 import { t } from '@/lib/i18n';
 import { PROVIDERS, MODES, currentMode, imageEngineLabel, canonicalModel, modelChoices, modePatch, modesFor, modeLabel, modelLabel, modelEfforts, effortLabel, isChatModel } from '@shared/catalog';
 import type { ModelInfo, ProviderId, ProviderOptions } from '@shared/types';
@@ -6,7 +7,7 @@ import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { Popover, cx } from './ui';
 
-const ORDER: ProviderId[] = ['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'];
+
 
 export function Dot({ id, size = 8 }: { id: ProviderId; size?: number }) {
   return <span className="inline-block shrink-0 rounded-full" style={{ width: size, height: size, background: PROVIDERS[id].color, boxShadow: `0 0 0 3px color-mix(in srgb, ${PROVIDERS[id].color} 22%, transparent)` }} />;
@@ -23,7 +24,9 @@ export function useModelLabel(provider: ProviderId, model?: string): string {
 }
 
 export function defaultModel(provider: ProviderId, status?: { models: { id: string }[] }): string | undefined {
-  return provider === 'claude' ? 'claude-sonnet-5-5' : status?.models[0]?.id;
+  if (provider === 'claude') return 'claude-sonnet-5-5';
+  if (provider === 'kimi') return 'kimi-k3.1-pro';
+  return status?.models[0]?.id;
 }
 
 export function ModelList({ provider, model, imageGen, onPick, includeImages, onlyProvider, kind }: { provider?: ProviderId; model?: string; imageGen?: string; onPick: (p: ProviderId, model: string, imageGen?: string) => void; includeImages?: boolean; onlyProvider?: ProviderId; kind?: 'image' | 'text' }) {
@@ -34,7 +37,7 @@ export function ModelList({ provider, model, imageGen, onPick, includeImages, on
   const [older, setOlder] = useState(!!settings.showOlderModels);
   const q = query.trim().toLowerCase();
   const selected = imageGen ? `image:${imageGen}` : canonicalModel(provider ?? 'claude', model);
-  const groups = ORDER.filter((p) => (!onlyProvider || p === onlyProvider) && (statuses[p]?.installed || p === provider)).map((p) => {
+  const groups = PROVIDER_ORDER.filter((p) => (!onlyProvider || p === onlyProvider) && (statuses[p]?.installed || p === provider)).map((p) => {
     const models = modelChoices(p, statuses, settings.customModels?.[p], includeImages).filter((m) => (!kind || (kind === 'image' ? m.image : !m.image)) && isChatModel(m.id) && (older || !m.legacy || (p === provider && m.id === selected)) && (!q || `${PROVIDERS[p].name} ${m.id} ${modelLabel(m)}`.toLowerCase().includes(q)));
     return { p, models };
   }).filter((g) => g.models.length || (!q && kind !== 'image'));

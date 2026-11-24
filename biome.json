@@ -1,0 +1,14 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.13/schema.json",
+  "files": { "includes": ["src/**", "shared/**", "electron/**", "desktop/**", "core/**", "cli/**"] },
+  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 120 },
+  "javascript": { "formatter": { "quoteStyle": "single" } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": false,
+      "correctness": { "noUnreachable": "error", "useValidTypeof": "error" },
+      "suspicious": { "noDuplicateObjectKeys": "error" }
+    }
+  }
+}

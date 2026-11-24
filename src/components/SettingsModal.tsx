@@ -109,14 +109,16 @@ function ProviderTab({ p }: { p: ProviderId }) {
     <div className="space-y-5">
       <div className="flex items-center gap-3"><Dot id={p} size={10} /><h2 className="flex-1 text-[16px] font-semibold">{PROVIDERS[p].name}</h2>
         <span className={cx('text-[12px]', st?.installed ? 'text-ok' : 'text-bad')}>{st?.installed ? st.version : t('nicht gefunden')}</span></div>
-      <div>
-        <Label hint={t('leer = automatisch aus PATH')}>{t('Pfad zur CLI')} ({PROVIDERS[p].bin})</Label>
-        <div className="flex gap-2">
-          <input className="field font-mono text-[12px]" placeholder={st?.path ?? PROVIDERS[p].bin} value={settings.binaries[p] ?? ''} onChange={(e) => setSettings({ binaries: { ...settings.binaries, [p]: e.target.value || undefined } })} />
-          <button className="btn" onClick={async () => { const [f] = await hub.pickFiles('any'); if (f) setSettings({ binaries: { ...settings.binaries, [p]: f } }); }}><Icon name="lucide:file-search" /></button>
-          <button className="btn" onClick={() => setTimeout(() => void refreshStatus(p, true), 200)}><Icon name="lucide:refresh-cw" /></button>
+      {PROVIDERS[p].bin && (
+        <div>
+          <Label hint={t('leer = automatisch aus PATH')}>{t('Pfad zur CLI')} ({PROVIDERS[p].bin})</Label>
+          <div className="flex gap-2">
+            <input className="field font-mono text-[12px]" placeholder={st?.path ?? PROVIDERS[p].bin} value={settings.binaries[p] ?? ''} onChange={(e) => setSettings({ binaries: { ...settings.binaries, [p]: e.target.value || undefined } })} />
+            <button className="btn" onClick={async () => { const [f] = await hub.pickFiles('any'); if (f) setSettings({ binaries: { ...settings.binaries, [p]: f } }); }}><Icon name="lucide:file-search" /></button>
+            <button className="btn" onClick={() => setTimeout(() => void refreshStatus(p, true), 200)}><Icon name="lucide:refresh-cw" /></button>
+          </div>
         </div>
-      </div>
+      )}
       <div>
         <div className="mb-2 text-[12px] font-medium text-muted">{t('Standardwerte für neue Chats & Agenten')}</div>
         <OptionsPanel provider={p} value={settings.providerDefaults[p]} onChange={(patch) => setProviderDefaults(p, patch)} />

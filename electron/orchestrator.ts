@@ -61,6 +61,7 @@ function readOnly(agent: AgentSpec): ProviderOptions {
   if (agent.provider === 'claude') o.permission = 'plan';
   else if (agent.provider === 'codex') o.sandbox = 'read-only';
   else if (agent.provider === 'opencode') o.agent = 'plan';
+  else if (agent.provider === 'kimi') o.permission = 'default';
   else o.permission = 'plan';
   return o;
 }
@@ -77,6 +78,7 @@ function writable(agent: AgentSpec, autonomous: boolean): ProviderOptions {
   if (!autonomous || o.fullAccess) return o;
   if (agent.provider === 'claude') o.permission = o.permission === 'plan' || !o.permission || o.permission === 'manual' ? 'acceptEdits' : o.permission;
   else if (agent.provider === 'codex') o.sandbox = o.sandbox === 'read-only' || !o.sandbox ? 'workspace-write' : o.sandbox;
+  else if (agent.provider === 'kimi') o.permission = !o.permission || o.permission === 'default' ? 'yolo' : o.permission;
   else o.permission = o.permission === 'plan' || !o.permission || o.permission === 'default' || o.permission === 'accept-edits' ? 'allow-commands' : o.permission;
   return o;
 }

@@ -1,3 +1,5 @@
+import type { NodeState, RunRecord, RunEvent } from '../../shared/contracts/workflows';
+export type { NodeStatus, NodeState, RunRecord, RunEvent } from '../../shared/contracts/workflows';
 // Workflow-Engine: führt einen Knoten-Graphen aus. Bereite Knoten laufen parallel, Verzweigungen werden über
 // Bedingungen gesteuert, Fehler werden wiederholt (mit Backoff) und können den Lauf stoppen oder weiterlaufen lassen.
 // Jeder Knoten läuft unter seiner eigenen Kennung, damit Abbruch und Logs eindeutig bleiben.
@@ -9,37 +11,6 @@ import { topoOrder, type WorkflowDef, type WorkflowNode } from '../../shared/wor
 import { runLocalChat, runLocalImage } from '../models/chat';
 import { runCli, cancelRun } from '../providers/runner';
 import { dataDir } from '../store';
-
-export type NodeStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
-
-export interface NodeState {
-  status: NodeStatus;
-  /** Ergebnis: Text oder Bildpfad. */
-  text?: string;
-  imagePath?: string;
-  /** Bedingungen: welcher Ausgang gewählt wurde. */
-  branch?: 'true' | 'false';
-  error?: string;
-  attempts: number;
-  ms?: number;
-}
-
-export interface RunRecord {
-  id: string;
-  workflowId: string;
-  workflowName: string;
-  workflowVersion: number;
-  status: 'running' | 'done' | 'failed' | 'stopped';
-  startedAt: number;
-  endedAt?: number;
-  nodes: Record<string, NodeState>;
-  /** Ergebnisse der Ausgabe-Knoten. */
-  artifacts: { nodeId: string; label: string; text?: string; imagePath?: string }[];
-}
-
-export type RunEvent =
-  | { type: 'node'; runId: string; nodeId: string; state: NodeState }
-  | { type: 'run'; runId: string; status: RunRecord['status']; record: RunRecord };
 
 export interface RunOptions {
   runId: string;
@@ -148,7 +119,7 @@ export async function runWorkflow(wf: WorkflowDef, opts: RunOptions): Promise<Ru
         }
         // CLI-Anbieter: nur lesend, in einem leeren Arbeitsordner.
         const prompt = node.config.system ? `${node.config.system}\n\n---\n\n${user}` : user;
-        const options = engine.provider === 'codex' ? { sandbox: 'read-only' } : engine.provider === 'opencode' ? { agent: 'plan' } : { permission: 'plan' };
+        const options = engine.provider === 'codex' ? { sandbox: 'read-only' } : engine.provider === 'opencode' ? { agent: 'plan' } : engine.provider === 'kimi' ? { permission: 'default' } : { permission: 'plan' };
         const res = await runCli({ runId: nodeRun, provider: engine.provider, cwd: scratchDir(), prompt, options }, () => {}, opts.binaries);
         if (!res.ok) throw new Error(`${engine.provider} fehlgeschlagen`);
         return { text: res.text.trim() };

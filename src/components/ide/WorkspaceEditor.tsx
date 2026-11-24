@@ -72,26 +72,42 @@ export function WorkspaceEditor({ root, file, onDirty }: { root: string; file?: 
     return () => window.removeEventListener('beforeunload', warn);
   }, []);
 
-  // Polling is portable across platforms; dirty buffers remain authoritative.
+  // The path list changes only when tabs open or close, including across external renames.
+  const openPaths = JSON.stringify(buffers.map((buffer) => buffer.path));
   useEffect(() => {
+    const paths: string[] = JSON.parse(openPaths);
+    if (!paths.length) return;
+    const id = crypto.randomUUID();
     let active = true;
-    const check = async () => {
-      const snapshot = buffersRef.current;
-      for (const buffer of snapshot) {
-        try {
-          const disk = await hub.ideRead(root, buffer.path);
-          if (!active || disk.diskHash === buffer.diskHash) { continue; }
-          setBuffers((previous) => previous.map((latest) => {
-            if (latest.path !== buffer.path || latest.diskHash !== buffer.diskHash) { return latest; }
-            if (latest.text !== latest.savedText) { return { ...latest, conflict: true }; }
-            return { ...disk, savedText: disk.text };
-          }));
-        } catch (reason) { if (active) { report(reason); } }
-      }
+    const versions = new Map<string, number>();
+    const refresh = async (path: string) => {
+      const version = (versions.get(path) ?? 0) + 1;
+      versions.set(path, version);
+      const before = buffersRef.current.find((buffer) => buffer.path === path);
+      if (!before) return;
+      try {
+        const disk = await hub.ideRead(root, path);
+        if (!active || versions.get(path) !== version) return;
+        setBuffers((previous) => previous.map((buffer) => {
+          if (buffer.path !== path || buffer.diskHash !== before.diskHash || disk.diskHash === buffer.diskHash) return buffer;
+          if (buffer.text !== buffer.savedText) return { ...buffer, conflict: true };
+          return { ...disk, savedText: disk.text };
+        }));
+      } catch (error) { if (active) report(error); }
     };
-    const timer = window.setInterval(() => { void check(); }, 3000);
-    return () => { active = false; clearInterval(timer); };
-  }, [root, report]);
+    const off = hub.onFileChange((event) => {
+      if (event.id !== id) return;
+      if (event.error) { report(event.error); return; }
+      void refresh(event.path);
+    });
+    const registered = hub.ideWatch(id, root, paths);
+    void registered.then(() => { if (active) paths.forEach((path) => void refresh(path)); }).catch(report);
+    return () => {
+      active = false;
+      off();
+      void registered.then(() => hub.ideUnwatch(id)).catch(report);
+    };
+  }, [root, openPaths, report]);
 
   const save = async () => {
     if (!current || busy || current.conflict) { return; }

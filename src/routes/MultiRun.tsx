@@ -1,6 +1,7 @@
+import { messageRenderRevision } from '@shared/render-revision';
 import { AgentOverview } from '@/components/agents/AgentOverview';
 import { t, t as tr } from '@/lib/i18n';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import type { AgentSpec, MultiRunRecord, MultiTurn } from '@shared/types';
 import { ChangesPanel } from '@/components/ChangesPanel';
@@ -17,9 +18,10 @@ const STATUS: Record<MultiRunRecord['status'], { label: string; cls: string }> =
   done: { label: 'Fertig', cls: 'text-ok' }, failed: { label: 'Fehlgeschlagen', cls: 'text-bad' }, stopped: { label: 'Gestoppt', cls: 'text-warn' },
 };
 
-function TurnCard({ t, agent, defaultOpen, multiId }: { t: MultiTurn; agent?: AgentSpec; defaultOpen: boolean; multiId: string }) {
+const TurnCard = memo(function TurnCard({ t, agent, defaultOpen, multiId }: { t: MultiTurn; agent?: AgentSpec; defaultOpen: boolean; multiId: string }) {
   const [open, setOpen] = useState(defaultOpen);
   const [showPrompt, setShowPrompt] = useState(false);
+  const message = useMemo(() => ({ ...t.message, provider: undefined }), [t.message]);
   useEffect(() => { if (t.running) setOpen(true); }, [t.running]);
   return (
     <div className="rounded-lumen-lg border border-edge bg-surface">
@@ -37,12 +39,12 @@ function TurnCard({ t, agent, defaultOpen, multiId }: { t: MultiTurn; agent?: Ag
             <Icon name="lucide:scroll-text" size={12} /> {showPrompt ? tr('Prompt ausblenden') : tr('Prompt anzeigen')}{t.cwd ? ` · ${t.cwd.split(/[\\/]/).slice(-2).join('/')}` : ''}
           </button>
           <Collapse open={showPrompt}><pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-lumen-sm bg-bg p-2.5 font-mono text-[11.5px] text-muted">{t.prompt}</pre></Collapse>
-          <MessageView m={{ ...t.message, provider: undefined }} live={t.running} onStop={() => void hub.multiStopTurn(multiId, t.turnId)} />
+          <MessageView m={message} live={t.running} onStop={() => void hub.multiStopTurn(multiId, t.turnId)} />
         </div>
       </Collapse>
     </div>
   );
-}
+});
 
 export function MultiRunPage() {
   const { id = '' } = useParams();
@@ -55,9 +57,12 @@ export function MultiRunPage() {
   const diffPresence = usePresence(showDiff, 170);
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  const sig = run ? `${run.turns.length}:${run.turns.at(-1)?.message.blocks.length}:${(JSON.stringify(run.turns.at(-1)?.message.blocks.at(-1)) ?? "").length}:${run.stages.length}` : '';
+  const sig = run ? `${run.turns.length}:${run.stages.length}:${run.turns.filter((turn) => turn.running).map((turn) => messageRenderRevision(turn.message)).join('|')}:${run.status}` : '';
 
-  useLayoutEffect(() => { const el = box.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [sig]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => { const element = box.current; if (element && stick.current) { element.scrollTop = element.scrollHeight; } });
+    return () => cancelAnimationFrame(frame);
+  }, [sig]);
 
   const setActiveCwd = useHub.getState().setActiveCwd;
   useEffect(() => { if (run) setActiveCwd(run.config.cwd); }, [run?.config.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -67,7 +72,14 @@ export function MultiRunPage() {
   const strat = STRATEGIES.find((s) => s.id === run.config.strategy);
   const agentOf = (aid: string) => run.config.agents.find((a) => a.id === aid);
   const active = new Set(run.turns.filter((t) => t.running).map((t) => t.agentId));
-  const turnsByStage = (sid: string) => run.turns.filter((t) => t.stageId === sid && (!filter || t.agentId === filter));
+  const groupedTurns = new Map<string, MultiTurn[]>();
+  for (const turn of run.turns) {
+    if (filter && turn.agentId !== filter) { continue; }
+    const group = groupedTurns.get(turn.stageId);
+    if (group) { group.push(turn); continue; }
+    groupedTurns.set(turn.stageId, [turn]);
+  }
+  const turnsByStage = (stageId: string) => groupedTurns.get(stageId) ?? [];
 
   return (
     <div className="flex h-full min-h-0">

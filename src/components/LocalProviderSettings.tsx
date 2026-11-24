@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { RuntimeDetection } from '@shared/models';
-import type { ResourceSnapshot } from '../../electron/runtimes/resources';
+import type { ResourceSnapshot } from '@shared/contracts/models';
 import { hub } from '@/lib/api';
 import { useHub } from '@/lib/store';
 import { t } from '@/lib/i18n';

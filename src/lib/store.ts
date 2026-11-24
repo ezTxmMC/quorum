@@ -1,3 +1,5 @@
+import { markProfileReady } from './tauri';
+import { PROVIDER_ORDER } from '@shared/catalog';
 import { recoverChats } from '@shared/chat-host/recovery';
 import { chatMode } from '@shared/chat-modes';
 import { useRef } from 'react';
@@ -96,7 +98,7 @@ const emptyData = (): Persisted => ({
   version: 1,
   settings: {
     theme: 'dark', language: navigator.language.startsWith('de') ? 'de' : 'en', autoImport: true, sidebarPinned: true, quickHotkey: 'CommandOrControl+Shift+Space', dock: defaultDock(), terminal: defaultTerminal(), accent: '#7c8cff', defaultProvider: 'claude', defaultCwd: '', binaries: {},
-    providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, opencode: {}, ollama: {}, local: {}, api: {}, acp: { permission: 'readonly' } },
+    providerDefaults: { claude: { ...DEFAULT_OPTIONS.claude }, codex: { ...DEFAULT_OPTIONS.codex }, antigravity: { ...DEFAULT_OPTIONS.antigravity }, kimi: { ...DEFAULT_OPTIONS.kimi }, opencode: {}, ollama: {}, local: {}, api: {}, acp: { permission: 'readonly' } },
     updateChannel: 'release', autoCheckUpdate: true,
     threed: { preferredTool: 'blockbench', defaultExportFormat: 'glb', autoExport: true },
     chatList: { groupBy: 'project', sortBy: 'updated', sortOrder: 'desc' },
@@ -174,6 +176,8 @@ export const useHub = create<State>((set, get) => {
       data.sessions = data.sessions.map((s) => (gone(s.provider)
         ? { ...s, provider: fallback, options: { ...data.settings.providerDefaults[fallback] }, messages: s.messages.map((m) => (m.provider && gone(m.provider) ? { ...m, provider: undefined } : m)) }
         : s));
+      data.settings.providerDefaults.acp ??= { ...DEFAULT_OPTIONS.acp };
+      data.settings.providerDefaults.kimi ??= { ...DEFAULT_OPTIONS.kimi };
       data.settings.providerDefaults.opencode ??= {};
       data.settings.providerDefaults.ollama ??= {};
       data.settings.sidebarPinned ??= true;
@@ -190,7 +194,8 @@ export const useHub = create<State>((set, get) => {
       data.sessions = data.sessions.filter((x) => x.messages.length > 0);
       data.multiRuns = data.multiRuns.map((r) => (r.status === 'running' ? { ...r, status: 'stopped', turns: r.turns.map((t) => ({ ...t, running: false })) } : r));
       set({ data, ready: true });
-      (['claude', 'codex', 'antigravity', 'opencode', 'ollama', 'local', 'api'] as ProviderId[]).forEach((id) => void get().refreshStatus(id));
+      markProfileReady();
+      PROVIDER_ORDER.forEach((id) => void get().refreshStatus(id));
     },
 
     async refreshStatus(id, force) {

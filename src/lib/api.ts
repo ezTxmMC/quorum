@@ -1,4 +1,4 @@
-import type { HubApi } from '../../electron/preload';
+import type { HubApi } from '@shared/bridge';
 
 declare global {
   interface Window { hub: HubApi }

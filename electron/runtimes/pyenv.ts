@@ -1,3 +1,5 @@
+import type { PyStatus } from '../../shared/contracts/models';
+export type { PyStatus } from '../../shared/contracts/models';
 // Python-Umgebung für Transformers und Diffusers: eigene venv im Datenordner, Pins aus python/requirements.txt.
 // Torch (ROCm/CUDA) kommt vom System (--system-site-packages), damit keine mehrere GB großen Wheels geladen werden.
 // PYTHONNOUSERSITE=1 verhindert, dass Pakete aus ~/.local die Umgebung verunreinigen.
@@ -6,15 +8,6 @@ import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-
-export interface PyStatus {
-  /** Umgebung eingerichtet und zu den Pins passend. */
-  ready: boolean;
-  python?: string;
-  pythonVersion?: string;
-  torch?: { version: string; hip?: string; cuda: boolean; device?: string };
-  error?: string;
-}
 
 const PY_BIN = process.platform === 'win32' ? join('Scripts', 'python.exe') : join('bin', 'python');
 const MARKER = 'installed.json';

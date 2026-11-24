@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { WorkfileItem } from '../../electron/3d/service';
+import type { WorkfileItem } from '@shared/contracts/threed';
 import { hub } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';

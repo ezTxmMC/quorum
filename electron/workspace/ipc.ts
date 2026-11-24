@@ -1,3 +1,4 @@
+import { watchDocuments } from '../../core/ide/watch';
 import { workspaceRoot } from '../../core/ide/paths';
 import { WorkspaceSearch } from '../../core/ide/search';
 import { registerLspIpc } from './lsp-ipc';
@@ -13,6 +14,18 @@ export function registerWorkspaceIpc(): { shutdown: () => Promise<void>; close: 
   const documents = new DocumentService();
   const closeLsp = registerLspIpc();
   const search = new WorkspaceSearch();
+  const watchers = new Map<string, () => void>();
+  ipcMain.handle('ide:watch', ({ sender }, id: string, root: string, paths: string[]) => {
+    const key = sender.id + ':' + id;
+    watchers.get(key)?.();
+    const stop = watchDocuments(root, paths, (change) => {
+      if (!sender.isDestroyed()) sender.send('ide:change', { id, ...change });
+    });
+    const close = () => { stop(); watchers.delete(key); sender.removeListener('destroyed', close); };
+    watchers.set(key, close);
+    sender.once('destroyed', close);
+  });
+  ipcMain.handle('ide:unwatch', ({ sender }, id: string) => watchers.get(sender.id + ':' + id)?.());
   const searches = new Map<number, AbortController>();
   ipcMain.handle('ide:find', async ({ sender }, root: string, query: string, content: boolean) => {
     searches.get(sender.id)?.abort();
@@ -42,6 +55,7 @@ export function registerWorkspaceIpc(): { shutdown: () => Promise<void>; close: 
   ipcMain.handle('ide:save', (_event, root: string, path: string, text: string, expectedHash: string) => documents.save(root, path, text, expectedHash));
   return {
     shutdown: async () => {
+      for (const stop of watchers.values()) stop();
       for (const controller of searches.values()) { controller.abort(); }
       await closeLsp();
     },

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Quorum",
+  "version": "1.0.0",
+  "identifier": "dev.quorum.app",
+  "build": {
+    "beforeDevCommand": "npm run build:tauri-assets && npm run dev:web",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build:tauri-assets && npm run build:web",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Quorum",
+        "width": 1360,
+        "height": 880,
+        "minWidth": 760,
+        "minHeight": 480,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; font-src 'self' data:",
+      "capabilities": [
+        {
+          "identifier": "workbench",
+          "windows": [
+            "main"
+          ],
+          "permissions": [
+            "core:event:default",
+            "core:window:allow-close",
+            "core:window:allow-minimize",
+            "core:window:allow-toggle-maximize",
+            "core:window:allow-is-maximized",
+            "core:window:allow-is-fullscreen",
+            "core:window:allow-set-background-color"
+          ]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "../build/icon.png",
+      "../build/icon.ico",
+      "../build/icon.icns"
+    ],
+    "resources": {
+      "../dist-service/quorum-service.mjs": "dist-service/quorum-service.mjs",
+      "../dist-electron/chat-worker.js": "dist-electron/chat-worker.js",
+      "../native/bin/": "native/bin/",
+      "../python/": "python/",
+      "../node_modules/typescript/": "language-servers/node_modules/typescript/",
+      "../node_modules/typescript-language-server/": "language-servers/node_modules/typescript-language-server/",
+      "../node_modules/pyright/": "language-servers/node_modules/pyright/"
+    }
+  }
+}

@@ -110,7 +110,7 @@ export function TopBar({ hover, minimal, sidebarVisible, onToggleSidebar }: { ho
           )}
         </div>
       )}
-      {!mac && <WindowControls />}
+      {!mac && !window.__TAURI__ && <WindowControls />}
     </header>
   );
 }
