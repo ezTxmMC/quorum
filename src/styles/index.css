@@ -322,6 +322,9 @@ html[data-tauri], html[data-tauri] body, html[data-tauri] #root { background: tr
 
 /* Seitenwechsel: nur der Hauptbereich wird überblendet, Sidebar/TopBar bleiben statisch (leichter) */
 .page-root { view-transition-name: page; }
+/* Die Tab-Leiste gehört nicht zum Seitenwechsel: sonst blendete sie bei jedem Tabwechsel mit aus und ein. */
+.chat-tabs { view-transition-name: chat-tabs; scrollbar-width: none; }
+.chat-tabs::-webkit-scrollbar { display: none; }
 
 .bar-grow { transform-origin: bottom; animation: bar-grow 0.5s var(--ease-out) both; }
 @keyframes bar-grow { from { transform: scaleY(0); opacity: 0; } to { transform: none; opacity: 1; } }

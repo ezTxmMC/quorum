@@ -7,6 +7,7 @@ import { Dock, PanelBody } from '@/components/Dock';
 import { IdeSidebar, ThreeDSidebar } from '@/components/ModeSidebars';
 import { Sidebar } from '@/components/Sidebar';
 import { TopBar } from '@/components/TopBar';
+import { ChatTabs } from '@/components/ChatTabs';
 import { cx } from '@/components/ui';
 import type { PanelId } from '@shared/types';
 import { hub } from '@/lib/api';
@@ -384,7 +385,7 @@ function Shell() {
         )}
 
         <SettingsModal />
-        <Dock><main className="page-root island absolute inset-0 flex min-w-0 flex-col"><Outlet /></main></Dock>
+        <Dock><main className="page-root island absolute inset-0 flex min-w-0 flex-col"><ChatTabs /><div className="flex min-h-0 flex-1 flex-col"><Outlet /></div></main></Dock>
       </div>
       <ProcessStatus />
     </div>

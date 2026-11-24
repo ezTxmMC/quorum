@@ -1,3 +1,4 @@
+import { useChatTabs } from '@/lib/chatTabs';
 import { t } from '@/lib/i18n';
 import { useDeferredValue, useMemo, useState } from 'react';
 import type { ChatGroupBy, ChatMode, ChatSession, ChatSortBy, ChatSortOrder, MultiRunRecord, ProviderId } from '@shared/types';
@@ -270,6 +271,12 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
   const { id } = useParams();
   const running = new Set(Object.values(runs).map((r) => r.sessionId));
 
+  const openInTab = (sessionId: string) => {
+    useChatTabs.getState().open(sessionId, id);
+    navigate(`/chat/${sessionId}`);
+    onClose?.();
+  };
+
   const renderSessionItem = (s: ChatSession) => {
     const isSelected = id === s.id;
     const projectName = s.cwd ? s.cwd.split(/[\\/]/).filter(Boolean).pop() : undefined;
@@ -278,6 +285,18 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
         key={s.id}
         to={`/chat/${s.id}`}
         viewTransition
+        onClick={(e) => {
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            openInTab(s.id);
+          }
+        }}
+        onAuxClick={(e) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            openInTab(s.id);
+          }
+        }}
         className={({ isActive }) =>
           cx(
             'group flex items-center gap-2 rounded-lumen-sm px-2 py-1.5 transition-colors hover:bg-hover',
@@ -324,6 +343,16 @@ export function Sidebar({ pinned, onClose }: { pinned?: boolean; onClose?: () =>
           }}
         >
           <Icon name="lucide:folder-pen" size={12} />
+        </button>
+        <button
+          className="icon-btn hidden !size-5 group-hover:grid"
+          title={t('In neuem Tab öffnen (Strg+Klick)')}
+          onClick={(e) => {
+            e.preventDefault();
+            openInTab(s.id);
+          }}
+        >
+          <Icon name="lucide:panel-top" size={12} />
         </button>
         <button
           className="icon-btn hidden !size-5 group-hover:grid"
