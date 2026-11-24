@@ -461,7 +461,7 @@ export interface UpdateProgress {
 }
 
 export interface UpdateState {
-  status: 'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'downloaded' | 'error';
+  status: 'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'downloaded' | 'installing' | 'error';
   currentVersion: string;
   channel: UpdateChannel;
   updateInfo?: UpdateInfo;

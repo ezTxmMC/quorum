@@ -257,7 +257,7 @@ export function TopBar({ hover, minimal, sidebarVisible, onToggleSidebar }: { ho
           <button className="icon-btn !size-8" title={t('Einstellungen')} onClick={() => openSettings()}>
             <Icon name="lucide:settings-2" size={15} />
           </button>
-          {(updaterState?.status === 'available' || updaterState?.status === 'downloaded' || updaterState?.status === 'downloading') && (
+          {(updaterState?.status === 'available' || updaterState?.status === 'downloaded' || updaterState?.status === 'downloading' || updaterState?.status === 'installing') && (
             <button
               className={cx(
                 'no-drag ml-1 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',

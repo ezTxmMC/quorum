@@ -586,6 +586,8 @@ export const en: Record<string, string> = {
   "Neue Version verfügbar": "New version available",
   "Update herunterladen": "Download update",
   "Update wird heruntergeladen …": "Downloading update …",
+  "Update wird installiert …": "Installing update …",
+  "Quorum startet neu, sobald die neue Version eingerichtet ist.": "Quorum restarts as soon as the new version is set up.",
   "Das Update wurde vollständig geladen. Beim Klick auf „Jetzt neu starten“ wird Quorum aktualisiert und automatisch neu gestartet.": "The update has been fully downloaded. Clicking “Restart now” updates Quorum and restarts it automatically.",
   "Jetzt neu starten": "Restart now",
   "Über die Release-Kanäle": "About the release channels",

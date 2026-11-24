@@ -346,6 +346,96 @@ export async function downloadUpdate(): Promise<boolean> {
   }
 }
 
+/** Bereits ausgetauschtes AppImage: bricht der Nutzer das Beenden ab, startet der nächste Klick nur noch neu. */
+let installedAppImage: string | undefined;
+
+/** Ohne laufenden Dienst schreibt niemand den Starter neu; dann wäre das Warten vergeblich. */
+function integrationDaemonRuns(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = spawn('pgrep', ['-f', 'appimagelauncherd'], { stdio: 'ignore' });
+    probe.once('error', () => resolve(false));
+    probe.once('close', (code) => resolve(code === 0));
+  });
+}
+
+/**
+ * Wartet, bis eine Desktop-Integration (AppImageLauncher) das ausgetauschte AppImage neu eingebunden hat.
+ * Sie schreibt den Starter erst einige Sekunden nach dem Austausch neu; ein Neustart davor läuft in diese Umstellung hinein.
+ */
+async function desktopIntegrationSettled(appImage: string, since: number): Promise<void> {
+  const directory = join(homedir(), '.local', 'share', 'applications');
+  const starters: string[] = [];
+  for (const name of await fsp.readdir(directory).catch(() => [] as string[])) {
+    if (!name.startsWith('appimagekit_') || !name.endsWith('.desktop')) {
+      continue;
+    }
+    const content = await fsp.readFile(join(directory, name), 'utf8').catch(() => '');
+    if (content.includes(appImage)) {
+      starters.push(join(directory, name));
+    }
+  }
+  if (!starters.length || !(await integrationDaemonRuns())) {
+    return;
+  }
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const stats = await Promise.all(starters.map((file) => fsp.stat(file).catch(() => undefined)));
+    if (stats.some((stat) => stat && stat.mtimeMs >= since)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+}
+
+/** Tauscht das AppImage aus, solange die App noch läuft, und startet erst danach neu. */
+async function installAppImage(filePath: string): Promise<boolean> {
+  const target = process.env.APPIMAGE || join(homedir(), '.local', 'share', 'ai-hub', 'Quorum.AppImage');
+  const binLink = join(homedir(), '.local', 'bin', 'quorum');
+  try {
+    if (installedAppImage !== target) {
+      state = { ...state, status: 'installing', error: undefined };
+      emitStatus();
+      const started = Date.now();
+      await fsp.mkdir(join(target, '..'), { recursive: true });
+      // Umbenennen ersetzt nur den Verzeichniseintrag: die laufende App behält ihre alte Datei, bis sie endet.
+      await fsp.copyFile(filePath, `${target}.new`);
+      await fsp.chmod(`${target}.new`, 0o755);
+      await fsp.rename(`${target}.new`, target);
+      installedAppImage = target;
+      await fsp.mkdir(join(binLink, '..'), { recursive: true });
+      await fsp.rm(binLink, { force: true });
+      await fsp.symlink(target, binLink).catch(() => undefined);
+      await desktopIntegrationSettled(target, started);
+      await fsp.rm(filePath, { force: true });
+    }
+
+    // Die neue App kann erst starten, wenn diese beendet ist (nur eine Instanz). Bricht der Nutzer das Beenden ab,
+    // gibt das Skript nach 90 s auf; die neue Version ist dann trotzdem installiert und gilt ab dem nächsten Start.
+    const relaunchScript = join(dataDir(), 'updates', 'apply-update.sh');
+    const scriptContent = `#!/usr/bin/env bash
+app="$1"; pid="$2"; shift 2
+for _ in $(seq 1 900); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$pid" 2>/dev/null; then exit 0; fi
+setsid "$app" "$@" >/dev/null 2>&1 &
+`;
+    await fsp.mkdir(join(relaunchScript, '..'), { recursive: true });
+    await fsp.writeFile(relaunchScript, scriptContent, { mode: 0o755 });
+    // Ohne den Schalter startet Electron aus einem AppImage auf Systemen ohne freie User-Namespaces nicht.
+    const switches = process.argv.includes('--no-sandbox') ? ['--no-sandbox'] : [];
+    const child = spawn('/bin/bash', [relaunchScript, target, String(process.pid), ...switches], { detached: true, stdio: 'ignore' });
+    child.unref();
+    state = { ...state, status: 'downloaded', error: undefined };
+    emitStatus();
+    app.quit();
+    return true;
+  } catch (err: unknown) {
+    await fsp.rm(`${target}.new`, { force: true }).catch(() => undefined);
+    state = { ...state, status: 'error', error: `Update konnte nicht installiert werden: ${err instanceof Error ? err.message : String(err)}` };
+    emitStatus();
+    return false;
+  }
+}
+
 export async function installUpdate(): Promise<boolean> {
   const filePath = state.downloadPath;
   if (!filePath) {
@@ -359,6 +449,10 @@ export async function installUpdate(): Promise<boolean> {
     state = { ...state, status: 'available', downloadPath: undefined, error: undefined };
     emitStatus();
     return false;
+  }
+
+  if (process.platform === 'linux' && installedAppImage) {
+    return installAppImage(filePath);
   }
 
   try {
@@ -377,49 +471,7 @@ export async function installUpdate(): Promise<boolean> {
     return true;
   }
   if (process.platform === 'linux') {
-    // Linux AppImage Update
-    const currentAppImage = process.env.APPIMAGE;
-    const defaultAppImage = join(homedir(), '.local', 'share', 'ai-hub', 'Quorum.AppImage');
-    const targetInstallPath = currentAppImage || defaultAppImage;
-
-    const binLink = join(homedir(), '.local', 'bin', 'quorum');
-    const desktopFile = join(homedir(), '.local', 'share', 'applications', 'quorum.desktop');
-
-    try {
-      await fsp.mkdir(join(targetInstallPath, '..'), { recursive: true });
-      await fsp.mkdir(join(binLink, '..'), { recursive: true });
-      await fsp.mkdir(join(desktopFile, '..'), { recursive: true });
-
-      // Skript für nahtlosen Neustart und Austausch im Hintergrund vorbereiten
-      const updaterScript = join(dataDir(), 'updates', 'apply-update.sh');
-      // Pfade kommen als Argumente statt in den Skripttext, damit Sonderzeichen nichts auslösen. Erst wenn die App wirklich
-      // beendet ist, wird ausgetauscht – bricht der Nutzer das Beenden ab, bleibt die Installation unberührt.
-      const scriptContent = `#!/usr/bin/env bash
-src="$1"; dst="$2"; link="$3"; pid="$4"
-for _ in $(seq 1 900); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
-if kill -0 "$pid" 2>/dev/null; then exit 0; fi
-cp -f "$src" "$dst.new" && chmod +x "$dst.new" && mv -f "$dst.new" "$dst" || exit 1
-ln -sf "$dst" "$link"
-setsid "$dst" >/dev/null 2>&1 &
-rm -f "$src"
-`;
-      await fsp.writeFile(updaterScript, scriptContent, { mode: 0o755 });
-
-      // Starte das Update-Skript entkoppelt
-      const child = spawn('/bin/bash', [updaterScript, filePath, targetInstallPath, binLink, String(process.pid)], {
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-
-      // App sauber beenden
-      app.quit();
-      return true;
-    } catch (err: unknown) {
-      // Fallback: Datei im Ordner anzeigen
-      shell.showItemInFolder(filePath);
-      return false;
-    }
+    return installAppImage(filePath);
   }
   if (process.platform === 'win32' && filePath.toLowerCase().endsWith('.exe')) {
     // Windows: Installer starten und die App beenden, damit er die Dateien ersetzen kann.

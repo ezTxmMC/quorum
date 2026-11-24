@@ -821,7 +821,7 @@ function UpdatesTab() {
           <div className="flex items-end">
             <button
               className="btn btn-primary h-9 w-full justify-center gap-2"
-              disabled={checking || updaterState.status === 'downloading'}
+              disabled={checking || updaterState.status === 'downloading' || updaterState.status === 'installing'}
               onClick={handleCheck}
             >
               <Icon name={checking ? 'lucide:loader-2' : 'lucide:refresh-cw'} className={cx(checking && 'animate-spin')} size={15} />
@@ -918,6 +918,16 @@ function UpdatesTab() {
           <div className="flex items-center justify-between font-mono text-[11.5px] text-subtle">
             <span>{progress ? `${(progress.transferred / 1024 / 1024).toFixed(1)} MB / ${(progress.total / 1024 / 1024).toFixed(1)} MB` : ''}</span>
             <span>{progress?.bytesPerSecond ? `${(progress.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s` : ''}</span>
+          </div>
+        </div>
+      )}
+
+      {updaterState.status === 'installing' && (
+        <div className="fade-in flex items-start gap-3 rounded-lumen border border-accent/40 bg-accent/5 p-4">
+          <Icon name="lucide:loader-2" className="mt-0.5 shrink-0 animate-spin text-accent" size={18} />
+          <div>
+            <div className="font-medium">{t('Update wird installiert …')}</div>
+            <p className="mt-0.5 text-[12px] text-muted">{t('Quorum startet neu, sobald die neue Version eingerichtet ist.')}</p>
           </div>
         </div>
       )}
