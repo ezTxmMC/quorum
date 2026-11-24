@@ -10,11 +10,48 @@ interface TauriWindow {
   onCloseRequested(callback: (event: { preventDefault(): void }) => void): Promise<() => void>;
 }
 interface TauriApi {
-  core: { invoke<T>(name: string, args: Record<string, unknown>): Promise<T> };
+  core: { invoke<T>(name: string, args?: unknown): Promise<T> };
   event: { listen<T>(name: string, callback: (event: { payload: T }) => void): Promise<() => void> };
   window: { getCurrentWindow(): TauriWindow };
 }
 declare global { interface Window { __TAURI__?: TauriApi } }
+
+interface CompletedWorkerMessage {
+  chatId: string;
+  messageId: string;
+  runId: string;
+}
+
+function collectCompletedWorkers(profile: unknown): CompletedWorkerMessage[] {
+  if (typeof profile !== 'object' || profile === null) {
+    return [];
+  }
+  const sessions = (profile as { sessions?: unknown }).sessions;
+  if (!Array.isArray(sessions)) {
+    return [];
+  }
+  const completed: CompletedWorkerMessage[] = [];
+  for (const session of sessions) {
+    if (typeof session !== 'object' || session === null) {
+      continue;
+    }
+    const chatId = (session as { id?: unknown }).id;
+    const messages = (session as { messages?: unknown }).messages;
+    if (typeof chatId !== 'string' || !Array.isArray(messages)) {
+      continue;
+    }
+    for (const message of messages) {
+      if (typeof message !== 'object' || message === null) {
+        continue;
+      }
+      const item = message as { id?: unknown; workerDone?: unknown; workerRunId?: unknown };
+      if (item.workerDone === true && typeof item.id === 'string' && typeof item.workerRunId === 'string') {
+        completed.push({ chatId, messageId: item.id, runId: item.workerRunId });
+      }
+    }
+  }
+  return completed;
+}
 
 export async function installTauri(api: TauriApi) {
   const current = api.window.getCurrentWindow();
@@ -25,11 +62,24 @@ export async function installTauri(api: TauriApi) {
   await api.event.listen<{ channel: string; payload: unknown }>('quorum-event', ({ payload }) => publish(payload.channel, payload.payload));
   const state = async () => ({ maximized: await current.isMaximized(), fullscreen: await current.isFullscreen() });
   const dispatch = <T>(channel: string, args: unknown[] = []) => api.core.invoke<T>('dispatch', { channel, args });
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
   let writes = Promise.resolve<unknown>(undefined);
   let closing = false;
   const controls: Record<string, (...args: unknown[]) => Promise<unknown>> = {
+    'store:load': async () => {
+      const raw = await api.core.invoke<ArrayBuffer>('load_profile');
+      const profile = JSON.parse(decoder.decode(new Uint8Array(raw))) as { settings?: unknown };
+      await dispatch('store:adopt', [{ settings: profile.settings }]);
+      return profile;
+    },
     'store:save': (profile) => {
-      const pending = writes.then(() => dispatch('store:save', [profile]));
+      const pending = writes.then(async () => {
+        const bytes = encoder.encode(JSON.stringify(profile));
+        await api.core.invoke('save_profile', bytes);
+        const settings = (profile as { settings?: unknown })?.settings;
+        await dispatch('store:ack', [{ settings, completed: collectCompletedWorkers(profile) }]);
+      });
       writes = pending.catch(() => {});
       return pending;
     },

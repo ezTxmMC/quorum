@@ -120,7 +120,13 @@ export default function App() {
     void hub.setWindowTheme(cs.getPropertyValue('--c-bg').trim());
   }, [theme, accent]);
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <div className="flex h-full items-center justify-center bg-bg text-[13px] text-muted">
+        Lade Quorum …
+      </div>
+    );
+  }
   return <RouterProvider key={language} router={router} />;
 }
 

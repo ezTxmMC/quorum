@@ -5,7 +5,10 @@ use rfd::{AsyncFileDialog, AsyncMessageDialog, MessageButtons, MessageDialogResu
 use serde_json::{Value, json};
 use std::sync::Mutex;
 use std::{path::PathBuf, process::Command, sync::Arc};
-use tauri::{Emitter, Manager, State, WebviewWindow};
+use tauri::{
+    Emitter, Manager, State, WebviewWindow,
+    ipc::{InvokeBody, Request, Response},
+};
 
 async fn call(service: Arc<Service>, channel: String, args: Vec<Value>) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || service.call(&channel, &args))
@@ -76,6 +79,51 @@ async fn save_image_as(source: &str) -> Result<bool, String> {
         .map_err(|error| error.to_string())?
         .map_err(|error| error.to_string())?;
     Ok(true)
+}
+
+#[tauri::command]
+async fn load_profile(
+    service: State<'_, Arc<Service>>,
+    profile: State<'_, Arc<Mutex<DesktopProfile>>>,
+) -> Result<Response, String> {
+    let service = Arc::clone(service.inner());
+    let store = Arc::clone(profile.inner());
+    let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
+        let db = store.lock().map_err(|error| error.to_string())?;
+        if let Some(raw) = db.load_raw().map_err(|error| error.to_string())? {
+            return Ok(raw.into_bytes());
+        }
+        let legacy = service.call("store:seed", &[])?;
+        let serialized = serde_json::to_string(&legacy).map_err(|error| error.to_string())?;
+        db.save_raw(&serialized)
+            .map_err(|error| error.to_string())?;
+        Ok(serialized.into_bytes())
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    Ok(Response::new(bytes))
+}
+
+#[tauri::command]
+async fn save_profile(
+    request: Request<'_>,
+    profile: State<'_, Arc<Mutex<DesktopProfile>>>,
+) -> Result<(), String> {
+    let raw = match request.body() {
+        InvokeBody::Raw(bytes) => {
+            String::from_utf8(bytes.clone()).map_err(|error| error.to_string())?
+        }
+        InvokeBody::Json(value) => {
+            serde_json::to_string(value).map_err(|error| error.to_string())?
+        }
+    };
+    let store = Arc::clone(profile.inner());
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let db = store.lock().map_err(|error| error.to_string())?;
+        db.save_raw(&raw).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -217,7 +265,11 @@ fn main() {
             })?));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![dispatch])
+        .invoke_handler(tauri::generate_handler![
+            dispatch,
+            load_profile,
+            save_profile
+        ])
         .run(tauri::generate_context!())
         .expect("Quorum konnte nicht starten");
 }

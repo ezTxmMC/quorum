@@ -80,8 +80,37 @@ const routes = {
   ...workflows,
   'app:home': homedir, 'app:isPrimary': () => true, 'launch:take': () => null, 'quick:take': () => null,
   'store:seed': load,
-  'store:adopt': (next: Persisted) => { data = next; },
-  'store:ack': async (next: Persisted) => { data = next; await host.acknowledge(next); },
+  'store:adopt': (next: Partial<Persisted>) => {
+    if (next?.settings) {
+      data = { ...data, settings: next.settings };
+    }
+  },
+  'store:ack': async (next: Partial<Persisted> & { completed?: { chatId: string; messageId: string; runId: string }[] }) => {
+    if (next?.settings) {
+      data = { ...data, settings: next.settings };
+    }
+    if (Array.isArray(next?.completed)) {
+      const synthetic: Persisted = {
+        ...data,
+        sessions: next.completed.map((entry) => ({
+          id: entry.chatId,
+          title: '',
+          cwd: '',
+          provider: 'claude',
+          options: {},
+          providerSessions: {},
+          createdAt: 0,
+          updatedAt: 0,
+          messages: [{ id: entry.messageId, role: 'assistant', blocks: [], createdAt: 0, workerDone: true, workerRunId: entry.runId }],
+        })),
+      };
+      await host.acknowledge(synthetic);
+      return;
+    }
+    if (Array.isArray(next?.sessions)) {
+      await host.acknowledge(next as Persisted);
+    }
+  },
   'provider:status': (id: ProviderId, force?: boolean) => providerStatus(id, data.settings.binaries, force),
   'api:has-key': async (id: string) => !!await keyFor(id), 'api:key': keyUpdate, 'api:inspect': inspectApi, 'api:discover': discoverLocalServers,
   'ollama:manage': ollamaManagement,

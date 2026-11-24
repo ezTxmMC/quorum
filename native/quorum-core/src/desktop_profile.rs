@@ -41,19 +41,36 @@ impl DesktopProfile {
         })
     }
 
-    pub fn load(&self) -> io::Result<Option<Value>> {
-        let saved: Option<String> = self
-            .connection
+    pub fn load_raw(&self) -> io::Result<Option<String>> {
+        self.connection
             .query_row(
                 "SELECT document FROM desktop_profile WHERE id = 1",
                 [],
                 |row| row.get(0),
             )
             .optional()
-            .map_err(io::Error::other)?;
-        saved
+            .map_err(io::Error::other)
+    }
+
+    pub fn load(&self) -> io::Result<Option<Value>> {
+        self.load_raw()?
             .map(|text| serde_json::from_str(&text).map_err(io::Error::other))
             .transpose()
+    }
+
+    pub fn save_raw(&self, document: &str) -> io::Result<()> {
+        let trimmed = document.trim();
+        if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
+            return Err(io::Error::other("Ungültiges Quorum-Profil"));
+        }
+        self.connection
+            .execute(
+                "INSERT INTO desktop_profile(id, document) VALUES (1, ?)
+            ON CONFLICT(id) DO UPDATE SET document = excluded.document",
+                [trimmed],
+            )
+            .map_err(io::Error::other)?;
+        Ok(())
     }
 
     pub fn save(&self, value: &Value) -> io::Result<()> {
@@ -61,14 +78,7 @@ impl DesktopProfile {
         {
             return Err(io::Error::other("Ungültiges Quorum-Profil"));
         }
-        self.connection
-            .execute(
-                "INSERT INTO desktop_profile(id, document) VALUES (1, ?)
-            ON CONFLICT(id) DO UPDATE SET document = excluded.document",
-                [serde_json::to_string(value)?],
-            )
-            .map_err(io::Error::other)?;
-        Ok(())
+        self.save_raw(&serde_json::to_string(value)?)
     }
 }
 
