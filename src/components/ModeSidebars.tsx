@@ -6,7 +6,7 @@ import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
 import { ThreeDTools } from './ThreeDTools';
-import { cx } from './ui';
+import { Modal, cx } from './ui';
 
 interface SidebarProps {
   pinned?: boolean;
@@ -115,21 +115,21 @@ export function ThreeDSidebar({ pinned, onTogglePin, onClose }: SidebarProps) {
 
       <div className="border-t border-edge p-2">
         <button
-          className="flex w-full items-center justify-between rounded-lumen-sm px-2.5 py-1.5 text-[12px] text-muted transition-colors hover:bg-hover hover:text-fg"
-          onClick={() => setToolsOpen((value) => !value)}
+          className="flex w-full items-center justify-between rounded-lumen-sm px-2.5 py-2 text-[12px] text-muted transition-colors hover:bg-hover hover:text-fg"
+          onClick={() => setToolsOpen(true)}
         >
           <span className="flex items-center gap-2">
             <Icon name="lucide:wrench" size={13} />
             <span>{t('Blockbench & Blender')}</span>
           </span>
-          <Icon name={toolsOpen ? 'lucide:chevron-down' : 'lucide:chevron-right'} size={13} />
+          <Icon name="lucide:chevron-right" size={13} className="text-subtle" />
         </button>
-        {toolsOpen && (
-          <div className="mt-2 max-h-60 overflow-y-auto px-1">
-            <ThreeDTools />
-          </div>
-        )}
       </div>
+      {toolsOpen && (
+        <Modal title={t('Blockbench & Blender')} onClose={() => setToolsOpen(false)}>
+          <ThreeDTools embedded />
+        </Modal>
+      )}
     </aside>
   );
 }
