@@ -21,6 +21,7 @@ const TABLE: [RegExp, Price][] = [
   [/haiku-?5[-.]5/i, p(0.1, 0.5, 0.01)], // gilt bis 100k Prompt-Token; darüber 0,50/2,50
   [/haiku-?(3-?5|3\.5)/i, p(0.8, 4, 0.08)],
   [/haiku/i, p(1, 5, 0.1)],
+  [/gpt-?6(\.\d+)?/i, p(2, 16, 0.2)],
   [/gpt-?5(\.\d+)?-?nano|gpt-?4\.1-?nano/i, p(0.05, 0.4, 0.005)],
   [/gpt-?5(\.\d+)?-?mini|gpt-?4\.1-?mini|codex-?mini/i, p(0.25, 2, 0.025)],
   [/gpt-?5\.[2-9]/i, p(1.75, 14, 0.175)],
@@ -31,7 +32,7 @@ const TABLE: [RegExp, Price][] = [
   [/gpt-?4o/i, p(2.5, 10, 1.25)],
   [/gemini.*flash-?lite/i, p(0.1, 0.4, 0.01)],
   [/gemini.*flash/i, p(0.3, 2.5, 0.03)],
-  [/gemini-?3.*pro/i, p(2, 12, 0.2)],
+  [/gemini-?[34]/i, p(2, 12, 0.2)],
   [/gemini.*pro|gemini/i, p(1.25, 10, 0.125)],
   [/kimi-?k3\.1/i, p(2, 10, 0.2)],
   [/kimi-?k3/i, p(3, 15, 0.3)],
@@ -57,11 +58,14 @@ export function priceFor(model: string | undefined, provider: ProviderId | undef
 export function apiCost(u: TokenUsage | undefined, model: string | undefined, provider: ProviderId | undefined): Cost | undefined {
   if (!u || (provider && FREE.includes(provider))) return undefined;
   if (u.costUsd) return { usd: u.costUsd, estimated: false };
-  if (!u.inputTokens && !u.outputTokens) return undefined;
+  if (!u.inputTokens && !u.outputTokens && !u.cachedTokens) return undefined;
   const price = priceFor(model, provider);
   if (!price) return undefined;
-  const cached = Math.min(u.cachedTokens ?? 0, u.inputTokens ?? 0);
-  const fresh = (u.inputTokens ?? 0) - cached;
+  const input = u.inputTokens ?? 0;
+  const rawCached = u.cachedTokens ?? 0;
+  const separateCache = provider === 'antigravity' || rawCached > input;
+  const cached = separateCache ? rawCached : Math.min(rawCached, input);
+  const fresh = separateCache ? input : input - cached;
   return { usd: (fresh * price.in + cached * price.cache + (u.outputTokens ?? 0) * price.out) / 1e6, estimated: true };
 }
 
