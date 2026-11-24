@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { PROVIDERS, canonicalModel } from '@shared/catalog';
+import { PROVIDERS, PROVIDER_ORDER, canonicalModel, isChatModel, modelChoices, modelLabel } from '@shared/catalog';
 import type { ChatLimit, FallbackModel, ProviderId } from '@shared/types';
 import { t } from '@/lib/i18n';
 import { Icon } from '@/lib/icons';
 import { useHub } from '@/lib/store';
-import { Dot, ModelList, useModelLabel } from './ModelPicker';
+import { Dot, defaultModel, useModelLabel } from './ModelPicker';
 import { Modal, cx } from './ui';
 
 const DEFAULT_PERCENT = 80;
@@ -95,6 +95,93 @@ function swap(list: FallbackModel[], a: number, b: number): FallbackModel[] {
   return next;
 }
 
+interface FallbackPickerProps {
+  /** Bereits in der Kette – werden als vergeben angezeigt statt doppelt wählbar zu sein. */
+  taken: FallbackModel[];
+  current?: { provider: ProviderId; model?: string };
+  onPick: (provider: ProviderId, model: string) => void;
+  onClose: () => void;
+}
+
+/** Auswahl eines Ausweich-Modells über die volle Breite: Suche, Anbieter als Filter und die Modelle als Raster. */
+function FallbackPicker({ taken, current, onPick, onClose }: FallbackPickerProps) {
+  const statuses = useHub((s) => s.statuses);
+  const settings = useHub((s) => s.data.settings);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<ProviderId | 'all'>('all');
+  const [older, setOlder] = useState(!!settings.showOlderModels);
+  const needle = query.trim().toLowerCase();
+  const currentModel = current ? canonicalModel(current.provider, current.model) ?? defaultModel(current.provider, statuses[current.provider]) : undefined;
+
+  const groups = PROVIDER_ORDER.filter((provider) => statuses[provider]?.installed).map((provider) => ({
+    provider,
+    models: modelChoices(provider, statuses, settings.customModels?.[provider])
+      .filter((model) => !model.image && isChatModel(model.id) && (older || !model.legacy))
+      .filter((model) => !needle || `${PROVIDERS[provider].name} ${model.id} ${modelLabel(model)}`.toLowerCase().includes(needle)),
+  })).filter((group) => group.models.length > 0);
+  const shown = groups.filter((group) => filter === 'all' || group.provider === filter);
+  const chipClass = (active: boolean) => cx('inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] transition-colors', active ? 'border-accent/60 bg-accent/10 text-fg' : 'border-edge text-muted hover:border-edge-strong hover:text-fg');
+
+  return (
+    <div className="rounded-lumen border border-accent/50 bg-surface/60">
+      <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
+        <Icon name="lucide:search" size={14} className="shrink-0 text-subtle" />
+        <input autoFocus aria-label={t('Modelle suchen')} placeholder={t('Ausweich-Modell suchen …')} value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent py-1 text-[13px] outline-none placeholder:text-subtle" />
+        <button type="button" aria-pressed={older} className={chipClass(older)} onClick={() => setOlder(!older)}>
+          <Icon name="lucide:history" size={12} /> {t('Ältere')}
+        </button>
+        <button className="icon-btn !size-6" title={t('Abbrechen')} onClick={onClose}><Icon name="lucide:x" size={13} /></button>
+      </div>
+
+      {groups.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto border-b border-edge px-3 py-2">
+          <button type="button" className={chipClass(filter === 'all')} onClick={() => setFilter('all')}>{t('Alle')}</button>
+          {groups.map((group) => (
+            <button key={group.provider} type="button" className={chipClass(filter === group.provider)} onClick={() => setFilter(group.provider)}>
+              <Dot id={group.provider} size={7} /> {PROVIDERS[group.provider].name}
+              <span className="text-subtle">{group.models.length}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="max-h-72 space-y-3 overflow-y-auto p-3">
+        {shown.length === 0 && <div className="py-4 text-center text-[12px] text-subtle">{t('Keine Modelle gefunden')}</div>}
+        {shown.map((group) => (
+          <div key={group.provider}>
+            {filter === 'all' && (
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wide text-subtle">
+                <Dot id={group.provider} size={7} /> {PROVIDERS[group.provider].name}
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {group.models.map((model) => {
+                const isCurrent = current?.provider === group.provider && currentModel === model.id;
+                const isTaken = taken.some((entry) => entry.provider === group.provider && entry.model === model.id);
+                const note = isCurrent ? t('aktuelles Modell') : isTaken ? t('schon in der Kette') : model.legacy ? t('Älter') : '';
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    disabled={isCurrent || isTaken}
+                    title={model.id}
+                    onClick={() => onPick(group.provider, model.id)}
+                    className="flex min-w-0 items-center gap-2 rounded-lumen-sm border border-edge bg-bg/40 px-2.5 py-2 text-left transition-colors hover:border-accent/50 hover:bg-hover disabled:cursor-default disabled:opacity-45 disabled:hover:border-edge disabled:hover:bg-bg/40"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg">{modelLabel(model)}</span>
+                    {note && <span className="shrink-0 text-[10.5px] text-subtle">{note}</span>}
+                    {isTaken && <Icon name="lucide:check" size={12} className="shrink-0 text-accent" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface FallbackListProps {
   value: FallbackModel[];
   onChange: (value: FallbackModel[]) => void;
@@ -133,13 +220,7 @@ export function FallbackList({ value, onChange, current }: FallbackListProps) {
       ))}
       {(current || value.length > 0) && <Connector />}
       {adding ? (
-        <div className="rounded-lumen border border-accent/50 bg-surface/60">
-          <div className="flex items-center justify-between border-b border-edge px-3 py-1.5 text-[11.5px] text-muted">
-            <span>{t('Ausweich-Modell wählen')}</span>
-            <button className="icon-btn !size-5" title={t('Abbrechen')} onClick={() => setAdding(false)}><Icon name="lucide:x" size={12} /></button>
-          </div>
-          <ModelList kind="text" onPick={handlePick} />
-        </div>
+        <FallbackPicker taken={value} current={current} onPick={handlePick} onClose={() => setAdding(false)} />
       ) : (
         <button className="flex w-full items-center justify-center gap-2 rounded-lumen border border-dashed border-edge-strong px-3 py-2.5 text-[12.5px] text-muted transition-colors hover:border-accent/60 hover:text-fg" onClick={() => setAdding(true)}>
           <Icon name="lucide:plus" size={14} /> {t('Ausweich-Modell hinzufügen')}
