@@ -339,6 +339,8 @@ export interface Settings {
   /** Globale Ausweich-Modelle für alle Chats ohne eigene Liste. */
   fallbacks?: FallbackModel[];
   sidebarPinned: boolean;
+  /** Zuletzt genutzte Auswahl (Anbieter, Modus, Modell, Berechtigungen, Effort) – Vorlage für neue Chats. */
+  lastChat?: { provider: ProviderId; options: ProviderOptions };
   showOlderModels?: boolean;
   showUsageInComposer?: boolean;
   customModels?: Partial<Record<ProviderId, string[]>>;

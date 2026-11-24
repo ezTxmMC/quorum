@@ -1,7 +1,7 @@
 import { markProfileReady } from './tauri';
 import { PROVIDER_ORDER } from '@shared/catalog';
 import { recoverChats } from '@shared/chat-host/recovery';
-import { chatMode } from '@shared/chat-modes';
+import { chatMode, modeOptions } from '@shared/chat-modes';
 import { useRef } from 'react';
 import { create } from 'zustand';
 import { DEFAULT_OPTIONS, DIRECT_MESSAGES, PROVIDERS, canonicalModel, defaultDock, defaultTerminal, isTextOnly, modelChoices, selectModelOptions } from '@shared/catalog';
@@ -154,6 +154,18 @@ const collectors = new Map<string, (e: HubEvent) => void>();
 /** Fehlertexte, die auf ein erreichtes Nutzungs-/Ratenlimit hindeuten. */
 const LIMIT_RE = /usage limit|rate.?limit|limit (has been )?(reached|exceeded)|hit your (usage )?limit|out of (extra )?usage|quota|exceeded|too many requests|\b429\b|resource.?exhausted|insufficient[_ ]credits?|credit balance|overloaded|billing/i;
 
+/** Anbieter und Optionen eines neuen Chats: die zuletzt genutzte Auswahl gilt vor den Anbieter-Standards. */
+function startChoice(settings: Persisted['settings'], init?: Partial<ChatSession>): Pick<ChatSession, 'provider' | 'options'> {
+  const last = settings.lastChat;
+  const provider = init?.provider ?? last?.provider ?? settings.defaultProvider;
+  const lastMode = last ? chatMode(last.options) : 'text';
+  // Die Bild-Engine gehört zum Anbieter; bei einem anderen Anbieter startet der Chat deshalb als Text.
+  const carried: ProviderOptions = { ...settings.providerDefaults[provider], chatMode: lastMode === 'image' ? 'text' : lastMode };
+  const base = last?.provider === provider ? last.options : carried;
+  const options = { ...base, ...init?.options };
+  return { provider, options: init?.options?.chatMode ? modeOptions(options, init.options.chatMode) : options };
+}
+
 const fallbackList = (s: ChatSession, settings: Persisted['settings']) => s.fallbacks ?? settings.fallbacks ?? [];
 
 let autoImporting = false;
@@ -166,6 +178,15 @@ export const useHub = create<State>((set, get) => {
   const mutData = (fn: (d: Persisted) => Persisted) => set((s) => ({ data: fn(s.data) }));
   const mutSession = (id: string, fn: (s: ChatSession) => ChatSession) =>
     mutData((d) => ({ ...d, sessions: d.sessions.map((s) => (s.id === id ? fn(s) : s)) }));
+  /** Merkt sich Anbieter, Modus, Modell, Berechtigungen und Effort des Chats als Vorlage für den nächsten neuen Chat. */
+  const rememberChoice = (id: string) => {
+    const s = get().data.sessions.find((x) => x.id === id);
+    const last = get().data.settings.lastChat;
+    if (!s || chatMode(s.options) === 'model' || (last?.provider === s.provider && last.options === s.options)) {
+      return;
+    }
+    mutData((d) => ({ ...d, settings: { ...d.settings, lastChat: { provider: s.provider, options: s.options } } }));
+  };
   const mutMulti = (id: string, fn: (r: MultiRunRecord) => MultiRunRecord) =>
     mutData((d) => ({ ...d, multiRuns: d.multiRuns.map((r) => (r.id === id ? { ...fn(r), updatedAt: Date.now() } : r)) }));
 
@@ -273,19 +294,19 @@ export const useHub = create<State>((set, get) => {
     },
 
     newSession(init, fresh) {
+      const choice = startChoice(get().data.settings, init);
       // Ein leerer Chat (noch kein Prompt) wird wiederverwendet statt einen weiteren anzulegen.
       const empty = fresh ? undefined : get().data.sessions.find((x) => x.messages.length === 0);
       if (empty) {
-        if (init?.cwd) get().addProject(init.cwd);
-        if (init) mutSession(empty.id, (x) => ({ ...x, ...init, options: { ...(init.provider && init.provider !== x.provider ? { ...get().data.settings.providerDefaults[init.provider], chatMode: 'text' as const } : x.options), ...init.options } }));
+        if (init?.cwd) {
+          get().addProject(init.cwd);
+        }
+        mutSession(empty.id, (x) => ({ ...x, ...init, ...choice, modeSettings: undefined }));
         return empty.id;
       }
-      const { settings } = get().data;
-      const provider = init?.provider ?? settings.defaultProvider;
       const s: ChatSession = {
-        id: uid(), title: 'Neuer Chat', cwd: init?.cwd ?? '', provider,
-        providerSessions: {}, messages: [], createdAt: Date.now(), updatedAt: Date.now(), ...init,
-        options: { ...settings.providerDefaults[provider], chatMode: 'text', ...init?.options },
+        id: uid(), title: 'Neuer Chat', cwd: '', providerSessions: {}, messages: [], createdAt: Date.now(), updatedAt: Date.now(),
+        ...init, ...choice,
       };
       mutData((d) => ({ ...d, sessions: [s, ...d.sessions] }));
       return s.id;
@@ -311,7 +332,12 @@ export const useHub = create<State>((set, get) => {
     },
     removeProject(cwd) { mutData((d) => ({ ...d, projects: d.projects.filter((p) => p !== cwd), hidden: d.hidden.includes(cwd) ? d.hidden : [...d.hidden, cwd] })); },
     restoreProject(cwd) { get().addProject(cwd); },
-    patchSession(id, patch) { mutSession(id, (s) => ({ ...s, ...patch })); },
+    patchSession(id, patch) {
+      mutSession(id, (s) => ({ ...s, ...patch }));
+      if (patch.provider || patch.options) {
+        rememberChoice(id);
+      }
+    },
     deleteSession(id) {
       get().cancel(id);
       void hub.chatForget(id);
@@ -373,6 +399,7 @@ export const useHub = create<State>((set, get) => {
       const userMsg: Message = { id: uid(), role: 'user', blocks: [{ kind: 'text', text }], images: opts.images, attachments: opts.attachments, files: opts.files, createdAt: Date.now() };
       const asst: Message = { id: uid(), role: 'assistant', provider: s.provider, model: s.options.imageGen ? undefined : s.options.model, blocks: [], createdAt: Date.now() };
       const mode = chatMode(s.options);
+      rememberChoice(sessionId);
       if (mode === 'model') {
         mutSession(sessionId, (x) => ({ ...x, title: x.messages.length === 0 ? titleOf(text) : x.title, messages: [...x.messages, userMsg, asst], updatedAt: Date.now() }));
         set((st) => ({ runs: { ...st.runs, [runId]: { sessionId, messageId: asst.id, provider: s.provider } } }));
