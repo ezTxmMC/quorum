@@ -337,8 +337,78 @@ export function modelEfforts(p: ProviderId, info?: ModelInfo): string[] {
   return info?.efforts ?? PROVIDERS[p].efforts.map((e) => e.value);
 }
 
+const TERMINAL_GENERIC_FONTS = new Set(['ui-monospace', 'monospace']);
+const TERMINAL_SYMBOL_FALLBACKS = [
+  "'Symbols Nerd Font Mono'",
+  "'Symbols Nerd Font'",
+  "'JetBrainsMono Nerd Font Mono'",
+  "'JetBrainsMono Nerd Font'",
+  "'FiraCode Nerd Font Mono'",
+  "'FiraCode Nerd Font'",
+  "'CaskaydiaMono Nerd Font Mono'",
+  "'CaskaydiaCove Nerd Font Mono'",
+  "'MesloLGS Nerd Font Mono'",
+  "'MesloLGS NF'",
+  "'Hack Nerd Font Mono'",
+  "'Noto Sans Symbols 2'",
+  "'Noto Sans Symbols'",
+  "'Noto Color Emoji'",
+  "'Apple Color Emoji'",
+  "'Segoe UI Emoji'",
+];
+
+function normalizeFontToken(font: string): string {
+  return font.trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+}
+
+/** Ensures Nerd Font, Powerline, symbol, and emoji fallbacks are placed before generic monospace families. */
+export function withTerminalFontFallbacks(fontFamily: string): string {
+  const tokens = fontFamily.split(',').map((entry) => entry.trim()).filter(Boolean);
+  const concrete: string[] = [];
+  const generics: string[] = [];
+  const seen = new Set<string>();
+
+  for (const token of tokens) {
+    const key = normalizeFontToken(token);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    if (TERMINAL_GENERIC_FONTS.has(key)) {
+      generics.push(token);
+    } else {
+      concrete.push(token);
+    }
+  }
+
+  for (const fallback of TERMINAL_SYMBOL_FALLBACKS) {
+    const key = normalizeFontToken(fallback);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    concrete.push(fallback);
+  }
+
+  for (const generic of ['ui-monospace', 'monospace']) {
+    if (!seen.has(generic)) {
+      generics.push(generic);
+    }
+  }
+
+  return [...concrete, ...generics].join(', ');
+}
+
 export function defaultTerminal(): TerminalStyle {
-  return { theme: 'app', fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.2, cursorStyle: 'block', cursorBlink: true, scrollback: 5000 };
+  return {
+    theme: 'app',
+    fontFamily: "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'FiraCode Nerd Font Mono', 'Fira Code', ui-monospace, monospace",
+    fontSize: 12.5,
+    lineHeight: 1.2,
+    cursorStyle: 'block',
+    cursorBlink: true,
+    scrollback: 5000,
+  };
 }
 
 type TermColors = { background: string; foreground: string; cursor: string; selectionBackground: string; black: string; red: string; green: string; yellow: string; blue: string; magenta: string; cyan: string; white: string; brightBlack: string; brightRed: string; brightGreen: string; brightYellow: string; brightBlue: string; brightMagenta: string; brightCyan: string; brightWhite: string };

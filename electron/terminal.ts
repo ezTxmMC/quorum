@@ -145,8 +145,14 @@ export function listShells(): ShellInfo[] {
 
 const utf8Env = (): NodeJS.ProcessEnv => {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  const loc = `${env.LC_ALL ?? ''}${env.LC_CTYPE ?? ''}${env.LANG ?? ''}`;
-  if (!/utf-?8/i.test(loc)) { delete env.LC_ALL; delete env.LC_CTYPE; env.LANG = process.platform === 'darwin' ? 'en_US.UTF-8' : 'C.UTF-8'; }
+  const effectiveLocale = env.LC_ALL || env.LC_CTYPE || env.LANG || '';
+  if (!/utf-?8/i.test(effectiveLocale)) {
+    delete env.LC_ALL;
+    delete env.LC_CTYPE;
+    env.LANG = process.platform === 'darwin' ? 'en_US.UTF-8' : 'C.UTF-8';
+  }
+  env.PYTHONIOENCODING = 'utf-8';
+  env.PYTHONUTF8 = '1';
   return env;
 };
 
@@ -181,6 +187,12 @@ export function createTerminal(wc: TerminalClient, id: string, cwd: string, cols
   proc.stdout?.on('data', out(0));
   proc.stderr?.on('data', out(1));
   proc.on('close', (code) => {
+    for (const decoder of decoders) {
+      const rest = decoder.end();
+      if (rest && !wc.isDestroyed()) {
+        wc.send('term:data', { id, data: rest });
+      }
+    }
     if (terms.get(id)?.proc === proc) terms.delete(id);
     if (!wc.isDestroyed()) wc.send('term:exit', { id, code });
   });

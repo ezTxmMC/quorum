@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DEFAULT_OPTIONS, PROVIDERS, PROVIDER_ORDER, TERMINAL_THEMES, defaultTerminal } from '@shared/catalog';
+import { DEFAULT_OPTIONS, PROVIDERS, PROVIDER_ORDER, TERMINAL_THEMES, defaultTerminal, withTerminalFontFallbacks } from '@shared/catalog';
 import type { ProviderId, TerminalStyle, UpdateChannel } from '@shared/types';
 import { hub } from '@/lib/api';
 import { t } from '@/lib/i18n';
@@ -19,6 +19,10 @@ import { UsageView } from './UsageView';
 const ACCENTS = ['#7c8cff', '#d97757', '#10a37f', '#4c8bf5', '#e879f9', '#f59e0b', '#22d3ee'];
 
 const FONTS = [
+  { value: "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'FiraCode Nerd Font Mono', 'Fira Code', ui-monospace, monospace", label: 'JetBrainsMono Nerd Font' },
+  { value: "'FiraCode Nerd Font Mono', 'Fira Code', ui-monospace, monospace", label: 'FiraCode Nerd Font' },
+  { value: "'CaskaydiaMono Nerd Font Mono', 'CaskaydiaCove Nerd Font Mono', 'Cascadia Code', ui-monospace, monospace", label: 'Caskaydia Nerd Font' },
+  { value: "'MesloLGS Nerd Font Mono', 'MesloLGS NF', ui-monospace, monospace", label: 'MesloLGS Nerd Font' },
   { value: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace", label: 'JetBrains Mono' },
   { value: "'Fira Code', ui-monospace, monospace", label: 'Fira Code' },
   { value: "'Cascadia Code', ui-monospace, monospace", label: 'Cascadia Code' },
@@ -504,7 +508,7 @@ function TerminalTab() {
 
       <div
         className="overflow-hidden rounded-lumen-lg border border-edge p-3.5 shadow-xs"
-        style={{ background: termBackground(st), color: colors?.foreground ?? 'var(--c-text)', fontFamily: st.fontFamily, fontSize: st.fontSize, lineHeight: st.lineHeight }}
+        style={{ background: termBackground(st), color: colors?.foreground ?? 'var(--c-text)', fontFamily: withTerminalFontFallbacks(st.fontFamily), fontSize: st.fontSize, lineHeight: st.lineHeight }}
       >
         <div className="mb-1 text-[10.5px] opacity-55">{activeShellName}</div>
         <div><span style={{ color: colors?.green ?? 'var(--c-accent)' }}>user@quorum</span>:<span style={{ color: colors?.blue ?? 'var(--c-accent)' }}>~/projekt</span>$ git status</div>

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal, type ITerminalOptions } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import { TERMINAL_THEMES } from '@shared/catalog';
+import { TERMINAL_THEMES, withTerminalFontFallbacks } from '@shared/catalog';
 import type { TerminalStyle } from '@shared/types';
 import { hub, uid } from '@/lib/api';
 import { t } from '@/lib/i18n';
@@ -20,7 +20,14 @@ function appTheme() {
 /** xterm-Optionen aus dem Terminal-Stil der Einstellungen. */
 export function termOptions(s: TerminalStyle): ITerminalOptions {
   return {
-    fontFamily: s.fontFamily, fontSize: s.fontSize, lineHeight: s.lineHeight, cursorStyle: s.cursorStyle, cursorBlink: s.cursorBlink, scrollback: s.scrollback,
+    fontFamily: withTerminalFontFallbacks(s.fontFamily),
+    fontSize: s.fontSize,
+    lineHeight: s.lineHeight,
+    cursorStyle: s.cursorStyle,
+    cursorBlink: s.cursorBlink,
+    scrollback: s.scrollback,
+    customGlyphs: true,
+    rescaleOverlappingGlyphs: true,
     theme: TERMINAL_THEMES[s.theme]?.colors ?? appTheme(),
   };
 }
@@ -52,6 +59,14 @@ function TerminalView({ cwd, shell, active, onExit }: { cwd: string; shell?: str
     const safeFit = () => { try { fit.fit(); } catch { /* Panel versteckt */ } };
     termRef.current = { term, fit: () => { safeFit(); if (ready) void hub.termResize(id, term.cols, term.rows); } };
     safeFit();
+    let disposed = false;
+    void document.fonts?.ready.then(() => {
+      if (disposed) {
+        return;
+      }
+      term.clearTextureAtlas();
+      termRef.current?.fit();
+    });
     void hub.termCreate(id, cwdRef.current, term.cols || 80, term.rows || 24, undefined, shellRef.current).then((r) => { mode = r.mode === 'pipe' ? 'pipe' : 'pty'; ready = true; });
 
     const offData = hub.onTermData((p) => { if (p.id === id) term.write(p.data); });
@@ -76,7 +91,7 @@ function TerminalView({ cwd, shell, active, onExit }: { cwd: string; shell?: str
     });
     const ro = new ResizeObserver(() => { if (host.current?.offsetWidth) termRef.current?.fit(); });
     ro.observe(host.current);
-    return () => { ro.disconnect(); offData(); offExit(); void hub.termKill(id); term.dispose(); termRef.current = null; };
+    return () => { disposed = true; ro.disconnect(); offData(); offExit(); void hub.termKill(id); term.dispose(); termRef.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Stiländerungen aus den Einstellungen live übernehmen.
@@ -84,6 +99,7 @@ function TerminalView({ cwd, shell, active, onExit }: { cwd: string; shell?: str
     const r = termRef.current;
     if (!r) return;
     r.term.options = termOptions(style);
+    r.term.clearTextureAtlas();
     requestAnimationFrame(() => r.fit());
   }, [style, theme]);
 
