@@ -139,7 +139,7 @@ export function TerminalPanel({ cwd, slot, popout, onCloseAll }: { cwd: string; 
     <>
       <button className="icon-btn !size-6 shrink-0" title={t('Neues Terminal')} onClick={() => add()}><Icon name="lucide:plus" size={13} /></button>
       {shells.length > 1 && (
-        <Popover down trigger={(_o, toggle) => <button className="icon-btn !size-6 shrink-0" title={t('Shell wählen')} onClick={toggle}><Icon name="lucide:chevron-down" size={12} /></button>}>
+        <Popover trigger={(_o, toggle) => <button className="icon-btn !size-6 shrink-0" title={t('Shell wählen')} onClick={toggle}><Icon name="lucide:chevron-down" size={12} /></button>}>
           {(closeMenu) => (
             <div className="min-w-48">
               <div className="px-2.5 pb-1 pt-1 text-[10.5px] font-medium uppercase tracking-wide text-subtle">{t('Neues Terminal mit …')}</div>

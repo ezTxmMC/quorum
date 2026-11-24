@@ -232,7 +232,7 @@ export function ChatPage() {
             <div className="flex h-8 shrink-0 items-center gap-2 border-b border-edge px-2.5 text-[11.5px]">
               <Icon name="lucide:terminal" size={13} className="text-muted" />
               <span className="font-medium text-fg">{t('Terminal')}</span>
-              <div ref={setTerminalSlot} className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" />
+              <div ref={setTerminalSlot} className="flex min-w-0 flex-1 items-center gap-1" />
               <button
                 className="icon-btn !size-6"
                 title={t('Schließen')}
