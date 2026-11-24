@@ -13,10 +13,12 @@ export interface ModelViewer3DProps {
   model: BbModel;
   renderUrl?: string | null;
   className?: string;
+  /** Nimmt die Höhe des Elternelements ein statt der festen Vorschauhöhe. */
+  fill?: boolean;
   onOpenBlockbench?: () => void;
 }
 
-export const ModelViewer3D = memo(function ModelViewer3D({ model, renderUrl, className, onOpenBlockbench }: ModelViewer3DProps) {
+export const ModelViewer3D = memo(function ModelViewer3D({ model, renderUrl, className, fill, onOpenBlockbench }: ModelViewer3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
@@ -342,7 +344,7 @@ export const ModelViewer3D = memo(function ModelViewer3D({ model, renderUrl, cla
   const cubeCount = model.elements?.length ?? 0;
 
   return (
-    <div className={cx('group/threed relative flex flex-col overflow-hidden rounded-lumen border border-edge bg-surface shadow-xs', className)}>
+    <div className={cx('group/threed relative flex flex-col overflow-hidden rounded-lumen border border-edge bg-surface shadow-xs', fill && 'h-full min-h-[260px]', className)}>
       {/* Top Toolbar */}
       <div className="flex items-center justify-between gap-1.5 border-b border-edge/60 bg-surface/80 px-2.5 py-1.5 backdrop-blur-xs">
         <div className="flex items-center gap-1">
@@ -429,7 +431,7 @@ export const ModelViewer3D = memo(function ModelViewer3D({ model, renderUrl, cla
       </div>
 
       {/* Viewport Area */}
-      <div ref={containerRef} className="relative h-[320px] w-full min-w-0 select-none bg-radial from-slate-900/60 to-zinc-950/90 sm:h-[360px]">
+      <div ref={containerRef} className={cx('relative w-full min-w-0 select-none bg-radial from-slate-900/60 to-zinc-950/90', fill ? 'min-h-0 flex-1' : 'h-[320px] sm:h-[360px]')}>
         {viewMode === '3d' ? (
           <>
             <canvas

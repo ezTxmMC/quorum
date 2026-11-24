@@ -196,6 +196,25 @@ export async function exportProject(id: string, format: 'glb' | 'gltf' | 'obj' |
 }
 
 const active = new Map<string, AbortController>();
+
+export function isProjectRunning(id: string): boolean {
+  return active.has(id);
+}
+
+/**
+ * Modell für die Anzeige. Ein laufender Auftrag schreibt erst am Ende ins Projekt; bis dahin liegt der Stand der
+ * letzten Runde im Arbeitsordner, sonst bliebe die Ansicht während des ganzen Laufs leer.
+ */
+export async function displayModel(id: string): Promise<BbModel> {
+  if (active.has(id)) {
+    try {
+      return JSON.parse(await fsp.readFile(join(projectDir(id), 'work', 'model.bbmodel'), 'utf8')) as BbModel;
+    } catch {
+      /* Vor der ersten Runde gibt es noch keinen Arbeitsstand. */
+    }
+  }
+  return readModel(id);
+}
 export function cancelProjectRun(id: string): boolean {
   const c = active.get(id);
   if (!c) return false;

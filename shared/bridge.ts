@@ -187,6 +187,7 @@ export function createHub(transport: DesktopTransport) {
     threedRestore: (id: string, file: string): Promise<BbModel> => invoke('3d:restore', id, file),
     threedRun: (id: string, goal: string, engine: ChatEngine, maxIterations?: number): Promise<boolean> => invoke('3d:run', id, goal, engine, maxIterations),
     threedCancel: (id: string): Promise<boolean> => invoke('3d:cancel', id),
+    threedRunning: (id: string): Promise<boolean> => invoke('3d:running', id),
     threedBlender: (): Promise<{ bin?: string; version?: string; script: string }> => invoke('3d:blender'),
     threedTools: (): Promise<ToolStatus[]> => invoke('3d:tools'),
     threedToolInstall: (id: ToolId, opts?: { mcp?: boolean }): Promise<boolean> => invoke('3d:tool-install', id, opts),
